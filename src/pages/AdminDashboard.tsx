@@ -42,25 +42,31 @@ import {
   ShieldCheck,
   Eye
 } from 'lucide-react';
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  onSnapshot, 
-  orderBy, 
-  limit,
-  doc,
-  updateDoc,
-  deleteDoc,
-  addDoc,
-  setDoc,
-  Timestamp
-} from 'firebase/firestore';
-import { db } from '@/firebase';
 import { useAuth } from '@/contexts/AuthContext';
-import { Listing, Booking, UserProfile, Referral, Review, Subscription, Notification, PlatformSettings, OperationType } from '@/types';
-import { handleFirestoreError } from '@/lib/firestore';
+import { Listing, Booking, UserProfile, Referral, Review, Subscription, Notification, PlatformSettings } from '@/types';
+import {
+  type AdminCheckout,
+  createAdminNotification,
+  createAdminReferralReward,
+  deleteAdminNotification,
+  deleteAdminReferralReward,
+  deleteAdminReview,
+  deleteAdminUser,
+  getAdminPlatformSettings,
+  listAdminBookings,
+  listAdminCheckouts,
+  listAdminListings,
+  listAdminNotifications,
+  listAdminReferralRewards,
+  listAdminReviews,
+  listAdminSubscriptions,
+  listAdminUsers,
+  updateAdminPlatformSettings,
+  updateAdminUser,
+} from '@/lib/admin-client';
+import { getKycSubmissionAssets, listKycSubmissions, reviewKycSubmission, type KycSubmission } from '@/lib/ops-client';
+import { setUserKycStatus } from '@/lib/identity-client';
+import { getClient } from '@/lib/client';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -87,6 +93,43 @@ const chartData = [
   { name: '03', value: 190 },
 ];
 
+type KycReviewState = KycSubmission & {
+  user?: UserProfile | null;
+  idImageUrl?: string;
+  selfieImageUrl?: string;
+};
+
+function toListingPayload(listing: Listing, status = listing.status) {
+  return {
+    id: listing.id,
+    title: listing.title,
+    description: listing.description,
+    location: listing.location,
+    area: listing.area,
+    province: listing.province,
+    category: listing.category,
+    type: listing.type,
+    pricePerNight: listing.pricePerNight,
+    discount: listing.discount,
+    amenities: listing.amenities,
+    facilities: listing.facilities,
+    other_facility: listing.other_facility,
+    restaurant_offers: listing.restaurant_offers,
+    images: listing.images,
+    video_url: listing.video_url,
+    adults: listing.adults,
+    children: listing.children,
+    bedrooms: listing.bedrooms,
+    bathrooms: listing.bathrooms,
+    is_self_catering: listing.is_self_catering,
+    has_restaurant: listing.has_restaurant,
+    is_occupied: listing.is_occupied,
+    coordinates: listing.coordinates || null,
+    blockedDates: listing.blockedDates || [],
+    status,
+  };
+}
+
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -106,6 +149,7 @@ export default function AdminDashboard() {
   const [allReferrals, setAllReferrals] = useState<Referral[]>([]);
   const [allReviews, setAllReviews] = useState<Review[]>([]);
   const [allSubscriptions, setAllSubscriptions] = useState<Subscription[]>([]);
+  const [allCheckouts, setAllCheckouts] = useState<AdminCheckout[]>([]);
   const [allNotifications, setAllNotifications] = useState<Notification[]>([]);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -116,101 +160,94 @@ export default function AdminDashboard() {
   const [referralTab, setReferralTab] = useState<'guest' | 'host'>('guest');
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [editingListing, setEditingListing] = useState<Listing | null>(null);
-  const [viewingKYCUser, setViewingKYCUser] = useState<UserProfile | null>(null);
+  const [kycSubmissions, setKycSubmissions] = useState<KycSubmission[]>([]);
+  const [viewingKYCSubmission, setViewingKYCSubmission] = useState<KycReviewState | null>(null);
+  const [kycAssetsLoading, setKycAssetsLoading] = useState(false);
 
   useEffect(() => {
-    if (!db) return;
+    let cancelled = false;
 
-    // Fetch Stats & Users
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
-      setStats(prev => ({ ...prev, totalUsers: snap.size }));
-      setAllUsers(snap.docs.map(doc => doc.data() as UserProfile));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
+    Promise.all([
+      listAdminUsers(),
+      listAdminListings(),
+      listAdminBookings(),
+      listAdminReviews(),
+      listAdminReferralRewards(),
+      listAdminSubscriptions(),
+      listAdminCheckouts(),
+      listAdminNotifications(),
+      getAdminPlatformSettings(),
+    ]).then(([users, listings, bookings, reviews, referrals, subscriptions, checkouts, notifications, settings]) => {
+      if (cancelled) return;
 
-    // Active Listings for Stats
-    const unsubActiveListings = onSnapshot(query(collection(db, 'listings'), where('status', '==', 'active')), (snap) => {
-      setStats(prev => ({ ...prev, activeListings: snap.size }));
-      const listings = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Listing));
-      setTopListings(listings.sort((a, b) => (b.rating || 0) - (a.rating || 0)).slice(0, 5));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'listings'));
-
-    // All Listings for Management
-    const unsubAllListings = onSnapshot(collection(db, 'listings'), (snap) => {
-      setAllListings(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Listing)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'listings'));
-
-    // All Bookings
-    const unsubEnquiries = onSnapshot(collection(db, 'bookings'), (snap) => {
-      setStats(prev => ({ ...prev, totalEnquiries: snap.size }));
-      const bookings = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+      setAllUsers(users);
+      setAllListings(listings);
       setAllBookings(bookings);
-      setRecentEnquiries(bookings.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'bookings'));
-
-    // All Referrals
-    const unsubReferrals = onSnapshot(collection(db, 'referrals'), (snap) => {
-      setAllReferrals(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Referral)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'referrals'));
-
-    // All Reviews
-    const unsubReviews = onSnapshot(collection(db, 'reviews'), (snap) => {
-      const reviews = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Review));
       setAllReviews(reviews);
-      const pendingCount = reviews.filter(r => r.status === 'pending').length;
-      setStats(prev => ({ ...prev, pendingReviews: pendingCount }));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'reviews'));
-
-    // All Subscriptions
-    const unsubSubscriptions = onSnapshot(collection(db, 'subscriptions'), (snap) => {
-      setAllSubscriptions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Subscription)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'subscriptions'));
-
-    // All Notifications
-    const unsubNotifications = onSnapshot(collection(db, 'notifications'), (snap) => {
-      setAllNotifications(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'notifications'));
-
-    // Platform Settings
-    const unsubSettings = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
-      if (doc.exists()) {
-        setPlatformSettings(doc.data() as PlatformSettings);
-      }
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'settings/global'));
-
-    setLoading(false);
+      setAllReferrals(referrals);
+      setAllSubscriptions(subscriptions);
+      setAllCheckouts(checkouts);
+      setAllNotifications(notifications);
+      setPlatformSettings(settings);
+      setRecentEnquiries([...bookings].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5));
+      setTopListings([...listings].filter((listing) => listing.status === 'active').slice(0, 5));
+      setStats({
+        totalUsers: users.length,
+        activeListings: listings.filter((listing) => listing.status === 'active').length,
+        totalEnquiries: bookings.length,
+        pendingReviews: reviews.filter((review) => review.status === 'pending').length,
+      });
+      setLoading(false);
+    }).catch((error) => {
+      console.error('Failed to load admin core data', error);
+      toast({ title: 'Admin data failed', description: 'Could not load admin dashboard data.', variant: 'destructive' });
+      setLoading(false);
+    });
 
     return () => {
-      unsubUsers();
-      unsubActiveListings();
-      unsubAllListings();
-      unsubEnquiries();
-      unsubReferrals();
-      unsubReviews();
-      unsubSubscriptions();
-      unsubNotifications();
-      unsubSettings();
+      cancelled = true;
     };
-  }, []);
+  }, [toast]);
+
+  useEffect(() => {
+    if (profile?.role !== 'admin') return;
+
+    listKycSubmissions()
+      .then(setKycSubmissions)
+      .catch((error) => {
+        console.error('Failed to load KYC submissions', error);
+        toast({ title: 'KYC load failed', description: 'Could not load KYC submissions.', variant: 'destructive' });
+      });
+  }, [profile?.role, toast]);
 
   const handleUpdateUserRole = async (uid: string, newRole: string) => {
     console.log('Updating user role:', { uid, newRole });
     try {
-      await updateDoc(doc(db, 'users', uid), { role: newRole });
+      const updatedUser = await updateAdminUser({ userId: uid, role: newRole as UserProfile['role'] });
+      setAllUsers((current) => current.map((user) => user.uid === uid ? updatedUser : user));
       toast({ title: "Role Updated", description: "User role updated successfully." });
     } catch (err) {
       console.error('Error updating user role:', err);
-      handleFirestoreError(err, OperationType.UPDATE, `users/${uid}`);
+      toast({ title: 'Role update failed', description: 'Could not update the user role.', variant: 'destructive' });
     }
   };
 
   const handleUpdateListingStatus = async (id: string, newStatus: string) => {
     console.log('Updating listing status:', { id, newStatus });
     try {
-      await updateDoc(doc(db, 'listings', id), { status: newStatus });
+      const listing = allListings.find((item) => item.id === id);
+      if (!listing) return;
+      await getClient.hospitality.saveListing(toListingPayload(listing, newStatus as Listing['status']));
+      setAllListings((current) => current.map((item) => item.id === id ? { ...item, status: newStatus as Listing['status'] } : item));
+      setTopListings((current) => current.map((item) => item.id === id ? { ...item, status: newStatus as Listing['status'] } : item).filter((item) => item.status === 'active').slice(0, 5));
+      setStats((current) => ({
+        ...current,
+        activeListings: allListings.map((item) => item.id === id ? { ...item, status: newStatus as Listing['status'] } : item).filter((item) => item.status === 'active').length,
+      }));
       toast({ title: "Status Updated", description: `Listing status updated to ${newStatus}.` });
     } catch (err) {
       console.error('Error updating listing status:', err);
-      handleFirestoreError(err, OperationType.UPDATE, `listings/${id}`);
+      toast({ title: 'Listing update failed', description: 'Could not update the listing status.', variant: 'destructive' });
     }
   };
 
@@ -219,7 +256,12 @@ export default function AdminDashboard() {
   const handleDeleteUser = async (uid: string) => {
     console.log('Deleting user:', uid);
     try {
-      await deleteDoc(doc(db, 'users', uid));
+      await deleteAdminUser(uid);
+      setAllUsers((current) => current.filter((user) => user.uid !== uid));
+      setStats((current) => ({
+        ...current,
+        totalUsers: current.totalUsers - 1,
+      }));
       toast({
         title: "User Deleted",
         description: "User has been removed from the system.",
@@ -227,148 +269,199 @@ export default function AdminDashboard() {
       setConfirmDelete(null);
     } catch (err) {
       console.error('Error deleting user:', err);
-      handleFirestoreError(err, OperationType.DELETE, `users/${uid}`);
+      toast({ title: 'User delete failed', description: 'Could not remove the user.', variant: 'destructive' });
     }
   };
 
   const handleDeleteListing = async (id: string) => {
     console.log('Deleting listing:', id);
     try {
-      await deleteDoc(doc(db, 'listings', id));
+      const listing = allListings.find((item) => item.id === id);
+      if (!listing) return;
+      await getClient.hospitality.saveListing(toListingPayload(listing, 'archived'));
+      setAllListings((current) => current.filter((item) => item.id !== id));
+      setTopListings((current) => current.filter((item) => item.id !== id));
+      setStats((current) => ({
+        ...current,
+        activeListings: allListings.filter((item) => item.id !== id && item.status === 'active').length,
+      }));
       toast({ title: "Listing Deleted", description: "Listing has been removed." });
       setConfirmDelete(null);
     } catch (err) {
       console.error('Error deleting listing:', err);
-      handleFirestoreError(err, OperationType.DELETE, `listings/${id}`);
+      toast({ title: 'Listing delete failed', description: 'Could not archive the listing.', variant: 'destructive' });
     }
   };
 
   const handleDeleteReview = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'reviews', id));
+      await deleteAdminReview(id);
+      setAllReviews((current) => current.filter((review) => review.id !== id));
+      setStats((current) => ({
+        ...current,
+        pendingReviews: allReviews.filter((review) => review.id !== id && review.status === 'pending').length,
+      }));
       toast({ title: "Review Deleted", description: "Review has been removed." });
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `reviews/${id}`);
+      toast({ title: 'Review delete failed', description: 'Could not delete the review.', variant: 'destructive' });
     }
   };
 
   const handleDeleteReferral = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'referrals', id));
+      await deleteAdminReferralReward(id);
+      setAllReferrals((current) => current.filter((referral) => referral.id !== id));
       toast({ title: "Referral Deleted", description: "Referral record has been removed." });
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `referrals/${id}`);
+      toast({ title: 'Referral delete failed', description: 'Could not remove the referral.', variant: 'destructive' });
     }
   };
 
   const handleSendNotification = async (title: string, message: string, type: Notification['type'], target: Notification['target']) => {
     try {
-      await addDoc(collection(db, 'notifications'), {
+      const notification = await createAdminNotification({
         title,
         message,
         type,
         target,
-        createdAt: new Date().toISOString()
       });
+      setAllNotifications((current) => [notification, ...current]);
       toast({
         title: "Notification Sent",
         description: `Message sent to ${target} successfully.`,
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'notifications');
+      toast({ title: 'Notification failed', description: 'Could not send the notification.', variant: 'destructive' });
     }
   };
 
   const handleDeleteNotification = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'notifications', id));
+      await deleteAdminNotification(id);
+      setAllNotifications((current) => current.filter((notification) => notification.id !== id));
       toast({ title: "Notification Deleted", description: "Notification has been removed." });
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `notifications/${id}`);
+      toast({ title: 'Notification delete failed', description: 'Could not remove the notification.', variant: 'destructive' });
     }
   };
 
   const handleUpdateSettings = async (settings: Partial<PlatformSettings>) => {
     try {
-      await setDoc(doc(db, 'settings', 'global'), {
-        ...platformSettings,
-        ...settings,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+      const updatedSettings = await updateAdminPlatformSettings(settings);
+      setPlatformSettings(updatedSettings);
       toast({
         title: "Settings Updated",
         description: "Platform configuration has been saved.",
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'settings/global');
+      toast({ title: 'Settings update failed', description: 'Could not save platform settings.', variant: 'destructive' });
     }
   };
 
   const handleUpdateUser = async (user: UserProfile) => {
     try {
-      await updateDoc(doc(db, 'users', user.uid), { ...user });
-      await addDoc(collection(db, 'notifications'), {
+      const updatedUser = await updateAdminUser({
+        userId: user.uid,
+        displayName: user.displayName,
+        role: user.role,
+        hostPlan: user.host_plan,
+        kycStatus: user.kycStatus,
+        balance: user.balance,
+        tier: user.tier,
+      });
+      setAllUsers((current) => current.map((item) => item.uid === user.uid ? updatedUser : item));
+      const notification = await createAdminNotification({
         title: 'Profile Updated',
         message: 'Your profile has been updated by an administrator.',
         type: 'info',
         target: user.uid,
-        createdAt: new Date().toISOString()
       });
+      setAllNotifications((current) => [notification, ...current]);
       toast({ title: "User Updated", description: "User profile updated and notification sent." });
       setEditingUser(null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'users');
+      toast({ title: 'User update failed', description: 'Could not update the user.', variant: 'destructive' });
     }
   };
 
   const handleUpdateListing = async (listing: Listing) => {
     try {
-      await updateDoc(doc(db, 'listings', listing.id), { ...listing });
-      await addDoc(collection(db, 'notifications'), {
+      await getClient.hospitality.saveListing(toListingPayload(listing));
+      setAllListings((current) => current.map((item) => item.id === listing.id ? listing : item));
+      const notification = await createAdminNotification({
         title: 'Listing Updated',
         message: `Your listing "${listing.title}" has been updated by an administrator.`,
         type: 'info',
         target: listing.hostUid,
-        createdAt: new Date().toISOString()
       });
+      setAllNotifications((current) => [notification, ...current]);
       toast({ title: "Listing Updated", description: "Listing updated and notification sent." });
       setEditingListing(null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'listings');
+      toast({ title: 'Listing update failed', description: 'Could not update the listing.', variant: 'destructive' });
     }
   };
 
   const handleApproveKYC = async (uid: string) => {
     try {
-      await updateDoc(doc(db, 'users', uid), { kycStatus: 'verified' });
-      await addDoc(collection(db, 'notifications'), {
+      await reviewKycSubmission({ userId: uid, status: 'verified' });
+      await setUserKycStatus({ userId: uid, kycStatus: 'verified' });
+      const notification = await createAdminNotification({
         title: 'Verification Approved',
         message: 'Your identity verification has been approved. You can now start listing properties.',
         type: 'success',
         target: uid,
-        createdAt: new Date().toISOString()
       });
+      setAllNotifications((current) => [notification, ...current]);
       toast({ title: "Verification Approved", description: "User has been verified." });
-      setViewingKYCUser(null);
+      setViewingKYCSubmission(null);
+      setKycSubmissions((current) => current.filter((submission) => submission.userId !== uid));
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `users/${uid}`);
+      console.error('Failed to approve KYC submission', err);
+      toast({ title: 'Approval failed', description: 'Could not approve this KYC submission.', variant: 'destructive' });
     }
   };
 
   const handleRejectKYC = async (uid: string) => {
     try {
-      await updateDoc(doc(db, 'users', uid), { kycStatus: 'rejected' });
-      await addDoc(collection(db, 'notifications'), {
+      const rejectionReason = window.prompt('Why are you rejecting this KYC submission?', 'Documents were unclear or incomplete.');
+      await reviewKycSubmission({
+        userId: uid,
+        status: 'rejected',
+        rejectionReason: rejectionReason || 'Rejected during review.',
+      });
+      await setUserKycStatus({ userId: uid, kycStatus: 'rejected' });
+      const notification = await createAdminNotification({
         title: 'Verification Rejected',
         message: 'Your identity verification was rejected. Please re-submit clearer documents.',
         type: 'error',
         target: uid,
-        createdAt: new Date().toISOString()
       });
+      setAllNotifications((current) => [notification, ...current]);
       toast({ title: "Verification Rejected", description: "User verification has been rejected." });
-      setViewingKYCUser(null);
+      setViewingKYCSubmission(null);
+      setKycSubmissions((current) => current.filter((submission) => submission.userId !== uid));
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `users/${uid}`);
+      console.error('Failed to reject KYC submission', err);
+      toast({ title: 'Rejection failed', description: 'Could not reject this KYC submission.', variant: 'destructive' });
+    }
+  };
+
+  const handleReviewKYC = async (submission: KycSubmission) => {
+    const user = allUsers.find((candidate) => candidate.uid === submission.userId) || null;
+    setViewingKYCSubmission({ ...submission, user });
+    setKycAssetsLoading(true);
+
+    try {
+      const assets = await getKycSubmissionAssets(submission.userId);
+      setViewingKYCSubmission((current) => current && current.userId === submission.userId
+        ? { ...current, ...assets, user }
+        : current);
+    } catch (error) {
+      console.error('Failed to load KYC asset previews', error);
+      toast({ title: 'Preview load failed', description: 'Could not load secure KYC previews.', variant: 'destructive' });
+    } finally {
+      setKycAssetsLoading(false);
     }
   };
 
@@ -388,14 +481,14 @@ export default function AdminDashboard() {
         return;
       }
 
-      await addDoc(collection(db, 'referrals'), {
-        referrerUid: referrer.uid,
-        referredUid: referee.uid,
+      const referral = await createAdminReferralReward({
+        referrerId: referrer.uid,
+        referredUserId: referee.uid,
         amount: platformSettings?.referralRewardAmount || 50,
-        type: 'signup',
+        trigger: 'signup',
         status: 'pending',
-        createdAt: new Date().toISOString()
       });
+      setAllReferrals((current) => [referral, ...current]);
 
       toast({
         title: "Success",
@@ -404,7 +497,7 @@ export default function AdminDashboard() {
       setManualReferrerEmail('');
       setManualRefereeEmail('');
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'referrals');
+      toast({ title: 'Referral failed', description: 'Could not create the referral.', variant: 'destructive' });
     }
   };
 
@@ -680,8 +773,10 @@ export default function AdminDashboard() {
                           size="sm" 
                           className="text-xs h-8 text-green-600 border-green-200 hover:bg-green-50"
                           onClick={() => {
-                            console.log('Review KYC clicked for user:', user.uid);
-                            setViewingKYCUser(user);
+                            const submission = kycSubmissions.find((item) => item.userId === user.uid);
+                            if (submission) {
+                              handleReviewKYC(submission);
+                            }
                           }}
                         >
                           Review KYC
@@ -1329,18 +1424,20 @@ export default function AdminDashboard() {
 
   const renderFinancials = () => {
     const totalRevenue = allSubscriptions.reduce((acc, curr) => acc + curr.amount, 0);
+    const paidCheckouts = allCheckouts.filter((checkout) => checkout.status === 'paid');
+    const pendingCheckouts = allCheckouts.filter((checkout) => checkout.status === 'pending');
 
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
         <div className="flex flex-col gap-1">
           <h1 className="text-3xl font-bold tracking-tight text-[#1a1c1e]">Financial Management</h1>
-          <p className="text-[#5e6064]">Track platform revenue and host subscriptions.</p>
+          <p className="text-[#5e6064]">Track subscription revenue, credit top-ups, and the actual payment flow behind them.</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <Card className="p-6 bg-slate-900 text-white">
             <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Total Revenue</p>
-            <h3 className="text-3xl font-bold">${totalRevenue.toLocaleString()}</h3>
+            <h3 className="text-3xl font-bold">R{totalRevenue.toLocaleString()}</h3>
             <p className="text-[10px] text-green-400 mt-2 flex items-center gap-1">
               <TrendingUp className="w-3 h-3" /> +15% from last month
             </p>
@@ -1351,7 +1448,12 @@ export default function AdminDashboard() {
           </Card>
           <Card className="p-6">
             <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Avg. Subscription</p>
-            <h3 className="text-3xl font-bold">${allSubscriptions.length > 0 ? (totalRevenue / allSubscriptions.length).toFixed(2) : '0.00'}</h3>
+            <h3 className="text-3xl font-bold">R{allSubscriptions.length > 0 ? (totalRevenue / allSubscriptions.length).toFixed(2) : '0.00'}</h3>
+          </Card>
+          <Card className="p-6">
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Pending Checkouts</p>
+            <h3 className="text-3xl font-bold">{pendingCheckouts.length}</h3>
+            <p className="text-[10px] text-slate-500 mt-2">Paid: {paidCheckouts.length}</p>
           </Card>
         </div>
 
@@ -1382,7 +1484,7 @@ export default function AdminDashboard() {
                         <Badge variant="secondary" className="text-[10px] uppercase font-bold">{sub.plan}</Badge>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-sm font-bold">${sub.amount}</p>
+                        <p className="text-sm font-bold">R{sub.amount}</p>
                       </td>
                       <td className="px-6 py-4">
                         <Badge variant={sub.status === 'active' ? 'success' : 'neutral'} className="text-[10px] uppercase">
@@ -1395,6 +1497,92 @@ export default function AdminDashboard() {
                     </tr>
                   );
                 })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Yoco Checkout Activity</h2>
+              <p className="text-sm text-slate-500">Ops can inspect every platform payment attempt from one place.</p>
+            </div>
+            <Badge variant="secondary" className="text-[10px] uppercase font-bold">
+              {allCheckouts.length} total
+            </Badge>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-[#f8fafc] border-b border-slate-100">
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">User</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Type</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Commercial Detail</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Amount</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Provider Ref</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Created</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {allCheckouts.map((checkout) => {
+                  const user = allUsers.find((candidate) => candidate.uid === checkout.user_id);
+                  const detail = checkout.checkout_type === 'subscription'
+                    ? `${checkout.host_plan || 'unknown'} • ${checkout.billing_interval || 'n/a'}`
+                    : `${checkout.credit_quantity || 0} credits`;
+
+                  return (
+                    <tr key={checkout.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="space-y-1">
+                          <p className="text-sm font-bold text-slate-900">{user?.displayName || 'Unknown user'}</p>
+                          <p className="text-xs text-slate-500">{user?.email || checkout.user_id}</p>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <Badge variant="secondary" className="text-[10px] uppercase font-bold">
+                          {checkout.checkout_type === 'subscription' ? 'Subscription' : 'Credits'}
+                        </Badge>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="text-sm text-slate-700">{detail}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="text-sm font-bold text-slate-900">R{checkout.amount}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <Badge
+                          variant={
+                            checkout.status === 'paid'
+                              ? 'success'
+                              : checkout.status === 'failed' || checkout.status === 'cancelled'
+                                ? 'danger'
+                                : 'neutral'
+                          }
+                          className="text-[10px] uppercase"
+                        >
+                          {checkout.status}
+                        </Badge>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="max-w-[180px] truncate text-xs text-slate-500">
+                          {checkout.provider_payment_id || checkout.provider_checkout_id || 'Pending provider ref'}
+                        </p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="text-xs text-slate-500">{new Date(checkout.created_at).toLocaleString()}</p>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {allCheckouts.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-12 text-center text-sm text-slate-500">
+                      No checkouts yet. As soon as a Yoco checkout is created it will show up here.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -1653,7 +1841,7 @@ export default function AdminDashboard() {
   };
 
   const renderKYC = () => {
-    const pendingKYC = allUsers.filter(u => u.kycStatus === 'pending');
+    const pendingKYC = kycSubmissions.filter((submission) => submission.status === 'pending');
 
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1684,28 +1872,30 @@ export default function AdminDashboard() {
                     </td>
                   </tr>
                 ) : (
-                  pendingKYC.map((user) => (
-                    <tr key={user.uid} className="hover:bg-slate-50 transition-colors">
+                  pendingKYC.map((submission) => {
+                    const user = allUsers.find((candidate) => candidate.uid === submission.userId);
+                    return (
+                    <tr key={submission.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <img src={user.photoURL} className="w-10 h-10 rounded-full border border-slate-100" alt="" referrerPolicy="no-referrer" />
+                          <img src={user?.photoURL || 'https://placehold.co/80x80?text=User'} className="w-10 h-10 rounded-full border border-slate-100 object-cover" alt="" referrerPolicy="no-referrer" />
                           <div>
-                            <p className="text-sm font-bold text-slate-900">{user.displayName}</p>
-                            <p className="text-xs text-slate-500">{user.email}</p>
+                            <p className="text-sm font-bold text-slate-900">{user?.displayName || submission.userId}</p>
+                            <p className="text-xs text-slate-500">{user?.email || 'Unknown user'}</p>
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <Badge variant="neutral" className="capitalize">
-                          {user.kycData?.idType.replace('_', ' ')}
+                          {submission.idType.replace('_', ' ')}
                         </Badge>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-sm font-medium">{user.kycData?.idNumber}</p>
+                        <p className="text-sm font-medium">{submission.idNumber}</p>
                       </td>
                       <td className="px-6 py-4">
                         <p className="text-xs text-slate-500">
-                          {user.kycData?.submittedAt ? new Date(user.kycData.submittedAt).toLocaleString() : 'N/A'}
+                          {new Date(submission.submittedAt).toLocaleString()}
                         </p>
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -1714,7 +1904,7 @@ export default function AdminDashboard() {
                             variant="outline" 
                             size="sm" 
                             className="text-xs h-8 flex items-center gap-1"
-                            onClick={() => setViewingKYCUser(user)}
+                            onClick={() => handleReviewKYC(submission)}
                           >
                             <Eye className="w-3 h-3" /> Review
                           </Button>
@@ -1722,7 +1912,7 @@ export default function AdminDashboard() {
                             variant="default" 
                             size="sm" 
                             className="text-xs h-8 bg-green-600 hover:bg-green-700"
-                            onClick={() => handleApproveKYC(user.uid)}
+                            onClick={() => handleApproveKYC(submission.userId)}
                           >
                             Approve
                           </Button>
@@ -1730,14 +1920,14 @@ export default function AdminDashboard() {
                             variant="destructive" 
                             size="sm" 
                             className="text-xs h-8"
-                            onClick={() => handleRejectKYC(user.uid)}
+                            onClick={() => handleRejectKYC(submission.userId)}
                           >
                             Reject
                           </Button>
                         </div>
                       </td>
                     </tr>
-                  ))
+                  )})
                 )}
               </tbody>
             </table>
@@ -1745,57 +1935,69 @@ export default function AdminDashboard() {
         </Card>
 
         {/* KYC Review Dialog */}
-        <Dialog open={!!viewingKYCUser} onOpenChange={() => setViewingKYCUser(null)}>
+        <Dialog open={!!viewingKYCSubmission} onOpenChange={() => setViewingKYCSubmission(null)}>
           <DialogContent className="sm:max-w-[600px]">
             <DialogHeader>
-              <DialogTitle>Review Verification: {viewingKYCUser?.displayName}</DialogTitle>
+              <DialogTitle>Review Verification: {viewingKYCSubmission?.user?.displayName || viewingKYCSubmission?.userId}</DialogTitle>
             </DialogHeader>
-            {viewingKYCUser && (
+            {viewingKYCSubmission && (
               <div className="space-y-6 py-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <p className="text-xs font-bold text-slate-500 uppercase">ID Document ({viewingKYCUser.kycData?.idType})</p>
+                    <p className="text-xs font-bold text-slate-500 uppercase">ID Document ({viewingKYCSubmission.idType.replace('_', ' ')})</p>
                     <div className="aspect-[4/3] rounded-xl overflow-hidden border border-slate-200">
-                      <img 
-                        src={viewingKYCUser.kycData?.idImage} 
-                        className="w-full h-full object-cover cursor-zoom-in" 
-                        alt="ID Document" 
-                        onClick={() => window.open(viewingKYCUser.kycData?.idImage, '_blank')}
-                      />
+                      {kycAssetsLoading ? (
+                        <div className="w-full h-full flex items-center justify-center text-sm text-slate-500 bg-slate-50">Loading secure preview...</div>
+                      ) : viewingKYCSubmission.idImageUrl ? (
+                        <img 
+                          src={viewingKYCSubmission.idImageUrl} 
+                          className="w-full h-full object-cover cursor-zoom-in" 
+                          alt="ID Document" 
+                          onClick={() => window.open(viewingKYCSubmission.idImageUrl, '_blank')}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-sm text-slate-500 bg-slate-50">Preview unavailable</div>
+                      )}
                     </div>
                   </div>
                   <div className="space-y-2">
                     <p className="text-xs font-bold text-slate-500 uppercase">Selfie Verification</p>
                     <div className="aspect-[4/3] rounded-xl overflow-hidden border border-slate-200">
-                      <img 
-                        src={viewingKYCUser.kycData?.selfieImage} 
-                        className="w-full h-full object-cover cursor-zoom-in" 
-                        alt="Selfie" 
-                        onClick={() => window.open(viewingKYCUser.kycData?.selfieImage, '_blank')}
-                      />
+                      {kycAssetsLoading ? (
+                        <div className="w-full h-full flex items-center justify-center text-sm text-slate-500 bg-slate-50">Loading secure preview...</div>
+                      ) : viewingKYCSubmission.selfieImageUrl ? (
+                        <img 
+                          src={viewingKYCSubmission.selfieImageUrl} 
+                          className="w-full h-full object-cover cursor-zoom-in" 
+                          alt="Selfie" 
+                          onClick={() => window.open(viewingKYCSubmission.selfieImageUrl, '_blank')}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-sm text-slate-500 bg-slate-50">Preview unavailable</div>
+                      )}
                     </div>
                   </div>
                 </div>
                 <div className="bg-slate-50 p-4 rounded-xl space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500">Full Name</span>
-                    <span className="font-bold">{viewingKYCUser.displayName}</span>
+                    <span className="font-bold">{viewingKYCSubmission.user?.displayName || 'Unknown user'}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500">ID Number</span>
-                    <span className="font-bold">{viewingKYCUser.kycData?.idNumber}</span>
+                    <span className="font-bold">{viewingKYCSubmission.idNumber}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500">Email</span>
-                    <span className="font-bold">{viewingKYCUser.email}</span>
+                    <span className="font-bold">{viewingKYCSubmission.user?.email || 'Unknown'}</span>
                   </div>
                 </div>
               </div>
             )}
             <DialogFooter className="gap-2 sm:gap-0">
-              <Button variant="outline" onClick={() => setViewingKYCUser(null)}>Close</Button>
-              <Button variant="destructive" onClick={() => handleRejectKYC(viewingKYCUser!.uid)}>Reject</Button>
-              <Button className="bg-green-600 hover:bg-green-700" onClick={() => handleApproveKYC(viewingKYCUser!.uid)}>Approve Verification</Button>
+              <Button variant="outline" onClick={() => setViewingKYCSubmission(null)}>Close</Button>
+              <Button variant="destructive" onClick={() => handleRejectKYC(viewingKYCSubmission!.userId)}>Reject</Button>
+              <Button className="bg-green-600 hover:bg-green-700" onClick={() => handleApproveKYC(viewingKYCSubmission!.userId)}>Approve Verification</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

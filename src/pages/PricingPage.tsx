@@ -3,10 +3,9 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowRight, Check, Loader2, Megaphone, ShieldCheck, Sparkles, Smartphone, Video, BarChart4, Users, Share2, LineChart, BadgeCheck } from "lucide-react";
-import { auth, db } from "../firebase";
 import { toast } from 'sonner';
-import { doc, getDoc, updateDoc, collection, addDoc } from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
+import { useAuth } from "@/contexts/AuthContext";
+import { createSubscriptionCheckout, downgradeHostPlanToFree, getCheckoutStatus } from "@/lib/billing-client";
 
 type PlanTier = 'free' | 'standard' | 'professional' | 'premium';
 type BillingInterval = 'monthly' | 'annual';
@@ -129,47 +128,74 @@ const comparisonRows = [
 ];
 
 export default function PricingPage({ onBack }: { onBack?: () => void }) {
-    const [user, setUser] = useState<any>(null);
+    const { user, profile, refreshProfile } = useAuth();
     const [loadingPlan, setLoadingPlan] = useState<PlanTier | null>(null);
     const [fetchingPlan, setFetchingPlan] = useState(true);
     const [currentPlan, setCurrentPlan] = useState<PlanTier>('free');
     const [billingInterval, setBillingInterval] = useState<BillingInterval>('monthly');
     const [searchParams] = useSearchParams();
     const sourceLabel = searchParams.get('source_label') || searchParams.get('region');
-
-    useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (u) => {
-            setUser(u);
-        });
-        return () => unsubscribe();
-    }, []);
+    const billingStatus = searchParams.get('billing_status');
+    const checkoutId = searchParams.get('checkout_id');
 
     const fetchPlan = useCallback(async () => {
-        if (!user) {
+        if (!profile) {
             setCurrentPlan('free');
             setFetchingPlan(false);
             return;
         }
-        try {
-            const docRef = doc(db, 'users', user.uid);
-            const docSnap = await getDoc(docRef);
-
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                if (data?.host_plan) {
-                    setCurrentPlan(data.host_plan as PlanTier);
-                }
-            }
-        } catch (err) {
-            console.error('Error fetching plan:', err);
-        } finally {
-            setFetchingPlan(false);
-        }
-    }, [user]);
+        setCurrentPlan((profile.host_plan as PlanTier) || 'free');
+        setFetchingPlan(false);
+    }, [profile]);
 
     useEffect(() => {
         fetchPlan();
     }, [fetchPlan]);
+
+    useEffect(() => {
+        if (!user || !billingStatus || !checkoutId) {
+            return;
+        }
+
+        let cancelled = false;
+
+        async function resolveCheckout() {
+            try {
+                const result = await getCheckoutStatus(checkoutId);
+                if (cancelled) {
+                    return;
+                }
+
+                if (result.status === 'paid') {
+                    await refreshProfile();
+                    setCurrentPlan((profile?.host_plan as PlanTier) || currentPlan);
+                    toast.success('Subscription payment confirmed. Your plan access is now live.');
+                    return;
+                }
+
+                if (billingStatus === 'cancelled' || result.status === 'cancelled') {
+                    toast.message('Checkout cancelled. No subscription changes were applied.');
+                    return;
+                }
+
+                if (billingStatus === 'failed' || result.status === 'failed') {
+                    toast.error('Payment failed. Nothing was upgraded.');
+                    return;
+                }
+
+                toast.message('Payment is still being confirmed. Give the webhook a moment and refresh if needed.');
+            } catch (error) {
+                if (!cancelled) {
+                    console.error('Failed to resolve checkout status', error);
+                }
+            }
+        }
+
+        resolveCheckout();
+        return () => {
+            cancelled = true;
+        };
+    }, [billingStatus, checkoutId, currentPlan, profile?.host_plan, refreshProfile, user]);
 
 
     const handleUpgrade = useCallback(async (planId: PlanTier) => {
@@ -183,11 +209,10 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
 
         const priceAmount = parseInt(plan.price.replace('R', ''), 10);
 
-        // If free plan, just update directly
         if (priceAmount === 0) {
             try {
-                const docRef = doc(db, 'users', user.uid);
-                await updateDoc(docRef, { host_plan: 'free' });
+                await downgradeHostPlanToFree();
+                await refreshProfile();
                 setCurrentPlan('free');
                 toast.success("You are now on the Free plan.");
             } catch (err) {
@@ -196,45 +221,19 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
             return;
         }
 
-        // For paid plans, create checkout session simulation
         setLoadingPlan(planId);
 
         try {
-            // Simulate payment
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            
-            const now = new Date();
-            const endDate = new Date();
-            if (billingInterval === 'monthly') {
-                endDate.setMonth(now.getMonth() + 1);
-            } else {
-                endDate.setFullYear(now.getFullYear() + 1);
-            }
-
-            const docRef = doc(db, 'users', user.uid);
-            await updateDoc(docRef, { host_plan: planId });
-            
-            // Create subscription record
-            await addDoc(collection(db, 'subscriptions'), {
-                hostUid: user.uid,
-                plan: planId,
-                amount: priceAmount,
-                status: 'active',
-                startDate: now.toISOString(),
-                endDate: endDate.toISOString(),
-                createdAt: now.toISOString()
-            });
-
-            setCurrentPlan(planId);
-            toast.success(`Successfully upgraded to ${plan.name}!`);
+            const checkout = await createSubscriptionCheckout(planId, billingInterval);
+            window.location.assign(checkout.redirectUrl);
 
         } catch (error: any) {
-            console.error("Payment setup error:", error);
-            toast.error("Payment Error: " + error.message);
+            console.error("Plan upgrade error:", error);
+            toast.error("Upgrade failed: " + error.message);
         } finally {
             setLoadingPlan(null);
         }
-    }, [user]);
+    }, [billingInterval, refreshProfile, user]);
 
     const getPlanPrice = useCallback((plan: Plan) => {
         if (billingInterval === 'monthly') {
@@ -522,7 +521,7 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
                     </div>
                     <h3 className="text-3xl font-black text-slate-950">Every paid host plan includes the content engine.</h3>
                     <p className="text-base leading-7 text-slate-700">
-                        This is not generic AI fluff. The engine is meant to take any listing you already have on Ideal Stay and turn it
+                        This is not generic template fluff. The engine is meant to take any listing you already have on IdealTrue and turn it
                         into styled promotional content that feels usable on real social channels.
                     </p>
                 </div>

@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
-import { Booking, OperationType } from '@/types';
-import { db } from '@/firebase';
-import { collection, addDoc } from 'firebase/firestore';
-import { handleFirestoreError } from '@/lib/firestore';
+import { Booking } from '@/types';
 import { Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { createListingReview } from '@/lib/platform-client';
 
 export default function ReviewForm({ booking, onClose }: { booking: Booking, onClose: () => void }) {
   const [ratings, setRatings] = useState({
@@ -22,17 +20,16 @@ export default function ReviewForm({ booking, onClose }: { booking: Booking, onC
     e.preventDefault();
     setSubmitting(true);
     try {
-      await addDoc(collection(db, 'reviews'), {
+      await createListingReview({
         listingId: booking.listingId,
-        guestUid: booking.guestUid,
-        hostUid: booking.hostUid,
+        bookingId: booking.id,
+        hostId: booking.hostUid,
         ...ratings,
         comment,
-        createdAt: new Date().toISOString()
       });
       onClose();
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'reviews');
+    } catch (error) {
+      console.error('Failed to create review:', error);
     } finally {
       setSubmitting(false);
     }

@@ -1,16 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Booking, Listing, Message, OperationType } from '@/types';
-import { db } from '@/firebase';
-import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { Booking, Listing, Message } from '@/types';
 import { X, Send, Info, Home, MapPin, CreditCard, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { handleFirestoreError } from '@/lib/firestore';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { motion, AnimatePresence } from 'motion/react';
 import { useNotifications } from '@/context/NotificationContext';
+import { listMessages, sendMessage as sendPlatformMessage } from '@/lib/messaging-client';
 
 interface ChatModalProps {
   booking: Booking;
@@ -31,25 +27,27 @@ export default function ChatModal({ booking, listing, currentUserUid, onClose }:
   const otherPartyUid = isHost ? booking.guestUid : booking.hostUid;
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'messages'),
-      where('bookingId', '==', booking.id),
-      orderBy('createdAt', 'asc')
-    );
+    let cancelled = false;
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setMessages(snapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data(),
-        createdAt: (doc.data().createdAt as Timestamp)?.toDate()?.toISOString() || new Date().toISOString()
-      } as Message)));
-      setIsLoading(false);
-    }, (err) => {
-      handleFirestoreError(err, OperationType.LIST, 'messages');
-      setIsLoading(false);
-    });
+    setIsLoading(true);
+    listMessages(booking.id)
+      .then((nextMessages) => {
+        if (!cancelled) {
+          setMessages(nextMessages);
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to load messages:', error);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      });
 
-    return () => unsubscribe();
+    return () => {
+      cancelled = true;
+    };
   }, [booking.id]);
 
   useEffect(() => {
@@ -63,17 +61,15 @@ export default function ChatModal({ booking, listing, currentUserUid, onClose }:
     
     setIsSending(true);
     try {
-      await addDoc(collection(db, 'messages'), {
+      const savedMessage = await sendPlatformMessage({
         bookingId: booking.id,
-        senderId: currentUserUid,
         receiverId: otherPartyUid,
         text,
         isSystem,
         suggestionType,
-        createdAt: serverTimestamp()
       });
+      setMessages((current) => [...current, savedMessage]);
 
-      // Emit notification via socket
       if (!isSystem) {
         socket?.emit('chat:message', {
           bookingId: booking.id,
@@ -85,8 +81,8 @@ export default function ChatModal({ booking, listing, currentUserUid, onClose }:
       }
 
       setNewMessage('');
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'messages');
+    } catch (error) {
+      console.error('Failed to send message:', error);
     } finally {
       setIsSending(false);
     }

@@ -4,25 +4,62 @@ import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Switch } from '../components/ui/switch';
-import { Building2, Plus, Edit, Trash2, Power, PowerOff, Share2 } from 'lucide-react';
+import { Building2, Plus, Edit, Trash2, Share2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../firebase';
-import { handleFirestoreError } from '../lib/firestore';
-import { OperationType } from '../types';
 import { ConfirmationDialog } from '../components/ui/confirmation-dialog';
+import { getClient } from '../lib/client';
 
-export default function HostListings({ listings }: { listings: Listing[] }) {
+type Props = {
+  listings: Listing[];
+  onListingUpdated?: (listing: Listing) => void;
+  onListingRemoved?: (listingId: string) => void;
+};
+
+function toSaveListingPayload(listing: Listing, status: Listing['status']) {
+  return {
+    id: listing.id,
+    title: listing.title,
+    description: listing.description,
+    location: listing.location,
+    area: listing.area,
+    province: listing.province,
+    category: listing.category,
+    type: listing.type,
+    pricePerNight: listing.pricePerNight,
+    discount: listing.discount,
+    amenities: listing.amenities,
+    facilities: listing.facilities,
+    restaurant_offers: listing.restaurant_offers,
+    images: listing.images,
+    video_url: listing.video_url,
+    adults: listing.adults,
+    children: listing.children,
+    bedrooms: listing.bedrooms,
+    bathrooms: listing.bathrooms,
+    is_self_catering: listing.is_self_catering,
+    has_restaurant: listing.has_restaurant,
+    is_occupied: listing.is_occupied,
+    coordinates: listing.coordinates || null,
+    status,
+  };
+}
+
+export default function HostListings({ listings, onListingUpdated, onListingRemoved }: Props) {
   const navigate = useNavigate();
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [listingToDelete, setListingToDelete] = useState<string | null>(null);
+  const [isUpdating, setIsUpdating] = useState<string | null>(null);
 
   const toggleStatus = async (listing: Listing) => {
     const newStatus = listing.status === 'active' ? 'inactive' : 'active';
+    setIsUpdating(listing.id);
     try {
-      await updateDoc(doc(db, 'listings', listing.id), { status: newStatus });
+      await getClient.hospitality.saveListing(toSaveListingPayload(listing, newStatus));
+      onListingUpdated?.({ ...listing, status: newStatus });
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `listings/${listing.id}`);
+      console.error('Failed to update listing status', error);
+    } finally {
+      setIsUpdating(null);
     }
   };
 
@@ -31,10 +68,13 @@ export default function HostListings({ listings }: { listings: Listing[] }) {
     
     setIsDeleting(listingToDelete);
     try {
-      await deleteDoc(doc(db, 'listings', listingToDelete));
+      const listing = listings.find((item) => item.id === listingToDelete);
+      if (!listing) return;
+      await getClient.hospitality.saveListing(toSaveListingPayload(listing, 'archived'));
+      onListingRemoved?.(listingToDelete);
       setListingToDelete(null);
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `listings/${listingToDelete}`);
+      console.error('Failed to archive listing', error);
     } finally {
       setIsDeleting(null);
     }
@@ -77,7 +117,8 @@ export default function HostListings({ listings }: { listings: Listing[] }) {
                     </span>
                     <Switch 
                       checked={listing.status === 'active'} 
-                      onCheckedChange={(checked) => toggleStatus(listing)}
+                      onCheckedChange={() => toggleStatus(listing)}
+                      disabled={isUpdating === listing.id || isDeleting === listing.id}
                     />
                   </div>
                 </div>
@@ -94,7 +135,7 @@ export default function HostListings({ listings }: { listings: Listing[] }) {
                   variant="outline" 
                   className="text-red-600 hover:text-red-700 hover:bg-red-50"
                   onClick={() => setListingToDelete(listing.id)}
-                  disabled={isDeleting === listing.id}
+                  disabled={isDeleting === listing.id || isUpdating === listing.id}
                 >
                   <Trash2 className="w-4 h-4 mr-2" /> {isDeleting === listing.id ? 'Deleting...' : 'Delete'}
                 </Button>

@@ -2,23 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Toaster, toast } from 'sonner';
 import NotificationBell from './components/NotificationBell';
 import { 
-  collection, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  setDoc, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  where, 
-  onSnapshot, 
-  serverTimestamp,
-  orderBy,
-  limit
-} from 'firebase/firestore';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { 
   Home, 
   LogOut, 
   Menu, 
@@ -45,18 +28,13 @@ import { Button } from './components/ui/button';
 import { 
   Listing, 
   Booking, 
-  UserProfile, 
-  Referral, 
-  ReferralTier, 
-  OperationType,
-  Message
+  Referral
 } from './types';
 
-import { db, auth, loginWithGoogle, logout } from './firebase';
-import { handleFirestoreError } from './lib/firestore';
-import { processReferralReward, getReferrerByCode } from './lib/referrals';
 import { cn } from './lib/utils';
 import { NotificationProvider, useNotifications } from './context/NotificationContext';
+import { useAuth } from './contexts/AuthContext';
+import { createBooking, listHostListings, listMyBookings, listPublicListings, listReferralRewards, submitPaymentProof } from './lib/platform-client';
 
 // handleFirestoreError moved to ./lib/firestore
 
@@ -119,10 +97,7 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const { socket } = useNotifications();
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('home');
+  const { user, profile, loading, logout } = useAuth();
   const [listings, setListings] = useState<Listing[]>([]);
   const [myListings, setMyListings] = useState<Listing[]>([]);
   const [myBookings, setMyBookings] = useState<Booking[]>([]);
@@ -133,110 +108,78 @@ export default function App() {
   const [bookingToReview, setBookingToReview] = useState<Booking | null>(null);
   const [selectedBookingForChat, setSelectedBookingForChat] = useState<Booking | null>(null);
 
-  // Auth Listener
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      if (u) {
-        const urlParams = new URLSearchParams(window.location.search);
-        const refCode = urlParams.get('ref');
-        await ensureUserProfile(u, refCode || undefined);
-      } else {
-        setProfile(null);
-      }
-      setLoading(false);
-    });
-    return unsubscribe;
-  }, []);
+  const syncUpdatedBooking = (updatedBooking: Booking) => {
+    setMyBookings((current) => current.map((item) => item.id === updatedBooking.id ? updatedBooking : item));
+    setHostBookings((current) => current.map((item) => item.id === updatedBooking.id ? updatedBooking : item));
+  };
 
-  // Data Listeners
-  useEffect(() => {
-    if (!db) return;
-
-    // Public Listings
-    const qListings = query(collection(db, 'listings'), where('status', '==', 'active'));
-    const unsubListings = onSnapshot(qListings, (snapshot) => {
-      setListings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Listing)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'listings'));
-
-    if (user) {
-      // My Listings (Host)
-      const qMyListings = query(collection(db, 'listings'), where('hostUid', '==', user.uid));
-      const unsubMyListings = onSnapshot(qMyListings, (snapshot) => {
-        setMyListings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Listing)));
-      }, (err) => handleFirestoreError(err, OperationType.LIST, 'listings'));
-
-      // My Bookings (Guest)
-      const qMyBookings = query(collection(db, 'bookings'), where('guestUid', '==', user.uid));
-      const unsubMyBookings = onSnapshot(qMyBookings, (snapshot) => {
-        setMyBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking)));
-      }, (err) => handleFirestoreError(err, OperationType.LIST, 'bookings'));
-
-      // Bookings for my listings (Host)
-      const qHostBookings = query(collection(db, 'bookings'), where('hostUid', '==', user.uid));
-      const unsubHostBookings = onSnapshot(qHostBookings, (snapshot) => {
-        setHostBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking)));
-      }, (err) => handleFirestoreError(err, OperationType.LIST, 'bookings'));
-
-      // Referrals
-      const qReferrals = query(collection(db, 'referrals'), where('referrerUid', '==', user.uid));
-      const unsubReferrals = onSnapshot(qReferrals, (snapshot) => {
-        setReferrals(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Referral)));
-      }, (err) => handleFirestoreError(err, OperationType.LIST, 'referrals'));
-
-      return () => {
-        unsubListings();
-        unsubMyListings();
-        unsubMyBookings();
-        unsubHostBookings();
-        unsubReferrals();
-      };
-    }
-
-    return unsubListings;
-  }, [user]);
-
-  const ensureUserProfile = async (u: User, refCode?: string) => {
-    const userRef = doc(db, 'users', u.uid);
-    try {
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) {
-        const newProfile: UserProfile = {
-          uid: u.uid,
-          displayName: u.displayName || 'Anonymous User',
-          email: u.email || '',
-          photoURL: u.photoURL || '',
-          role: 'guest',
-          referralCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
-          referredBy: refCode || null,
-          balance: 0,
-          referralCount: 0,
-          tier: 'bronze',
-          host_plan: 'free',
-          kycStatus: 'none',
-          createdAt: new Date().toISOString(),
-        };
-        await setDoc(userRef, newProfile);
-        setProfile(newProfile);
-
-        // Handle referral logic if applicable
-        if (refCode) {
-          const referrerUid = await getReferrerByCode(refCode);
-          if (referrerUid) {
-            await processReferralReward(referrerUid, u.uid, 'signup');
-          }
-        }
-      } else {
-        setProfile(userSnap.data() as UserProfile);
-      }
-    } catch (err) {
-      handleFirestoreError(err, OperationType.GET, `users/${u.uid}`);
+  const syncUpdatedListing = (updatedListing: Listing) => {
+    setListings((current) => current.map((item) => item.id === updatedListing.id ? updatedListing : item));
+    setMyListings((current) => current.map((item) => item.id === updatedListing.id ? updatedListing : item));
+    if (selectedListingForDetail?.id === updatedListing.id) {
+      setSelectedListingForDetail(updatedListing);
     }
   };
 
+  const removeListing = (listingId: string) => {
+    setListings((current) => current.filter((item) => item.id !== listingId));
+    setMyListings((current) => current.filter((item) => item.id !== listingId));
+    if (selectedListingForDetail?.id === listingId) {
+      setSelectedListingForDetail(null);
+    }
+  };
+
+  useEffect(() => {
+    try {
+      let cancelled = false;
+
+      async function loadData() {
+        const [publicListings, sessionBookings, rewardHistory] = await Promise.all([
+          listPublicListings(),
+          user ? listMyBookings() : Promise.resolve([]),
+          user ? listReferralRewards() : Promise.resolve([]),
+        ]);
+
+        if (cancelled) return;
+
+        setListings(publicListings);
+        setReferrals(rewardHistory as Referral[]);
+
+        if (!user) {
+          setMyListings([]);
+          setMyBookings([]);
+          setHostBookings([]);
+          return;
+        }
+
+        const [hostListings] = await Promise.all([
+          listHostListings(user.uid),
+        ]);
+
+        if (cancelled) return;
+
+        setMyListings(hostListings);
+        setMyBookings(sessionBookings.filter((booking) => booking.guestUid === user.uid));
+        setHostBookings(sessionBookings.filter((booking) => booking.hostUid === user.uid));
+      }
+
+      loadData().catch((error) => {
+        console.error('Failed to load platform data:', error);
+        toast.error('Failed to load the latest platform data.');
+      });
+
+      return () => {
+        cancelled = true;
+      };
+    } catch (error) {
+      console.error('Failed to initialize platform data:', error);
+      return;
+    }
+  }, [user]);
+
   const isAdmin = useMemo(() => {
-    return profile?.role === 'admin' || (user?.email === 'wimpievanloggenberg@gmail.com' && user?.emailVerified);
-  }, [profile, user]);
+    return profile?.role === 'admin';
+  }, [profile]);
 
   const isHostRoute = location.pathname.startsWith('/host');
   const isAdminRoute = location.pathname.startsWith('/admin');
@@ -263,7 +206,7 @@ export default function App() {
                   <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary-container rounded-lg flex items-center justify-center shadow-md shadow-primary/20">
                     <Home className="w-5 h-5 text-white" />
                   </div>
-                  <span className="text-xl font-bold tracking-tight">Ideal Stay</span>
+                  <span className="text-xl font-bold tracking-tight">IdealTrue</span>
                 </div>
 
                 {/* Desktop Nav */}
@@ -304,7 +247,7 @@ export default function App() {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <Button variant="ghost" onClick={loginWithGoogle}>Sign In</Button>
+                      <Button variant="ghost" onClick={() => navigate('/signup')}>Sign In</Button>
                       <Button onClick={() => navigate('/signup')}>Sign Up</Button>
                     </div>
                   )}
@@ -343,7 +286,7 @@ export default function App() {
                   </>
                 ) : (
                   <>
-                    <button onClick={() => { setIsMenuOpen(false); loginWithGoogle(); }} className="text-2xl font-bold">Sign In</button>
+                    <button onClick={() => { setIsMenuOpen(false); navigate('/signup'); }} className="text-2xl font-bold">Sign In</button>
                     <button onClick={() => { setIsMenuOpen(false); navigate('/signup'); }} className="text-2xl font-bold text-primary">Sign Up</button>
                   </>
                 )}
@@ -367,8 +310,8 @@ export default function App() {
               <Route index element={<HostDashboard profile={profile} listings={myListings} bookings={hostBookings} onUpgrade={() => navigate('/pricing')} onChat={(b: Booking) => setSelectedBookingForChat(b)} />} />
               <Route path="inbox" element={<HostInbox bookings={hostBookings} listings={myListings} onChat={(b: Booking) => setSelectedBookingForChat(b)} />} />
               <Route path="enquiries" element={<HostEnquiries bookings={hostBookings} listings={myListings} onChat={(b: Booking) => setSelectedBookingForChat(b)} />} />
-              <Route path="listings" element={<HostListings listings={myListings} />} />
-              <Route path="availability" element={<HostAvailability listings={myListings} bookings={hostBookings} />} />
+              <Route path="listings" element={<HostListings listings={myListings} onListingUpdated={syncUpdatedListing} onListingRemoved={removeListing} />} />
+              <Route path="availability" element={<HostAvailability listings={myListings} bookings={hostBookings} onListingUpdated={syncUpdatedListing} />} />
               <Route path="reports" element={<HostReports bookings={hostBookings} listings={myListings} />} />
               <Route path="social" element={<SocialDashboard listings={myListings} />} />
               <Route path="social/calendar" element={<PlaceholderView title="Content Calendar" description="Schedule and manage your social media posts." />} />
@@ -388,7 +331,23 @@ export default function App() {
               )
             } />
             <Route path="/planner" element={<HolidayPlanner />} />
-            <Route path="/guest" element={<GuestDashboard profile={profile} bookings={myBookings} listings={listings} onReview={(b: Booking) => setBookingToReview(b)} onExplore={() => navigate('/')} onChat={(b: Booking) => setSelectedBookingForChat(b)} />} />
+            <Route path="/guest" element={<GuestDashboard profile={profile} bookings={myBookings} listings={listings} onReview={(b: Booking) => setBookingToReview(b)} onExplore={() => navigate('/')} onChat={(b: Booking) => setSelectedBookingForChat(b)} onSubmitPaymentProof={async (booking: Booking) => {
+              const paymentReference = window.prompt('Enter the payment reference or proof note for this booking.');
+              if (paymentReference === null) return;
+              const paymentProofUrl = window.prompt('Optional: paste a proof-of-payment URL. Leave blank if you are only submitting a reference.') || null;
+              try {
+                const updatedBooking = await submitPaymentProof({
+                  id: booking.id,
+                  paymentReference,
+                  paymentProofUrl,
+                });
+                syncUpdatedBooking(updatedBooking);
+                toast.success('Payment proof submitted. The host can now confirm receipt.');
+              } catch (error) {
+                console.error('Failed to submit payment proof:', error);
+                toast.error('Failed to submit payment proof.');
+              }
+            }} />} />
             <Route path="/referral" element={<ReferralView profile={profile} referrals={referrals} />} />
             <Route path="/account" element={<AccountPage />} />
             <Route path="/signup" element={<SignupPage />} />
@@ -413,44 +372,36 @@ export default function App() {
                   currentUserUid={user?.uid}
                   onBook={async (bookingData) => {
                     if (!user) {
-                      console.log('User not logged in, triggering Google login');
-                      loginWithGoogle();
+                      navigate('/signup');
                       return;
                     }
                     
                     try {
-                      console.log('Initiating booking request for listing:', selectedListingForDetail.id);
-                      console.log('Booking data:', bookingData);
-
-                      const docRef = await addDoc(collection(db, 'bookings'), {
+                      const nextBooking = await createBooking({
                         listingId: selectedListingForDetail.id,
-                        guestUid: user.uid,
-                        hostUid: selectedListingForDetail.hostUid,
+                        hostId: selectedListingForDetail.hostUid,
                         checkIn: bookingData.checkIn.toISOString(),
                         checkOut: bookingData.checkOut.toISOString(),
                         totalPrice: bookingData.totalPrice,
-                        guests: {
-                          adults: bookingData.adults,
-                          children: bookingData.children
-                        },
-                        status: 'pending',
-                        createdAt: new Date().toISOString()
+                        adults: bookingData.adults,
+                        children: bookingData.children,
                       });
+
+                      setMyBookings((current) => [nextBooking, ...current]);
                       
-                      // Emit booking request notification
                       socket?.emit('booking:request', {
                         hostUid: selectedListingForDetail.hostUid,
                         guestUid: user.uid,
                         listingId: selectedListingForDetail.id,
-                        bookingId: docRef.id,
+                        bookingId: nextBooking.id,
                         message: `New booking request for ${selectedListingForDetail.title}`
                       });
                       
                       toast.success("Booking request sent! The host will contact you shortly.");
                       setSelectedListingForDetail(null);
-                      setActiveTab('guest');
-                    } catch (err) {
-                      handleFirestoreError(err, OperationType.CREATE, 'bookings');
+                    } catch (error) {
+                      console.error('Failed to create booking:', error);
+                      toast.error('Booking request failed. Please try again.');
                     }
                   }}
                 />

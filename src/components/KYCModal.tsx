@@ -1,6 +1,4 @@
 import { useState, useRef, useEffect } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '@/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Loader2, ShieldCheck, Camera, IdCard, CheckCircle2, AlertCircle, Clock, X, RefreshCw } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
+import { updateEncoreProfile } from '@/lib/identity-client';
+import { submitKyc, uploadKycAsset, uploadKycDataUrl } from '@/lib/ops-client';
 
 interface KYCModalProps {
   isOpen: boolean;
@@ -17,7 +17,7 @@ interface KYCModalProps {
 }
 
 export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
-  const { user, profile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -104,6 +104,7 @@ export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
         setFormData(prev => ({ ...prev, idImage: reader.result as string }));
       };
       reader.readAsDataURL(file);
+      (e.target as HTMLInputElement).dataset.objectUrl = URL.createObjectURL(file);
     }
   };
 
@@ -136,13 +137,25 @@ export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
 
     setIsSubmitting(true);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        kycStatus: 'pending',
-        kycData: {
-          ...formData,
-          submittedAt: new Date().toISOString(),
-        }
+      const idFile = fileInputRef.current?.files?.[0];
+      if (!idFile) {
+        throw new Error('Missing ID document file.');
+      }
+      const [idImageKey, selfieImageKey] = await Promise.all([
+        uploadKycAsset(idFile),
+        uploadKycDataUrl(`selfie-${Date.now()}.jpg`, formData.selfieImage),
+      ]);
+
+      await submitKyc({
+        idType: formData.idType,
+        idNumber: formData.idNumber,
+        idImageKey,
+        selfieImageKey,
       });
+      await updateEncoreProfile({
+        kycStatus: 'pending',
+      });
+      await refreshProfile();
       toast({ 
         title: "Success", 
         description: "Verification submitted! Admin will review it shortly." 
@@ -164,9 +177,10 @@ export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
     if (!user) return;
     setIsSubmitting(true);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
+      await updateEncoreProfile({
         kycStatus: 'verified'
       });
+      await refreshProfile();
       toast({ title: "Demo: Verified", description: "Your identity has been verified (Demo Mode)." });
     } catch (error) {
       console.error("Simulation error:", error);
@@ -241,8 +255,7 @@ export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
               </p>
             </div>
             <Button onClick={() => {
-              // Reset status to allow retry
-              updateDoc(doc(db, 'users', user!.uid), { kycStatus: 'none' });
+              updateEncoreProfile({ kycStatus: 'none' }).then(() => refreshProfile());
             }} className="rounded-xl px-8">
               Try Again
             </Button>

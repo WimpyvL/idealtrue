@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Listing, Booking, OperationType, UserProfile } from '../types';
+import { Listing, Booking, UserProfile } from '../types';
 import { useNotifications } from '../context/NotificationContext';
 import { 
   LayoutDashboard, 
@@ -19,12 +19,8 @@ import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { format } from 'date-fns';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
-import { db } from '../firebase';
-
-import { handleFirestoreError } from '@/lib/firestore';
-import { processReferralReward } from '@/lib/referrals';
+import { updateBookingStatus } from '@/lib/platform-client';
 
 export default function HostDashboard({ 
   profile,
@@ -41,10 +37,15 @@ export default function HostDashboard({
 }) {
   const { socket } = useNotifications();
   const navigate = useNavigate();
+  const [localBookings, setLocalBookings] = useState(bookings);
+
+  useEffect(() => {
+    setLocalBookings(bookings);
+  }, [bookings]);
 
   const activeListings = listings.filter(l => l.status === 'active');
-  const pendingBookings = bookings.filter(b => b.status === 'pending');
-  const totalRevenue = bookings
+  const pendingBookings = localBookings.filter(b => b.status === 'pending');
+  const totalRevenue = localBookings
     .filter(b => b.status === 'confirmed' || b.status === 'completed')
     .reduce((sum, b) => sum + b.totalPrice, 0);
 
@@ -59,7 +60,7 @@ export default function HostDashboard({
               <h2 className="text-2xl font-bold flex items-center gap-2 justify-center md:justify-start">
                 <Sparkles className="w-6 h-6 text-amber-400" /> Professional Hosting
               </h2>
-              <p className="text-outline-variant max-w-md">Upgrade to a paid plan to unlock AI content generation, higher search ranking, and verified host status.</p>
+              <p className="text-outline-variant max-w-md">Upgrade to a paid plan to unlock the content studio, stronger search visibility, and verified host trust signals.</p>
             </div>
             <Button variant="secondary" className="rounded-full px-8" onClick={onUpgrade}>
               View Plans <ArrowRight className="w-4 h-4 ml-2" />
@@ -71,7 +72,7 @@ export default function HostDashboard({
       <div className="flex justify-between items-end">
         <header className="space-y-1">
           <h1 className="text-3xl font-bold tracking-tight">Hospitality Management</h1>
-          <p className="text-on-surface-variant">Manage your properties and guest interactions. <span className="text-amber-600 font-medium">Note: You are responsible for collecting booking payments directly from guests.</span></p>
+          <p className="text-on-surface-variant">Manage your properties and guest interactions. <span className="text-amber-600 font-medium">IdealTrue coordinates the booking flow, but accommodation payments are collected directly by you.</span></p>
         </header>
         <Button onClick={() => navigate('/host/create-listing')}>
           <Plus className="w-4 h-4 mr-2" /> Add New Listing
@@ -85,7 +86,7 @@ export default function HostDashboard({
             <Calendar className="w-5 h-5 text-blue-500" />
             <h3 className="font-medium">Total Bookings</h3>
           </div>
-          <p className="text-3xl font-bold">{bookings.length}</p>
+          <p className="text-3xl font-bold">{localBookings.length}</p>
         </Card>
         <Card className="p-6 flex flex-col gap-2 border-l-4 border-l-amber-500">
           <div className="flex items-center gap-2 text-on-surface-variant">
@@ -119,11 +120,11 @@ export default function HostDashboard({
             </div>
             <div>
               <h2 className="text-2xl font-bold mb-1">Boost Your Visibility</h2>
-              <p className="text-on-surface-variant max-w-xl">Use our AI-powered social media generator to create engaging posts for your listings and attract more guests.</p>
+              <p className="text-on-surface-variant max-w-xl">Build reusable social copy for your listings and keep promotion moving without staring at a blank caption box.</p>
             </div>
           </div>
           <Button size="lg" className="rounded-full px-8 shrink-0" onClick={() => navigate('/host/social')}>
-            Try AI Generator <ArrowRight className="w-4 h-4 ml-2" />
+            Open Content Studio <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
         </Card>
 
@@ -167,13 +168,18 @@ export default function HostDashboard({
             <Button variant="ghost" size="sm" onClick={() => navigate('/host/enquiries')}>View All</Button>
           </div>
           <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-            {bookings.slice(0, 5).map(booking => {
+            {localBookings.slice(0, 5).map(booking => {
               const listing = listings.find(l => l.id === booking.listingId);
+              const bookingLabel = booking.status === 'awaiting_guest_payment'
+                ? 'Awaiting Payment'
+                : booking.status === 'payment_submitted'
+                  ? 'Proof Submitted'
+                  : booking.status;
               return (
                 <Card key={booking.id} className="p-4">
                   <div className="flex justify-between items-start mb-2">
-                    <Badge variant={booking.status === 'confirmed' ? 'success' : booking.status === 'pending' ? 'warning' : 'secondary'}>
-                      {booking.status}
+                    <Badge variant={booking.status === 'confirmed' ? 'success' : booking.status === 'pending' || booking.status === 'awaiting_guest_payment' || booking.status === 'payment_submitted' ? 'warning' : 'secondary'}>
+                      {bookingLabel}
                     </Badge>
                     <span className="text-xs font-mono text-outline-variant">#{booking.id.slice(0, 8)}</span>
                   </div>
@@ -195,41 +201,33 @@ export default function HostDashboard({
                           <button 
                             onClick={async () => {
                               try {
-                                await updateDoc(doc(db, 'bookings', booking.id), { status: 'confirmed' });
+                                const updatedBooking = await updateBookingStatus(booking.id, 'awaiting_guest_payment');
+                                setLocalBookings((current) => current.map((item) => item.id === booking.id ? updatedBooking : item));
                                 
                                 socket?.emit('booking:confirmed', {
                                   hostUid: booking.hostUid,
                                   guestUid: booking.guestUid,
                                   listingId: booking.listingId,
                                   bookingId: booking.id,
-                                  status: 'confirmed',
-                                  message: `Your booking for ${listing?.title || 'your stay'} has been confirmed!`
+                                  status: 'awaiting_guest_payment',
+                                  message: `Your booking for ${listing?.title || 'your stay'} has been approved. Please complete payment using the host instructions on-platform.`
                                 });
-                                
-                                const guestSnap = await getDoc(doc(db, 'users', booking.guestUid));
-                                if (guestSnap.exists()) {
-                                  const guestData = guestSnap.data() as UserProfile;
-                                  if (guestData.referredBy) {
-                                    const { getReferrerByCode } = await import('@/lib/referrals');
-                                    const referrerUid = await getReferrerByCode(guestData.referredBy);
-                                    if (referrerUid) {
-                                      await processReferralReward(referrerUid, booking.guestUid, 'booking');
-                                    }
-                                  }
-                                }
-                                toast.success('Booking confirmed! Referral rewards processed if applicable.');
+
+                                toast.success('Booking approved and moved to payment.');
                               } catch (error) {
-                                handleFirestoreError(error, OperationType.UPDATE, `bookings/${booking.id}`);
+                                console.error('Failed to confirm booking:', error);
+                                toast.error('Failed to confirm booking.');
                               }
                             }}
                             className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
                           >
-                            Confirm
+                            Approve
                           </button>
                           <button 
                             onClick={async () => {
                               try {
-                                await updateDoc(doc(db, 'bookings', booking.id), { status: 'cancelled' });
+                                const updatedBooking = await updateBookingStatus(booking.id, 'cancelled');
+                                setLocalBookings((current) => current.map((item) => item.id === booking.id ? updatedBooking : item));
                                 
                                 socket?.emit('booking:update', {
                                   hostUid: booking.hostUid,
@@ -242,7 +240,8 @@ export default function HostDashboard({
                                 
                                 toast.info('Booking request declined.');
                               } catch (error) {
-                                handleFirestoreError(error, OperationType.UPDATE, `bookings/${booking.id}`);
+                                console.error('Failed to decline booking:', error);
+                                toast.error('Failed to decline booking.');
                               }
                             }}
                             className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
@@ -250,6 +249,22 @@ export default function HostDashboard({
                             Decline
                           </button>
                         </div>
+                      ) : booking.status === 'payment_submitted' ? (
+                        <button
+                          onClick={async () => {
+                            try {
+                              const updatedBooking = await updateBookingStatus(booking.id, 'confirmed');
+                              setLocalBookings((current) => current.map((item) => item.id === booking.id ? updatedBooking : item));
+                              toast.success('Payment marked as received.');
+                            } catch (error) {
+                              console.error('Failed to confirm payment:', error);
+                              toast.error('Failed to confirm payment.');
+                            }
+                          }}
+                          className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                        >
+                          Mark Paid
+                        </button>
                       ) : (
                         <Button size="sm" variant="ghost" onClick={() => navigate('/host/enquiries')}>Details</Button>
                       )}
@@ -258,7 +273,7 @@ export default function HostDashboard({
                 </Card>
               );
             })}
-            {bookings.length === 0 && <p className="text-center text-outline-variant py-10">No recent activity.</p>}
+            {localBookings.length === 0 && <p className="text-center text-outline-variant py-10">No recent activity.</p>}
           </div>
         </div>
       </div>
@@ -283,10 +298,10 @@ export default function HostDashboard({
                 {profile?.host_plan === 'premium' 
                   ? 'You are on the highest tier. Enjoy all premium features including priority support and advanced analytics.'
                   : profile?.host_plan === 'professional'
-                  ? 'You have access to AI tools and advanced listing features. Upgrade to Premium for priority support.'
+                  ? 'You have access to the content studio and advanced listing features. Upgrade to Premium for priority support.'
                   : profile?.host_plan === 'standard'
-                  ? 'You have standard hosting capabilities. Upgrade for AI tools and better visibility.'
-                  : 'You are currently on the free plan. Upgrade to unlock AI content generation, higher search ranking, and verified host status.'}
+                  ? 'You have standard hosting capabilities. Upgrade for stronger promotional tools and better visibility.'
+                  : 'You are currently on the free plan. Upgrade to unlock the content studio, stronger ranking, and verified host status.'}
               </p>
             </div>
             <div className="flex gap-3">

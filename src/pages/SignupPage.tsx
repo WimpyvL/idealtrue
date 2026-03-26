@@ -2,70 +2,39 @@ import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Home, Users, ChevronRight, Loader2, CheckCircle2 } from 'lucide-react';
-import { loginWithGoogle, db } from '@/firebase';
-import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, addDoc } from 'firebase/firestore';
-import { UserProfile, UserRole, OperationType } from '@/types';
-import { handleFirestoreError } from '@/lib/firestore';
-import { processReferralReward, getReferrerByCode } from '@/lib/referrals';
+import { UserRole } from '@/types';
 import { cn } from '@/lib/utils';
 import { motion } from 'motion/react';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function SignupPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { login } = useAuth();
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
+  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSignup = async () => {
-    if (!selectedRole) return;
+    if (!selectedRole || !email.trim() || !displayName.trim()) return;
     
     setIsSubmitting(true);
     try {
-      const result = await loginWithGoogle();
-      const u = result.user;
       const refCode = searchParams.get('ref');
-      
-      const userRef = doc(db, 'users', u.uid);
-      const userSnap = await getDoc(userRef);
-      
-      if (!userSnap.exists()) {
-        const newProfile: UserProfile = {
-          uid: u.uid,
-          displayName: u.displayName || 'Anonymous User',
-          email: u.email || '',
-          photoURL: u.photoURL || '',
-          role: selectedRole,
-          referralCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
-          referredBy: refCode || null,
-          balance: 0,
-          referralCount: 0,
-          tier: 'bronze',
-          host_plan: 'free',
-          kycStatus: 'none',
-          createdAt: new Date().toISOString(),
-        };
-        await setDoc(userRef, newProfile);
 
-        // Handle referral logic if applicable
-        if (refCode) {
-          const referrerUid = await getReferrerByCode(refCode);
-          if (referrerUid) {
-            await processReferralReward(referrerUid, u.uid, 'signup');
-          }
-        }
-      } else {
-        // If user already exists but role is different (e.g. App.tsx created it as guest)
-        const existingData = userSnap.data() as UserProfile;
-        if (existingData.role !== selectedRole) {
-          await updateDoc(userRef, { role: selectedRole });
-        }
-      }
+      await login({
+        email: email.trim(),
+        displayName: displayName.trim(),
+        role: selectedRole,
+        referredByCode: refCode,
+      });
 
       navigate(selectedRole === 'host' ? '/host' : '/');
     } catch (error) {
       console.error("Signup error:", error);
-      handleFirestoreError(error, OperationType.WRITE, `users/${selectedRole}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -75,8 +44,30 @@ export default function SignupPage() {
     <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 py-12">
       <div className="max-w-2xl w-full space-y-8 text-center">
         <div className="space-y-2">
-          <h1 className="text-4xl font-bold tracking-tight text-on-surface">Join Ideal Stay</h1>
-          <p className="text-on-surface-variant text-lg">Choose how you want to use the platform to get started.</p>
+          <h1 className="text-4xl font-bold tracking-tight text-on-surface">Join IdealTrue</h1>
+          <p className="text-on-surface-variant text-lg">Set up your account and choose how you want to use the platform.</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 text-left">
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-on-surface">Full name</label>
+            <Input
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Your full name"
+              autoComplete="name"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-on-surface">Email address</label>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              autoComplete="email"
+            />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-8">
@@ -139,17 +130,17 @@ export default function SignupPage() {
           <Button 
             size="lg" 
             className="w-full max-w-sm h-14 text-lg font-bold rounded-2xl shadow-xl shadow-primary/20"
-            disabled={!selectedRole || isSubmitting}
+            disabled={!selectedRole || !email.trim() || !displayName.trim() || isSubmitting}
             onClick={handleSignup}
           >
             {isSubmitting ? (
               <Loader2 className="w-6 h-6 animate-spin mr-2" />
             ) : (
-              <>Continue with Google <ChevronRight className="w-5 h-5 ml-2" /></>
+              <>Continue to IdealTrue <ChevronRight className="w-5 h-5 ml-2" /></>
             )}
           </Button>
           <p className="text-sm text-on-surface-variant">
-            Already have an account? <button onClick={() => loginWithGoogle()} className="text-primary font-bold hover:underline">Sign In</button>
+            Already have an account? Use the same email to continue.
           </p>
         </div>
       </div>

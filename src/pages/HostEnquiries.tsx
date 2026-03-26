@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
-import { Booking, Listing, OperationType } from '../types';
+import { Booking, Listing } from '../types';
 import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { MessageSquare, CheckCircle2, XCircle, Clock, CalendarDays, User } from 'lucide-react';
 import { format } from 'date-fns';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
-import { handleFirestoreError } from '../lib/firestore';
 import { useNotifications } from '../context/NotificationContext';
+import { updateBookingStatus } from '@/lib/platform-client';
 
 export default function HostEnquiries({ 
   bookings, 
@@ -24,26 +22,28 @@ export default function HostEnquiries({
   
   const pendingBookings = bookings.filter(b => b.status === 'pending');
 
-  const handleBookingAction = async (booking: Booking, action: 'confirmed' | 'cancelled') => {
+  const handleBookingAction = async (booking: Booking, action: 'awaiting_guest_payment' | 'cancelled') => {
     setIsProcessing(booking.id);
     try {
-      await updateDoc(doc(db, 'bookings', booking.id), { status: action });
+      await updateBookingStatus(booking.id, action);
       
       const listing = listings.find(l => l.id === booking.listingId);
       
       // Emit notification to guest
-      const eventName = action === 'confirmed' ? 'booking:confirmed' : 'booking:update';
+      const eventName = action === 'awaiting_guest_payment' ? 'booking:confirmed' : 'booking:update';
       socket?.emit(eventName, {
         guestUid: booking.guestUid,
         hostUid: booking.hostUid,
         listingId: booking.listingId,
         bookingId: booking.id,
         status: action,
-        message: `Your booking for ${listing?.title || 'your stay'} has been ${action}.`
+        message: action === 'awaiting_guest_payment'
+          ? `Your booking for ${listing?.title || 'your stay'} is approved. Please complete payment using the host instructions on-platform.`
+          : `Your booking for ${listing?.title || 'your stay'} has been cancelled.`
       });
 
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `bookings/${booking.id}`);
+      console.error('Error updating booking:', error);
     } finally {
       setIsProcessing(null);
     }
@@ -108,12 +108,12 @@ export default function HostEnquiries({
                   >
                     <XCircle className="w-4 h-4 mr-2" /> Decline
                   </Button>
-                  <Button 
-                    className="flex-1 md:flex-none bg-green-600 hover:bg-green-700 text-white"
-                    onClick={() => handleBookingAction(booking, 'confirmed')}
+                    <Button 
+                      className="flex-1 md:flex-none bg-green-600 hover:bg-green-700 text-white"
+                    onClick={() => handleBookingAction(booking, 'awaiting_guest_payment')}
                     disabled={isProcessing === booking.id}
                   >
-                    <CheckCircle2 className="w-4 h-4 mr-2" /> Confirm
+                    <CheckCircle2 className="w-4 h-4 mr-2" /> Approve & Request Payment
                   </Button>
                 </div>
               </div>

@@ -4,14 +4,19 @@ import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Calendar } from '../components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
-import { handleFirestoreError } from '../lib/firestore';
-import { OperationType } from '../types';
+import { updateListingBlockedDates } from '../lib/platform-client';
 import { format, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
 import { CalendarDays, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
 
-export default function HostAvailability({ listings, bookings }: { listings: Listing[], bookings: Booking[] }) {
+export default function HostAvailability({
+  listings,
+  bookings,
+  onListingUpdated,
+}: {
+  listings: Listing[];
+  bookings: Booking[];
+  onListingUpdated?: (listing: Listing) => void;
+}) {
   const [selectedListingId, setSelectedListingId] = useState<string>(listings[0]?.id || '');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -57,11 +62,10 @@ export default function HostAvailability({ listings, bookings }: { listings: Lis
 
     setIsSaving(true);
     try {
-      await updateDoc(doc(db, 'listings', selectedListing.id), {
-        blockedDates: newBlockedDates
-      });
+      const updatedListing = await updateListingBlockedDates(selectedListing.id, newBlockedDates);
+      onListingUpdated?.(updatedListing);
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `listings/${selectedListing.id}`);
+      console.error('Failed to update listing availability', error);
     } finally {
       setIsSaving(false);
     }

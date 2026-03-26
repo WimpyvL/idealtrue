@@ -15,6 +15,9 @@ export interface UserProfile {
   tier: ReferralTier;
   host_plan?: 'free' | 'standard' | 'professional' | 'premium';
   kycStatus: KYCStatus;
+  paymentMethod?: string | null;
+  paymentInstructions?: string | null;
+  paymentReferencePrefix?: string | null;
   kycData?: {
     idNumber: string;
     idType: 'id_card' | 'passport' | 'drivers_license';
@@ -52,7 +55,7 @@ export interface Listing {
   rating: number;
   reviews: number;
   category: string;
-  status: 'active' | 'inactive' | 'pending';
+  status: 'draft' | 'pending' | 'active' | 'inactive' | 'rejected' | 'archived';
   createdAt: string;
   updatedAt?: string;
   coordinates?: { lat: number; lng: number };
@@ -71,7 +74,13 @@ export interface Booking {
     adults: number;
     children: number;
   };
-  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+  status: 'pending' | 'awaiting_guest_payment' | 'payment_submitted' | 'confirmed' | 'cancelled' | 'completed' | 'declined';
+  paymentMethod?: string | null;
+  paymentInstructions?: string | null;
+  paymentReference?: string | null;
+  paymentProofUrl?: string | null;
+  paymentSubmittedAt?: string | null;
+  paymentConfirmedAt?: string | null;
   createdAt: string;
 }
 
@@ -89,8 +98,9 @@ export interface Referral {
   referrerUid: string;
   referredUid: string;
   amount: number;
-  type: 'signup' | 'booking';
-  status: 'pending' | 'confirmed' | 'rewarded';
+  type: 'signup' | 'booking' | 'subscription';
+  program?: 'guest' | 'host';
+  status: 'pending' | 'confirmed' | 'rewarded' | 'rejected';
   createdAt: string;
 }
 
@@ -114,7 +124,7 @@ export interface Notification {
   title: string;
   message: string;
   type: 'info' | 'warning' | 'success' | 'error';
-  target: 'all' | 'hosts' | 'guests';
+  target: string;
   createdAt: string;
 }
 
@@ -136,7 +146,7 @@ export interface PlatformSettings {
 export interface Subscription {
   id: string;
   hostUid: string;
-  plan: 'standard' | 'professional' | 'premium';
+  plan: 'free' | 'standard' | 'professional' | 'premium';
   amount: number;
   status: 'active' | 'expired' | 'cancelled';
   startDate: string;
@@ -152,6 +162,7 @@ export interface Message {
   text: string;
   isSystem?: boolean;
   suggestionType?: 'checkin' | 'checkout' | 'payment_info' | 'directions' | 'house_rules';
+  attachmentUrl?: string;
   createdAt: string;
 }
 

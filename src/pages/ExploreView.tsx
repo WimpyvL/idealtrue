@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import { Listing } from '@/types';
-import { mockListings } from '@/data/mockListings';
 import SearchFilterBar from '@/components/SearchFilterBar';
 import FilterBar from '@/components/FilterBar';
 import FiltersModal from '@/components/FiltersModal';
@@ -42,8 +41,7 @@ export default function ExploreView({ listings, onBook }: { listings: Listing[],
   }, [filters]);
 
   const filteredListings = useMemo(() => {
-    const source = listings.length > 0 ? listings : mockListings;
-    return source.filter(listing => {
+    return listings.filter(listing => {
       // Category / Subcategory filter
       const matchesCategory = categoryFilter === "all" || 
                              listing.category === categoryFilter || 
@@ -79,8 +77,7 @@ export default function ExploreView({ listings, onBook }: { listings: Listing[],
   }, [listings, categoryFilter, searchQuery, filters]);
 
   const recentlyAddedListings = useMemo(() => {
-    const source = listings.length > 0 ? listings : mockListings;
-    return [...source].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 4);
+    return [...listings].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 4);
   }, [listings]);
 
   return (
@@ -109,6 +106,7 @@ export default function ExploreView({ listings, onBook }: { listings: Listing[],
         <div className="w-full max-w-3xl mx-auto flex gap-2 items-center">
           <div className="flex-1">
             <SearchFilterBar 
+              listings={listings}
               onChange={(state) => setSearchQuery(state.query)} 
               onSendMessage={(msg) => navigate(`/planner?q=${encodeURIComponent(msg)}`)}
             />
@@ -131,13 +129,15 @@ export default function ExploreView({ listings, onBook }: { listings: Listing[],
       
       {viewMode === 'grid' ? (
         <>
-          <FeaturedCarousel listings={mockListings} onListingClick={onBook} />
+          {recentlyAddedListings.length > 0 && (
+            <FeaturedCarousel listings={recentlyAddedListings} onListingClick={onBook} />
+          )}
 
           {recentlyAddedListings.length > 0 && (
             <section className="space-y-6 pt-4 pb-8 border-b border-outline-variant/30">
               <header className="space-y-1">
                 <h2 className="text-2xl font-bold tracking-tight">Recently Added</h2>
-                <p className="text-on-surface-variant">Check out the newest properties on Ideal Stay.</p>
+                <p className="text-on-surface-variant">Check out the newest properties on IdealTrue.</p>
               </header>
               <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 sm:gap-x-6 gap-y-8 sm:gap-y-10">
                 {recentlyAddedListings.map((listing) => (
@@ -152,7 +152,7 @@ export default function ExploreView({ listings, onBook }: { listings: Listing[],
           )}
 
           <header className="space-y-2 pt-4">
-            <h1 className="text-4xl font-bold tracking-tight">Find your next ideal stay</h1>
+            <h1 className="text-4xl font-bold tracking-tight">Find your next IdealTrue stay</h1>
             <p className="text-on-surface-variant text-lg">Discover unique accommodations around the world.</p>
           </header>
 

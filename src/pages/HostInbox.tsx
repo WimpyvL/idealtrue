@@ -1,14 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Booking, Listing } from '../types';
 import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
-import { Send, User, MessageSquare, CalendarDays } from 'lucide-react';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, orderBy } from 'firebase/firestore';
-import { db, auth } from '../firebase';
-import { handleFirestoreError } from '../lib/firestore';
-import { OperationType } from '../types';
+import { User, MessageSquare, CalendarDays } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function HostInbox({ 
@@ -20,7 +15,7 @@ export default function HostInbox({
   listings: Listing[],
   onChat: (b: Booking) => void
 }) {
-  const activeBookings = bookings.filter(b => b.status === 'confirmed' || b.status === 'pending');
+  const activeBookings = bookings.filter(b => ['pending', 'awaiting_guest_payment', 'payment_submitted', 'confirmed'].includes(b.status));
 
   return (
     <div className="space-y-8">
@@ -32,13 +27,20 @@ export default function HostInbox({
       <div className="grid grid-cols-1 gap-4">
         {activeBookings.map(booking => {
           const listing = listings.find(l => l.id === booking.listingId);
+          const statusLabel = booking.status === 'awaiting_guest_payment'
+            ? 'Awaiting Payment'
+            : booking.status === 'payment_submitted'
+              ? 'Proof Submitted'
+              : booking.status === 'confirmed'
+                ? 'Confirmed'
+                : 'Pending Approval';
           return (
             <Card key={booking.id} className="p-6">
               <div className="flex flex-col md:flex-row gap-6 justify-between items-start md:items-center">
                 <div className="space-y-2 flex-1">
                   <div className="flex items-center gap-2">
                     <Badge variant={booking.status === 'confirmed' ? 'success' : 'warning'}>
-                      {booking.status === 'confirmed' ? 'Confirmed' : 'Pending Approval'}
+                      {statusLabel}
                     </Badge>
                     <span className="text-sm text-on-surface-variant">
                       Booking #{booking.id.substring(0, 8)}

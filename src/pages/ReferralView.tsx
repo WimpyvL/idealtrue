@@ -1,9 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, Referral } from '@/types';
-import { db } from '@/firebase';
-import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
-import { handleFirestoreError } from '@/lib/firestore';
-import { OperationType } from '@/types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
@@ -17,6 +13,7 @@ import {
 import { format } from 'date-fns';
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
+import { listReferralLeaderboard } from '@/lib/identity-client';
 
 export default function ReferralView({ profile, referrals }: { profile: UserProfile | null, referrals: Referral[] }) {
   const [copied, setCopied] = useState(false);
@@ -24,15 +21,19 @@ export default function ReferralView({ profile, referrals }: { profile: UserProf
   const referralLink = `${window.location.origin}?ref=${profile?.referralCode}`;
 
   useEffect(() => {
-    if (!db) return;
-    const q = query(collection(db, 'users'), orderBy('referralCount', 'desc'), limit(5));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setLeaderboard(snapshot.docs.map(doc => doc.data() as UserProfile));
-    }, (err) => {
-      // We don't want to crash the whole page if leaderboard fails (e.g. not logged in)
-      console.warn('Leaderboard fetch error:', err);
-    });
-    return () => unsubscribe();
+    let cancelled = false;
+    listReferralLeaderboard()
+      .then((users) => {
+        if (!cancelled) {
+          setLeaderboard(users);
+        }
+      })
+      .catch((error) => {
+        console.warn('Leaderboard fetch error:', error);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const copyToClipboard = () => {
@@ -43,11 +44,18 @@ export default function ReferralView({ profile, referrals }: { profile: UserProf
 
   const totalEarned = referrals.reduce((acc, curr) => acc + curr.amount, 0);
 
-  const tiers = [
-    { name: 'Bronze', range: '1-5 referrals', bonus: '$50', benefits: 'Standard referral bonus', color: 'text-amber-700 bg-amber-100', min: 0, next: 6 },
-    { name: 'Silver', range: '6-15 referrals', bonus: '$75', benefits: 'Increased bonus + 5% fee discount', color: 'text-on-surface-variant bg-surface-container-high', min: 6, next: 16 },
-    { name: 'Gold', range: '16+ referrals', bonus: '$100', benefits: 'Max bonus + 15% fee discount + Early Access', color: 'text-yellow-700 bg-yellow-100', min: 16, next: Infinity },
-  ];
+  const isHost = profile?.role === 'host';
+  const tiers = isHost
+    ? [
+        { name: 'Bronze', range: '1-5 referrals', bonus: 'R75', benefits: 'Cashback when a referred host activates a paid subscription', color: 'text-amber-700 bg-amber-100', min: 0, next: 6 },
+        { name: 'Silver', range: '6-15 referrals', bonus: 'R125', benefits: 'Higher cashback on subscription conversions', color: 'text-on-surface-variant bg-surface-container-high', min: 6, next: 16 },
+        { name: 'Gold', range: '16+ referrals', bonus: 'R175', benefits: 'Highest cashback and priority partner perks', color: 'text-yellow-700 bg-yellow-100', min: 16, next: Infinity },
+      ]
+    : [
+        { name: 'Bronze', range: '1-5 referrals', bonus: 'R40', benefits: 'Cashback when a referred guest becomes a paying platform customer', color: 'text-amber-700 bg-amber-100', min: 0, next: 6 },
+        { name: 'Silver', range: '6-15 referrals', bonus: 'R65', benefits: 'Higher cashback on successful conversions', color: 'text-on-surface-variant bg-surface-container-high', min: 6, next: 16 },
+        { name: 'Gold', range: '16+ referrals', bonus: 'R90', benefits: 'Top cashback and early access perks', color: 'text-yellow-700 bg-yellow-100', min: 16, next: Infinity },
+      ];
 
   const currentTierIndex = tiers.findIndex(t => t.name.toLowerCase() === profile?.tier);
   const nextTier = tiers[currentTierIndex + 1];
@@ -57,7 +65,11 @@ export default function ReferralView({ profile, referrals }: { profile: UserProf
     <div className="space-y-8">
       <header className="space-y-1">
         <h1 className="text-3xl font-bold tracking-tight">Referral Program</h1>
-        <p className="text-on-surface-variant">Invite friends and earn rewards for every successful booking.</p>
+        <p className="text-on-surface-variant">
+          {isHost
+            ? 'Invite hosts and earn cashback when they activate a paid subscription.'
+            : 'Invite guests and earn cashback when they convert into real platform users.'}
+        </p>
       </header>
 
       {/* Tier Progress */}
@@ -117,7 +129,7 @@ export default function ReferralView({ profile, referrals }: { profile: UserProf
             </Card>
             <Card>
               <p className="text-on-surface-variant text-sm mb-1">Total Earned</p>
-              <h3 className="text-3xl font-bold">${totalEarned}</h3>
+              <h3 className="text-3xl font-bold">R{totalEarned}</h3>
             </Card>
             <Card>
               <p className="text-on-surface-variant text-sm mb-1">Successful Referrals</p>
@@ -128,7 +140,11 @@ export default function ReferralView({ profile, referrals }: { profile: UserProf
           <Card className="p-8 space-y-6">
             <div className="space-y-2">
               <h2 className="text-2xl font-bold">Your Referral Link</h2>
-              <p className="text-on-surface-variant">Share this link with your friends. When they sign up and book their first stay, you'll earn $50!</p>
+              <p className="text-on-surface-variant">
+                {isHost
+                  ? 'Share this link with hosts. When one of them activates their first paid subscription, you earn cashback.'
+                  : 'Share this link with guests. When one of them converts into a paid platform customer, you earn cashback.'}
+              </p>
             </div>
             <div className="flex gap-2">
               <div className="flex-1 bg-surface-container-low border border-outline-variant rounded-xl px-4 py-3 font-mono text-sm truncate">
@@ -151,11 +167,13 @@ export default function ReferralView({ profile, referrals }: { profile: UserProf
                       <TrendingUp className="w-5 h-5 text-emerald-600" />
                     </div>
                     <div>
-                      <p className="font-bold">Reward for {ref.type === 'signup' ? 'New User Signup' : 'Booking'}</p>
+                      <p className="font-bold">
+                        Reward for {ref.type === 'signup' ? 'New User Signup' : ref.type === 'subscription' ? 'Paid Subscription' : 'Booking'}
+                      </p>
                       <p className="text-xs text-on-surface-variant">{format(new Date(ref.createdAt), 'MMM d, yyyy')}</p>
                     </div>
                   </div>
-                  <span className="font-bold text-emerald-600">+${ref.amount}</span>
+                  <span className="font-bold text-emerald-600">+R{ref.amount}</span>
                 </div>
               ))}
               {referrals.length === 0 && <p className="text-center text-outline-variant py-10">No referral history yet.</p>}
@@ -200,21 +218,25 @@ export default function ReferralView({ profile, referrals }: { profile: UserProf
                 <div className="w-8 h-8 bg-surface-container-high rounded-full flex items-center justify-center shrink-0 font-bold">1</div>
                 <div className="space-y-1">
                   <p className="font-bold">Share your link</p>
-                  <p className="text-sm text-on-surface-variant">Send your unique referral link to friends and family.</p>
+                  <p className="text-sm text-on-surface-variant">Send your unique referral link to the right people for your program.</p>
                 </div>
               </div>
               <div className="flex gap-4">
                 <div className="w-8 h-8 bg-surface-container-high rounded-full flex items-center justify-center shrink-0 font-bold">2</div>
                 <div className="space-y-1">
-                  <p className="font-bold">They sign up</p>
-                  <p className="text-sm text-on-surface-variant">Your friend creates an account using your link.</p>
+                  <p className="font-bold">They join through your link</p>
+                  <p className="text-sm text-on-surface-variant">Your referral creates an account with your attribution attached.</p>
                 </div>
               </div>
               <div className="flex gap-4">
                 <div className="w-8 h-8 bg-surface-container-high rounded-full flex items-center justify-center shrink-0 font-bold">3</div>
                 <div className="space-y-1">
-                  <p className="font-bold">Earn rewards</p>
-                  <p className="text-sm text-on-surface-variant">You get $50 credit when they complete their first booking.</p>
+                  <p className="font-bold">Earn cashback</p>
+                  <p className="text-sm text-on-surface-variant">
+                    {isHost
+                      ? 'You earn cashback when the referred host activates a paid subscription.'
+                      : 'You earn cashback when the referred guest converts into real platform usage.'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -223,7 +245,7 @@ export default function ReferralView({ profile, referrals }: { profile: UserProf
                 <AlertCircle className="w-5 h-5 text-outline-variant" />
                 <p className="font-bold">Pro Tip</p>
               </div>
-              <p className="text-sm text-outline-variant">Hosts who share their listings on social media using our AI tool see 3x more referrals!</p>
+              <p className="text-sm text-outline-variant">The content engine is part of the loop: better listing promotion tends to convert more referrals into real platform revenue.</p>
             </Card>
           </div>
         </div>

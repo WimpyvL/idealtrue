@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { io, Socket } from 'socket.io-client';
-import { User } from 'firebase/auth';
+import type { AuthSessionUser } from '@/contexts/AuthContext';
 
 interface NotificationContextType {
   socket: Socket | null;
@@ -15,7 +15,7 @@ const NotificationContext = createContext<NotificationContextType>({
   clearNotifications: () => {}
 });
 
-export const NotificationProvider = ({ children, user }: { children: React.ReactNode, user: User | null }) => {
+export const NotificationProvider = ({ children, user }: { children: React.ReactNode, user: AuthSessionUser | null }) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
 

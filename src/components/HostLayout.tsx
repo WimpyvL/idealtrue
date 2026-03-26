@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { 
+import {
   LayoutDashboard, 
   MessageSquare, 
   ClipboardList, 
@@ -20,12 +20,13 @@ import {
   Users
 } from 'lucide-react';
 import { Button } from './ui/button';
-import { logout } from '../firebase';
 import { cn } from '../lib/utils';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function HostLayout() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { logout } = useAuth();
   const [openGroups, setOpenGroups] = useState<string[]>(['Hospitality Management', 'Social Media', 'Referral System']);
 
   const toggleGroup = (groupName: string) => {
@@ -53,7 +54,7 @@ export default function HostLayout() {
       title: 'Social Media',
       icon: Share2,
       items: [
-        { name: 'AI Generator', path: '/host/social', icon: Sparkles },
+        { name: 'Content Studio', path: '/host/social', icon: Sparkles },
         { name: 'Content Calendar', path: '/host/social/calendar', icon: CalendarDays },
       ]
     },
@@ -91,7 +92,7 @@ export default function HostLayout() {
           <div className="w-10 h-10 bg-gradient-to-br from-slate-900 to-blue-600 rounded-lg flex items-center justify-center overflow-hidden shadow-lg shadow-blue-900/20">
             <span className="text-xl font-black text-white">IS</span>
           </div>
-          <span className="text-xl font-black tracking-tight text-on-surface">IDEAL STAY</span>
+          <span className="text-xl font-black tracking-tight text-on-surface">IDEALTRUE</span>
         </div>
 
         <div className="px-4 mb-2">

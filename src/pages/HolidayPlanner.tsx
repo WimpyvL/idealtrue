@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI } from "@google/genai";
 import { Send, Loader2, ArrowLeft, Sparkles, Map, Calendar, Plane, Hotel } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
+import { buildTripPlannerResponse } from '@/services/trip-planner';
 
 export default function HolidayPlanner() {
   const [messages, setMessages] = useState<{ role: 'user' | 'ai', content: string }[]>([]);
@@ -34,34 +34,11 @@ export default function HolidayPlanner() {
     setLoading(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-      
-      // Build conversation history
-      const history = messages.map(m => m.content).join('\n\n');
-      const prompt = `You are an expert holiday planner AI. Help the user plan their trip. 
-      Be concise, helpful, and format your response beautifully using markdown (headings, lists, bold text).
-      
-      Previous context:
-      ${history}
-      
-      User query: ${userMessage}`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-      });
-      
-      setMessages(prev => [...prev, { role: 'ai', content: response.text || "Sorry, I couldn't generate a response." }]);
+      const response = buildTripPlannerResponse(userMessage);
+      setMessages(prev => [...prev, { role: 'ai', content: response }]);
     } catch (error: any) {
       console.error(error);
-      
-      let errorMessage = "Sorry, an error occurred while planning your trip. Please try again.";
-      
-      if (error?.message?.includes('API key not valid') || error?.status === 400) {
-        errorMessage = "It looks like your Gemini API key is missing or invalid. Please configure a valid API key in the Secrets panel in the AI Studio UI.";
-      }
-      
-      setMessages(prev => [...prev, { role: 'ai', content: errorMessage }]);
+      setMessages(prev => [...prev, { role: 'ai', content: "Something broke while building the trip brief. Try a clearer destination and trip length." }]);
     } finally {
       setLoading(false);
     }
@@ -87,8 +64,8 @@ export default function HolidayPlanner() {
               <Sparkles className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-on-surface leading-tight">AI Trip Planner</h1>
-              <p className="text-xs text-on-surface-variant">Powered by Gemini</p>
+              <h1 className="text-lg font-bold text-on-surface leading-tight">Trip Planner</h1>
+              <p className="text-xs text-on-surface-variant">Structured travel briefs for faster planning.</p>
             </div>
           </div>
         </div>
@@ -105,7 +82,7 @@ export default function HolidayPlanner() {
               <div className="space-y-2">
                 <h2 className="text-3xl font-bold text-on-surface">Where to next?</h2>
                 <p className="text-on-surface-variant max-w-md mx-auto">
-                  I can help you build itineraries, find the best places to stay, and discover local secrets.
+                  Build a fast trip brief, narrow the right destination, and turn it into a cleaner accommodation search.
                 </p>
               </div>
               

@@ -1,10 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { db, storage } from '@/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { UserProfile, OperationType } from '@/types';
-import { handleFirestoreError } from '@/lib/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,9 +10,10 @@ import { Loader2, Camera, User as UserIcon, Mail, Shield, Calendar, ShieldCheck,
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import KYCModal from '@/components/KYCModal';
+import { requestProfilePhotoUpload, updateEncoreProfile } from '@/lib/identity-client';
 
 export default function AccountPage() {
-  const { user, profile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -27,6 +23,9 @@ export default function AccountPage() {
   const [formData, setFormData] = useState({
     displayName: '',
     email: '',
+    paymentMethod: '',
+    paymentInstructions: '',
+    paymentReferencePrefix: '',
   });
 
   useEffect(() => {
@@ -34,6 +33,9 @@ export default function AccountPage() {
       setFormData({
         displayName: profile.displayName || '',
         email: profile.email || '',
+        paymentMethod: profile.paymentMethod || '',
+        paymentInstructions: profile.paymentInstructions || '',
+        paymentReferencePrefix: profile.paymentReferencePrefix || '',
       });
     }
   }, [profile]);
@@ -44,16 +46,19 @@ export default function AccountPage() {
 
     setIsSaving(true);
     try {
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
+      await updateEncoreProfile({
         displayName: formData.displayName,
+        paymentMethod: formData.paymentMethod || null,
+        paymentInstructions: formData.paymentInstructions || null,
+        paymentReferencePrefix: formData.paymentReferencePrefix || null,
       });
+      await refreshProfile();
       toast({
         title: "Profile updated",
         description: "Your account details have been saved successfully.",
       });
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
+      console.error('Failed to save profile:', error);
     } finally {
       setIsSaving(false);
     }
@@ -64,10 +69,10 @@ export default function AccountPage() {
 
     setIsSwitchingRole(true);
     try {
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
+      await updateEncoreProfile({
         role: newRole,
       });
+      await refreshProfile();
       
       toast({
         title: `Switched to ${newRole} mode`,
@@ -85,7 +90,7 @@ export default function AccountPage() {
         });
       }
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
+      console.error('Failed to switch role:', error);
     } finally {
       setIsSwitchingRole(false);
     }
@@ -96,17 +101,17 @@ export default function AccountPage() {
 
     setIsMakingAdmin(true);
     try {
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
+      await updateEncoreProfile({
         role: 'admin',
       });
+      await refreshProfile();
       
       toast({
         title: "Admin access granted",
         description: "You are now an administrator. You can access the Admin Dashboard from the navigation menu.",
       });
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
+      console.error('Failed to grant admin role:', error);
     } finally {
       setIsMakingAdmin(false);
     }
@@ -118,36 +123,35 @@ export default function AccountPage() {
 
     setIsUploading(true);
     try {
-      const storageRef = ref(storage, `profiles/${user.uid}/${Date.now()}_${file.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, file);
-
-      uploadTask.on(
-        'state_changed',
-        null,
-        (error) => {
-          console.error('Upload error:', error);
-          toast({
-            variant: "destructive",
-            title: "Upload failed",
-            description: "Failed to upload profile picture. Please try again.",
-          });
-          setIsUploading(false);
+      const signed = await requestProfilePhotoUpload(file.name);
+      const uploadResponse = await fetch(signed.uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
         },
-        async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          const userRef = doc(db, 'users', user.uid);
-          await updateDoc(userRef, {
-            photoURL: downloadURL,
-          });
-          toast({
-            title: "Photo updated",
-            description: "Your profile picture has been updated.",
-          });
-          setIsUploading(false);
-        }
-      );
+        body: file,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Upload failed with status ${uploadResponse.status}`);
+      }
+
+      await updateEncoreProfile({
+        photoUrl: signed.publicUrl,
+      });
+      await refreshProfile();
+      toast({
+        title: "Photo updated",
+        description: "Your profile picture has been updated.",
+      });
     } catch (error) {
       console.error('Upload setup error:', error);
+      toast({
+        variant: "destructive",
+        title: "Upload failed",
+        description: "Failed to upload profile picture. Please try again.",
+      });
+    } finally {
       setIsUploading(false);
     }
   };
@@ -291,6 +295,43 @@ export default function AccountPage() {
                       </Button>
                     </div>
                   </div>
+
+                  {profile.role === 'host' && (
+                    <div className="space-y-4 pt-4 border-t border-outline-variant">
+                      <div className="space-y-1">
+                        <Label>Payment Coordination</Label>
+                        <p className="text-xs text-on-surface-variant">These instructions are what guests should use when you request direct payment for a booking.</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="paymentMethod">Preferred Payment Method</Label>
+                        <Input
+                          id="paymentMethod"
+                          value={formData.paymentMethod}
+                          onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value })}
+                          placeholder="e.g. EFT / Bank Transfer"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="paymentReferencePrefix">Reference Prefix</Label>
+                        <Input
+                          id="paymentReferencePrefix"
+                          value={formData.paymentReferencePrefix}
+                          onChange={(e) => setFormData({ ...formData, paymentReferencePrefix: e.target.value })}
+                          placeholder="e.g. IDEALTRUE"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="paymentInstructions">Payment Instructions</Label>
+                        <textarea
+                          id="paymentInstructions"
+                          value={formData.paymentInstructions}
+                          onChange={(e) => setFormData({ ...formData, paymentInstructions: e.target.value })}
+                          placeholder="Bank details, payment timing, proof-of-payment rules, and anything guests must know."
+                          className="w-full min-h-[120px] rounded-xl border border-outline-variant bg-background px-3 py-2 text-sm outline-none transition-all focus:ring-2 focus:ring-primary"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

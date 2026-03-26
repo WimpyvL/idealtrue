@@ -1,5 +1,5 @@
 {
-  "name": "Ideal Stay",
-  "description": "A comprehensive holiday accommodation platform featuring property listings, hospitality management tools, AI-powered social media content generation, and a deep referral reward system.",
+  "name": "IdealTrue",
+  "description": "Holiday accommodation marketplace with host operations, trip planning, content tooling, and referral-driven growth workflows.",
   "requestFramePermissions": ["camera"]
 }

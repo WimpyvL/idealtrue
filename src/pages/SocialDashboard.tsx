@@ -1,90 +1,309 @@
-import React, { useState, useEffect } from 'react';
-import { Listing } from '../types';
-import { useSearchParams } from 'react-router-dom';
-import { 
-  Share2, 
-  Sparkles, 
-  Instagram,
-  Facebook,
-  Twitter,
-  Linkedin,
-  Copy,
-  CheckCircle2,
-  Loader2,
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import {
   CalendarDays,
+  CheckCircle2,
+  Copy,
+  Facebook,
   Image as ImageIcon,
-  ChevronRight,
-  Send
+  Instagram,
+  Linkedin,
+  Loader2,
+  Send,
+  Share2,
+  Sparkles,
+  Twitter,
 } from 'lucide-react';
-import { Button } from '../components/ui/button';
+import Markdown from 'react-markdown';
 import { toast } from 'sonner';
 import { Card } from '../components/ui/card';
-import { motion, AnimatePresence } from 'motion/react';
-import { generateSocialMediaPost } from '../services/gemini';
-import Markdown from 'react-markdown';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { useAuth } from '../contexts/AuthContext';
+import { Listing } from '../types';
+import {
+  createContentCreditsCheckout,
+  ContentDraft,
+  ContentEntitlements,
+  generateContentDraft,
+  getCheckoutStatus,
+  getContentEntitlements,
+  listContentDrafts,
+  updateContentDraft,
+} from '../lib/billing-client';
+
+const CREDIT_PACKS = [10, 25, 50];
 
 export default function SocialDashboard({ listings }: { listings: Listing[] }) {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { profile } = useAuth();
   const listingIdFromUrl = searchParams.get('listingId');
-  
+
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
   const [isGeneratingPost, setIsGeneratingPost] = useState(false);
-  const [generatedPost, setGeneratedPost] = useState<string | null>(null);
-  const [tone, setTone] = useState('professional');
-  const [platform, setPlatform] = useState<string | null>(null);
+  const [tone, setTone] = useState<'professional' | 'friendly' | 'adventurous' | 'luxurious' | 'urgent'>('professional');
+  const [platform, setPlatform] = useState<'instagram' | 'facebook' | 'twitter' | 'linkedin' | null>(null);
   const [copied, setCopied] = useState(false);
+  const [entitlements, setEntitlements] = useState<ContentEntitlements | null>(null);
+  const [drafts, setDrafts] = useState<ContentDraft[]>([]);
+  const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
+  const [editorContent, setEditorContent] = useState('');
+  const [scheduleAt, setScheduleAt] = useState('');
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const billingStatus = searchParams.get('billing_status');
+  const checkoutId = searchParams.get('checkout_id');
+
+  const selectedDraft = useMemo(
+    () => drafts.find((draft) => draft.id === selectedDraftId) ?? null,
+    [drafts, selectedDraftId],
+  );
 
   useEffect(() => {
     if (listingIdFromUrl && listings.length > 0) {
-      const listing = listings.find(l => l.id === listingIdFromUrl);
+      const listing = listings.find((item) => item.id === listingIdFromUrl);
       if (listing) {
         setSelectedListing(listing);
       }
     }
   }, [listingIdFromUrl, listings]);
 
-  const handleGeneratePost = async (selectedPlatform: string) => {
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadContentWorkspace() {
+      if (!profile || profile.role !== 'host') return;
+      try {
+        const [nextEntitlements, nextDrafts] = await Promise.all([
+          getContentEntitlements(),
+          listContentDrafts(),
+        ]);
+
+        if (cancelled) return;
+        setEntitlements(nextEntitlements);
+        setDrafts(nextDrafts);
+        if (!selectedDraftId && nextDrafts.length > 0) {
+          setSelectedDraftId(nextDrafts[0].id);
+        }
+      } catch (error) {
+        console.error('Failed to load content workspace', error);
+      }
+    }
+
+    loadContentWorkspace();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile, selectedDraftId]);
+
+  useEffect(() => {
+    if (!profile || !checkoutId || !billingStatus) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function resolveCheckout() {
+      try {
+        const result = await getCheckoutStatus(checkoutId);
+        if (cancelled) {
+          return;
+        }
+
+        if (result.checkoutType !== 'content_credits') {
+          return;
+        }
+
+        if (result.status === 'paid') {
+          const nextEntitlements = await getContentEntitlements();
+          if (cancelled) {
+            return;
+          }
+          setEntitlements(nextEntitlements);
+          toast.success('Credit top-up confirmed. Your content wallet has been updated.');
+          return;
+        }
+
+        if (billingStatus === 'cancelled' || result.status === 'cancelled') {
+          toast.message('Credit checkout cancelled. No credits were added.');
+          return;
+        }
+
+        if (billingStatus === 'failed' || result.status === 'failed') {
+          toast.error('Credit payment failed. Nothing was added.');
+          return;
+        }
+
+        toast.message('Credit payment is still being confirmed. Give the webhook a moment and refresh if needed.');
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to resolve content credit checkout', error);
+        }
+      }
+    }
+
+    resolveCheckout();
+    return () => {
+      cancelled = true;
+    };
+  }, [billingStatus, checkoutId, profile]);
+
+  useEffect(() => {
+    if (!selectedDraft) {
+      setEditorContent('');
+      setScheduleAt('');
+      return;
+    }
+    setEditorContent(selectedDraft.content);
+    setScheduleAt(selectedDraft.scheduledFor ? selectedDraft.scheduledFor.slice(0, 16) : '');
+  }, [selectedDraft]);
+
+  const handleGeneratePost = async (selectedPlatform: 'instagram' | 'facebook' | 'twitter' | 'linkedin') => {
     if (!selectedListing) return;
     setPlatform(selectedPlatform);
     setIsGeneratingPost(true);
-    setGeneratedPost(null);
     try {
-      const post = await generateSocialMediaPost(selectedListing, selectedPlatform, tone);
-      setGeneratedPost(post);
+      const response = await generateContentDraft(selectedListing, selectedPlatform, tone);
+      setDrafts((current) => [response.draft, ...current]);
+      setEntitlements(response.entitlements);
+      setSelectedDraftId(response.draft.id);
       setCopied(false);
+      toast.success('Draft generated and saved to your content workspace.');
     } catch (error) {
       console.error('Error generating post:', error);
-      toast.error('Failed to generate post. Please try again.');
+      toast.error(error instanceof Error ? error.message : 'Failed to generate draft.');
     } finally {
       setIsGeneratingPost(false);
     }
   };
 
-  const copyToClipboard = () => {
-    if (generatedPost) {
-      navigator.clipboard.writeText(generatedPost);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  const handleBuyCredits = async (credits: number) => {
+    try {
+      const checkout = await createContentCreditsCheckout(credits);
+      window.location.assign(checkout.redirectUrl);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Credit purchase failed.');
     }
   };
 
+  const handleSaveDraft = async (status: ContentDraft['status']) => {
+    if (!selectedDraft) return;
+    setIsSavingDraft(true);
+    try {
+      const updatedDraft = await updateContentDraft({
+        draftId: selectedDraft.id,
+        content: editorContent,
+        status,
+        scheduledFor: status === 'scheduled' ? new Date(scheduleAt).toISOString() : null,
+      });
+      setDrafts((current) => current.map((draft) => draft.id === updatedDraft.id ? updatedDraft : draft));
+      setSelectedDraftId(updatedDraft.id);
+      toast.success(
+        status === 'published'
+          ? 'Draft marked as published.'
+          : status === 'scheduled'
+            ? 'Draft scheduled for distribution.'
+            : 'Draft saved.',
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not update the draft.');
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  const copyToClipboard = () => {
+    if (!editorContent) return;
+    navigator.clipboard.writeText(editorContent);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (!profile || profile.role !== 'host') {
+    return (
+      <div className="space-y-6">
+        <header className="space-y-1">
+          <h1 className="text-3xl font-bold tracking-tight">Content Studio</h1>
+          <p className="text-on-surface-variant">This workspace is only available for hosts.</p>
+        </header>
+      </div>
+    );
+  }
+
+  const contentEnabled = entitlements?.contentStudioEnabled ?? false;
+
   return (
     <div className="space-y-8">
-      <header className="space-y-1">
-        <h1 className="text-3xl font-bold tracking-tight">Social Media Generator</h1>
-        <p className="text-on-surface-variant">Create AI-powered social media content to boost your bookings.</p>
+      <header className="space-y-2">
+        <h1 className="text-3xl font-bold tracking-tight">Content Studio</h1>
+        <p className="text-on-surface-variant">Generate, edit, save, and distribute listing content without leaving the host workspace.</p>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Step 1: Select Listing */}
-        <div className="lg:col-span-1 space-y-6">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <ImageIcon className="w-5 h-5" /> 1. Select Listing
-          </h2>
-          <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
-            {listings.map(listing => (
-              <Card 
-                key={listing.id} 
+      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <Card className="p-6 space-y-5">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Entitlements</p>
+              <h2 className="text-2xl font-bold">Plan-backed content access</h2>
+            </div>
+            <Button variant="outline" onClick={() => navigate('/pricing?audience=host')}>
+              Manage Plan
+            </Button>
+          </div>
+
+          {entitlements ? (
+            <div className="grid gap-4 md:grid-cols-4">
+              <div className="rounded-2xl border border-outline-variant p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-on-surface-variant">Plan</p>
+                <p className="mt-2 text-2xl font-bold capitalize">{entitlements.plan}</p>
+              </div>
+              <div className="rounded-2xl border border-outline-variant p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-on-surface-variant">Included left</p>
+                <p className="mt-2 text-2xl font-bold">{entitlements.remainingIncludedDrafts}</p>
+              </div>
+              <div className="rounded-2xl border border-outline-variant p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-on-surface-variant">Used this month</p>
+                <p className="mt-2 text-2xl font-bold">{entitlements.usedDraftsThisMonth}</p>
+              </div>
+              <div className="rounded-2xl border border-outline-variant p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-on-surface-variant">Credits</p>
+                <p className="mt-2 text-2xl font-bold">{entitlements.creditBalance}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="py-10 flex justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            </div>
+          )}
+
+          {!contentEnabled && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-900">
+              Free hosts do not get the content engine. Upgrade your plan to unlock draft generation, or stay on free and keep your listing workflow simple.
+            </div>
+          )}
+
+          <div className="space-y-3">
+            <p className="text-sm font-semibold">Quick credit top-ups</p>
+            <div className="flex flex-wrap gap-3">
+              {CREDIT_PACKS.map((credits) => (
+                <Button key={credits} variant="outline" onClick={() => handleBuyCredits(credits)}>
+                  Buy {credits} credits
+                </Button>
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-6 space-y-5">
+          <div className="flex items-center gap-2">
+            <Share2 className="w-5 h-5" />
+            <h2 className="text-2xl font-bold">Generate new draft</h2>
+          </div>
+
+          <div className="space-y-3 max-h-[240px] overflow-y-auto pr-2">
+            {listings.map((listing) => (
+              <Card
+                key={listing.id}
                 className={`p-3 flex gap-3 items-center cursor-pointer transition-all ${selectedListing?.id === listing.id ? 'ring-2 ring-primary bg-surface-container-low' : 'hover:bg-surface-container-lowest'}`}
                 onClick={() => setSelectedListing(listing)}
               >
@@ -95,121 +314,176 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
                 </div>
               </Card>
             ))}
-            {listings.length === 0 && <p className="text-sm text-outline-variant">No listings available.</p>}
           </div>
-        </div>
 
-        {/* Step 2 & 3: Generate Content */}
-        <div className="lg:col-span-2 space-y-6">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-amber-500" /> 2. Generate Content
-          </h2>
-          
-          <Card className="p-6 min-h-[400px] flex flex-col">
-            {!selectedListing ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4 text-outline-variant">
-                <Share2 className="w-12 h-12 opacity-50" />
-                <p>Select a listing from the left to start generating content.</p>
-              </div>
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-on-surface">Tone</p>
+            <div className="flex flex-wrap gap-2">
+              {(['professional', 'friendly', 'adventurous', 'luxurious', 'urgent'] as const).map((item) => (
+                <button
+                  key={item}
+                  onClick={() => setTone(item)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium capitalize transition-colors ${tone === item ? 'bg-gradient-to-r from-slate-900 to-blue-600 text-white shadow-md' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'}`}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-on-surface">Platform</p>
+            <div className="flex flex-wrap gap-3">
+              {(['instagram', 'facebook', 'twitter', 'linkedin'] as const).map((item) => (
+                <button
+                  key={item}
+                  onClick={() => setPlatform(item)}
+                  className={`px-4 py-2 rounded-lg border transition-all flex items-center gap-2 text-sm font-medium ${platform === item ? 'border-primary bg-primary/5 text-primary ring-1 ring-primary' : 'border-outline-variant hover:border-outline hover:bg-surface-container-lowest'}`}
+                >
+                  {item === 'instagram' && <Instagram className="w-4 h-4 text-pink-600" />}
+                  {item === 'facebook' && <Facebook className="w-4 h-4 text-primary" />}
+                  {item === 'twitter' && <Twitter className="w-4 h-4 text-sky-500" />}
+                  {item === 'linkedin' && <Linkedin className="w-4 h-4 text-blue-700" />}
+                  <span className="capitalize">{item}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Button
+            size="lg"
+            className="w-full rounded-xl h-14 font-bold text-lg shadow-lg shadow-primary/20"
+            disabled={!selectedListing || !platform || isGeneratingPost || !contentEnabled}
+            onClick={() => platform && handleGeneratePost(platform)}
+          >
+            {isGeneratingPost ? (
+              <>
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                Generating...
+              </>
             ) : (
-              <div className="space-y-8 flex-1">
-                <div className="space-y-3">
-                  <p className="text-sm font-medium text-on-surface">Select Tone:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {['professional', 'friendly', 'adventurous', 'luxurious', 'urgent'].map(t => (
-                      <button
-                        key={t}
-                        onClick={() => setTone(t)}
-                        className={`px-4 py-2 rounded-full text-sm font-medium capitalize transition-colors ${
-                          tone === t 
-                            ? 'bg-gradient-to-r from-slate-900 to-blue-600 text-white shadow-md' 
-                            : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    ))}
+              <>
+                <Sparkles className="w-5 h-5 mr-2" />
+                Generate Draft Post
+              </>
+            )}
+          </Button>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
+        <Card className="p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <ImageIcon className="w-5 h-5" />
+            <h2 className="text-2xl font-bold">Draft library</h2>
+          </div>
+
+          <div className="space-y-3 max-h-[520px] overflow-y-auto pr-2">
+            {drafts.map((draft) => (
+              <button
+                key={draft.id}
+                onClick={() => setSelectedDraftId(draft.id)}
+                className={`w-full text-left rounded-2xl border p-4 transition-colors ${selectedDraftId === draft.id ? 'border-primary bg-primary/5' : 'border-outline-variant hover:bg-surface-container-lowest'}`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-bold">{draft.listingTitle}</p>
+                    <p className="text-xs text-on-surface-variant capitalize">{draft.platform} • {draft.tone}</p>
                   </div>
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-on-surface-variant">{draft.status}</span>
                 </div>
+                <p className="mt-3 text-sm text-on-surface-variant line-clamp-3">{draft.content}</p>
+              </button>
+            ))}
 
-                <div className="space-y-3">
-                  <p className="text-sm font-medium text-on-surface">Select Platform:</p>
-                  <div className="flex flex-wrap gap-3">
-                    {['instagram', 'facebook', 'twitter', 'linkedin'].map(p => (
-                      <button
-                        key={p}
-                        onClick={() => setPlatform(p)}
-                        className={`px-4 py-2 rounded-lg border transition-all flex items-center gap-2 text-sm font-medium ${
-                          platform === p 
-                            ? 'border-primary bg-primary/5 text-primary ring-1 ring-primary' 
-                            : 'border-outline-variant hover:border-outline hover:bg-surface-container-lowest'
-                        }`}
-                      >
-                        {p === 'instagram' && <Instagram className="w-4 h-4 text-pink-600" />}
-                        {p === 'facebook' && <Facebook className="w-4 h-4 text-primary" />}
-                        {p === 'twitter' && <Twitter className="w-4 h-4 text-sky-500" />}
-                        {p === 'linkedin' && <Linkedin className="w-4 h-4 text-blue-700" />}
-                        <span className="capitalize">{p}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="pt-4">
-                  <Button 
-                    size="lg" 
-                    className="w-full rounded-xl h-14 font-bold text-lg shadow-lg shadow-primary/20"
-                    disabled={!platform || isGeneratingPost}
-                    onClick={() => platform && handleGeneratePost(platform)}
-                  >
-                    {isGeneratingPost ? (
-                      <>
-                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-5 h-5 mr-2" />
-                        Generate AI Post
-                      </>
-                    )}
-                  </Button>
-                </div>
-
-                {isGeneratingPost && (
-                  <div className="flex-1 flex items-center justify-center py-12">
-                    <div className="flex flex-col items-center gap-4 text-on-surface-variant">
-                      <Loader2 className="w-8 h-8 animate-spin" />
-                      <p className="text-sm font-medium animate-pulse">AI is crafting your perfect post...</p>
-                    </div>
-                  </div>
-                )}
-
-                {generatedPost && !isGeneratingPost && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mt-6 bg-surface-container-lowest p-6 rounded-xl border border-outline-variant relative group shadow-sm"
-                  >
-                    <div className="flex justify-between items-start mb-4">
-                      <h3 className="font-bold text-sm text-on-surface-variant uppercase tracking-wider">Generated Post</h3>
-                      <button 
-                        onClick={copyToClipboard}
-                        className="p-2 bg-surface border border-outline-variant rounded-lg shadow-sm hover:bg-surface-container-lowest transition-colors flex items-center gap-2 text-sm font-medium"
-                      >
-                        {copied ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4 text-on-surface-variant" />}
-                        {copied ? 'Copied!' : 'Copy'}
-                      </button>
-                    </div>
-                    <div className="prose prose-sm max-w-none">
-                      <Markdown>{generatedPost}</Markdown>
-                    </div>
-                  </motion.div>
-                )}
+            {drafts.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-outline-variant p-8 text-center text-on-surface-variant">
+                No drafts yet. Generate one and it will land here.
               </div>
             )}
-          </Card>
-        </div>
+          </div>
+        </Card>
+
+        <Card className="p-6 space-y-5">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold">Draft editor</h2>
+              <p className="text-sm text-on-surface-variant">Edit copy, schedule distribution, or mark content as published after you push it out.</p>
+            </div>
+            <button
+              onClick={copyToClipboard}
+              className="p-2 bg-surface border border-outline-variant rounded-lg shadow-sm hover:bg-surface-container-lowest transition-colors flex items-center gap-2 text-sm font-medium"
+              disabled={!selectedDraft}
+            >
+              {copied ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4 text-on-surface-variant" />}
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+
+          {!selectedDraft ? (
+            <div className="rounded-2xl border border-dashed border-outline-variant p-10 text-center text-on-surface-variant">
+              Pick a draft from the left to edit it.
+            </div>
+          ) : (
+            <>
+              <textarea
+                className="min-h-[280px] w-full rounded-2xl border border-outline-variant bg-surface-container-lowest p-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                value={editorContent}
+                onChange={(e) => setEditorContent(e.target.value)}
+              />
+
+              <div className="grid gap-4 md:grid-cols-[1fr_auto_auto]">
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold flex items-center gap-2">
+                    <CalendarDays className="w-4 h-4" />
+                    Schedule distribution
+                  </label>
+                  <Input
+                    type="datetime-local"
+                    value={scheduleAt}
+                    onChange={(e) => setScheduleAt(e.target.value)}
+                    disabled={!entitlements?.canSchedule}
+                  />
+                  {!entitlements?.canSchedule && (
+                    <p className="text-xs text-on-surface-variant">Scheduling unlocks on Professional and Premium.</p>
+                  )}
+                </div>
+
+                <Button
+                  variant="outline"
+                  disabled={isSavingDraft}
+                  onClick={() => handleSaveDraft('draft')}
+                >
+                  {isSavingDraft ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Draft'}
+                </Button>
+
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    disabled={!scheduleAt || !entitlements?.canSchedule || isSavingDraft}
+                    onClick={() => handleSaveDraft('scheduled')}
+                  >
+                    <Send className="w-4 h-4 mr-2" />
+                    Schedule
+                  </Button>
+                  <Button
+                    disabled={isSavingDraft}
+                    onClick={() => handleSaveDraft('published')}
+                  >
+                    Publish Logged
+                  </Button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-outline-variant bg-surface-container-lowest p-4">
+                <h3 className="mb-3 text-sm font-bold uppercase tracking-[0.18em] text-on-surface-variant">Preview</h3>
+                <div className="prose prose-sm max-w-none">
+                  <Markdown>{editorContent}</Markdown>
+                </div>
+              </div>
+            </>
+          )}
+        </Card>
       </div>
     </div>
   );

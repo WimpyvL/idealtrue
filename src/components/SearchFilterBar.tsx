@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Sparkles, Plus, Minus, MapPin, Search, TrendingUp, Building, Home, Palmtree, LucideIcon } from "lucide-react";
-import { db } from "@/firebase";
-import { collection, query, getDocs, limit } from "firebase/firestore";
+import type { Listing } from "@/types";
 
 type Props = {
   onChange: (state: { query: string; guests: number; date?: { from?: Date; to?: Date } }) => void;
   onModeChange?: (mode: 'chat' | 'search') => void;
   onSendMessage?: (message: string) => void;
   mode?: 'chat' | 'search';
+  listings?: Listing[];
 };
 
 // Popular destinations shown when user focuses the input
@@ -20,7 +20,7 @@ const POPULAR_DESTINATIONS = [
   { label: "Western Cape", type: "province" as const, icon: MapPin },
 ];
 
-export default function SearchFilterBar({ onChange, onModeChange, onSendMessage, mode = 'search' }: Props) {
+export default function SearchFilterBar({ onChange, onModeChange, onSendMessage, mode = 'search', listings = [] }: Props) {
   const [isFlipped, setIsFlipped] = useState(mode === 'search');
   const [message, setMessage] = useState("");
   const [showCheckInCal, setShowCheckInCal] = useState(false);
@@ -88,17 +88,18 @@ export default function SearchFilterBar({ onChange, onModeChange, onSendMessage,
     }
 
     setIsLoading(true);
-    debounceRef.current = setTimeout(async () => {
+    debounceRef.current = setTimeout(() => {
       try {
-        const q = query(
-          collection(db, "listings"),
-          limit(8)
+        const normalizedQuery = v.toLowerCase();
+        const data = listings.filter((listing) =>
+          listing.title.toLowerCase().includes(normalizedQuery) ||
+          listing.location.toLowerCase().includes(normalizedQuery) ||
+          listing.area?.toLowerCase().includes(normalizedQuery) ||
+          listing.province?.toLowerCase().includes(normalizedQuery),
         );
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(doc => doc.data());
 
         const places = new Map<string, boolean>();
-        const listings: { label: string; type: "listing"; icon: LucideIcon }[] = [];
+        const listingSuggestions: { label: string; type: "listing"; icon: LucideIcon }[] = [];
         const provinces = new Set<string>();
 
         (data || []).forEach((p: any) => {
@@ -106,7 +107,7 @@ export default function SearchFilterBar({ onChange, onModeChange, onSendMessage,
             places.set(p.location, true);
           }
           if (p.title) {
-            listings.push({ label: p.title, type: "listing", icon: Home });
+            listingSuggestions.push({ label: p.title, type: "listing", icon: Home });
           }
           if (p.province && p.province.toLowerCase().includes(v.toLowerCase())) {
             provinces.add(p.province);
@@ -116,7 +117,7 @@ export default function SearchFilterBar({ onChange, onModeChange, onSendMessage,
         const placeItems = Array.from(places.keys()).slice(0, 4).map(l => ({ label: l, type: "place" as const, icon: MapPin }));
         const provinceItems = Array.from(provinces).slice(0, 2).map(p => ({ label: p, type: "province" as const, icon: MapPin }));
 
-        const merged = [...provinceItems, ...placeItems, ...listings.slice(0, 3)];
+        const merged = [...provinceItems, ...placeItems, ...listingSuggestions.slice(0, 3)];
 
         // If no results, show "no matches" state
         if (merged.length === 0) {
@@ -251,7 +252,7 @@ export default function SearchFilterBar({ onChange, onModeChange, onSendMessage,
                     value={message} 
                     onChange={(e) => setMessage(e.target.value)} 
                     onKeyDown={(e) => e.key === 'Enter' && onSendMessage?.(message)}
-                    placeholder="Describe your dream stay..." 
+                    placeholder="Describe the trip you want to plan..." 
                     className="flex-1 bg-transparent text-on-surface placeholder-on-surface-variant outline-none text-base px-2 font-medium" 
                   />
                   <button className="p-2.5 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 transition-all shadow-lg shadow-blue-500/30" onClick={() => onSendMessage?.(message)}>

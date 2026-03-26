@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Listing, Review, Booking } from '@/types';
-import { db } from '@/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { summarizeReviews } from '@/services/gemini';
+import { Listing, Review } from '@/types';
+import { summarizeReviews } from '@/services/content';
 import { X, Star, Loader2, MessageSquare, Calendar as CalendarIcon, Users, Minus, Plus } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,6 +10,7 @@ import Markdown from 'react-markdown';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DateRange } from 'react-day-picker';
+import { listListingReviews } from '@/lib/platform-client';
 
 export default function ListingDetail({ 
   listing, 
@@ -39,15 +38,27 @@ export default function ListingDetail({
   const [children, setChildren] = useState(0);
 
   useEffect(() => {
-    const q = query(collection(db, 'reviews'), where('listingId', '==', listing.id));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setReviews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Review)));
-      setLoadingReviews(false);
-    }, (err) => {
-      console.warn('Error fetching reviews:', err);
-      setLoadingReviews(false);
-    });
-    return () => unsubscribe();
+    let cancelled = false;
+
+    setLoadingReviews(true);
+    listListingReviews(listing.id)
+      .then((nextReviews) => {
+        if (!cancelled) {
+          setReviews(nextReviews as Review[]);
+        }
+      })
+      .catch((error) => {
+        console.warn('Error fetching reviews:', error);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingReviews(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [listing.id]);
 
   const handleSummarizeReviews = async () => {
@@ -176,7 +187,7 @@ export default function ListingDetail({
                     className="text-xs font-bold text-on-surface-variant hover:text-on-surface flex items-center gap-1"
                   >
                     {isSummarizing ? <Loader2 className="w-3 h-3 animate-spin" /> : <MessageSquare className="w-3 h-3" />}
-                    AI Summary
+                    Review Snapshot
                   </button>
                 )}
               </div>

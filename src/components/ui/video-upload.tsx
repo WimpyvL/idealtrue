@@ -3,17 +3,16 @@ import { Button } from './button';
 import { toast } from 'sonner';
 import { Input } from './input';
 import { X, Video, Plus, Upload, Loader2 } from 'lucide-react';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { storage } from '@/firebase';
+import { uploadListingMedia } from '@/lib/media-client';
 
 interface VideoUploadProps {
   value: string | null;
   onChange: (url: string | null) => void;
-  bucket?: string;
+  listingId?: string;
   maxSizeMB?: number;
 }
 
-export default function VideoUpload({ value, onChange, maxSizeMB = 50 }: VideoUploadProps) {
+export default function VideoUpload({ value, onChange, listingId, maxSizeMB = 50 }: VideoUploadProps) {
   const [url, setUrl] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -36,33 +35,25 @@ export default function VideoUpload({ value, onChange, maxSizeMB = 50 }: VideoUp
       toast.error(`Video size must be less than ${maxSizeMB}MB.`);
       return;
     }
+    if (!listingId) {
+      toast.error('Save the listing first so media can be attached to it.');
+      return;
+    }
 
     setIsUploading(true);
     try {
-      const storageRef = ref(storage, `listings/videos/${Date.now()}_${file.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, file);
-
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          // You can track progress here if needed
-        },
-        (error) => {
-          console.error('Upload error:', error);
-          toast.error('Failed to upload video. Please try again.');
-          setIsUploading(false);
-        },
-        async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          onChange(downloadURL);
-          setIsUploading(false);
-          if (fileInputRef.current) {
-            fileInputRef.current.value = '';
-          }
-        }
-      );
+      const publicUrl = await uploadListingMedia({
+        listingId,
+        file,
+      });
+      onChange(publicUrl);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } catch (error) {
-      console.error('Upload setup error:', error);
+      console.error('Upload error:', error);
+      toast.error('Failed to upload video. Please try again.');
+    } finally {
       setIsUploading(false);
     }
   };

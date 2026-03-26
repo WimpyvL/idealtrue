@@ -6,7 +6,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import ImageUpload from "@/components/ui/image-upload";
 import VideoUpload from "@/components/ui/video-upload";
-import { GoogleGenAI } from "@google/genai";
 import {
   Home,
   Check,
@@ -23,11 +22,11 @@ import {
   ShieldAlert,
   ShieldCheck,
   Clock,
-  AlertCircle,
-  Sparkles
+  AlertCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getClient } from "@/lib/client";
+import { listHostListings } from "@/lib/platform-client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
@@ -105,12 +104,20 @@ export default function CreateListing() {
   const [verificationStatus, setVerificationStatus] = useState<'none' | 'pending' | 'verified' | 'rejected' | null>(null);
 
   const checkLimits = useCallback(async () => {
-    if (!profile) return;
+    if (!profile || !user) return;
     setPlan(profile.host_plan || 'free');
     setVerificationStatus(profile.kycStatus);
-    setCanCreate(true); // We'll handle KYC separately
+    if (isEditMode) {
+      setCanCreate(true);
+      setCheckingLimit(false);
+      return;
+    }
+
+    const existingListings = await listHostListings(user.uid);
+    const nonArchivedListings = existingListings.filter((listing) => listing.status !== 'archived');
+    setCanCreate((profile.host_plan || 'free') !== 'free' || nonArchivedListings.length < 1);
     setCheckingLimit(false);
-  }, [profile]);
+  }, [isEditMode, profile, user]);
 
   useEffect(() => {
     checkLimits();
@@ -173,68 +180,6 @@ export default function CreateListing() {
 
   const handleNext = useCallback(() => setStep(step + 1), [step]);
   const handleBack = useCallback(() => setStep(step - 1), [step]);
-
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-
-  const handleGeneratePrimaryImage = async () => {
-    if (!formData.title || !formData.description) {
-      toast({
-        title: "Missing Details",
-        description: "Please provide a title and description first so the AI knows what to generate.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setIsGeneratingImage(true);
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const prompt = `Generate a beautiful, high-quality, realistic primary listing photo for a property rental. 
-      Property Name: ${formData.title}
-      Description: ${formData.description}
-      Make it look inviting, professional, and well-lit.`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: prompt,
-        config: {
-          imageConfig: {
-            aspectRatio: "16:9",
-          }
-        }
-      });
-
-      let imageUrl = null;
-      for (const part of response.candidates?.[0]?.content?.parts || []) {
-        if (part.inlineData) {
-          const base64EncodeString = part.inlineData.data;
-          imageUrl = `data:image/png;base64,${base64EncodeString}`;
-          break;
-        }
-      }
-
-      if (imageUrl) {
-        // Add to the beginning of the images array
-        const newImages = [imageUrl, ...formData.images].slice(0, 5);
-        updateData("images", newImages);
-        toast({
-          title: "Image Generated",
-          description: "A new primary image has been generated and added to your listing.",
-        });
-      } else {
-        throw new Error("No image generated");
-      }
-    } catch (error) {
-      console.error("Error generating image:", error);
-      toast({
-        title: "Generation Failed",
-        description: "Failed to generate an image. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsGeneratingImage(false);
-    }
-  };
 
   const updateData = useCallback((key: string, value: string | number | boolean | string[] | null | { lat: number; lng: number }) => {
     setFormData(prev => ({ ...prev, [key]: value }));
@@ -811,31 +756,15 @@ export default function CreateListing() {
                   </div>
 
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <Label>Property Photos</Label>
-                        <p className="text-sm text-on-surface-variant">Upload up to 5 high-quality photos.</p>
-                      </div>
-                      <Button 
-                        type="button" 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={handleGeneratePrimaryImage}
-                        disabled={isGeneratingImage || formData.images.length >= 5}
-                      >
-                        {isGeneratingImage ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <Sparkles className="w-4 h-4 mr-2 text-primary" />
-                        )}
-                        Generate Primary Image (AI)
-                      </Button>
+                    <div className="mb-2">
+                      <Label>Property Photos</Label>
+                      <p className="text-sm text-on-surface-variant">Upload up to 5 high-quality photos. Lead with a strong exterior or hero room shot.</p>
                     </div>
                     <ImageUpload
                       value={formData.images}
                       onChange={(urls) => updateData("images", urls)}
                       onRemove={(url) => updateData("images", formData.images.filter(i => i !== url))}
-                      bucket="property-images"
+                      listingId={id}
                       maxFiles={5}
                     />
                   </div>
@@ -846,7 +775,7 @@ export default function CreateListing() {
                       <VideoUpload
                         value={formData.video_url}
                         onChange={(url) => updateData("video_url", url)}
-                        bucket="property-videos"
+                        listingId={id}
                         maxSizeMB={100}
                       />
                     </div>

@@ -3,18 +3,17 @@ import { Button } from './button';
 import { toast } from 'sonner';
 import { Input } from './input';
 import { X, Plus, Image as ImageIcon, Upload, Loader2, ChevronLeft, ChevronRight, Star } from 'lucide-react';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { storage } from '@/firebase';
+import { uploadListingMedia } from '@/lib/media-client';
 
 interface ImageUploadProps {
   value: string[];
   onChange: (urls: string[]) => void;
   onRemove: (url: string) => void;
-  bucket?: string;
+  listingId?: string;
   maxFiles?: number;
 }
 
-export default function ImageUpload({ value, onChange, onRemove, maxFiles = 5 }: ImageUploadProps) {
+export default function ImageUpload({ value, onChange, onRemove, listingId, maxFiles = 5 }: ImageUploadProps) {
   const [url, setUrl] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -45,33 +44,25 @@ export default function ImageUpload({ value, onChange, onRemove, maxFiles = 5 }:
       toast.error(`You can only upload up to ${maxFiles} images.`);
       return;
     }
+    if (!listingId) {
+      toast.error('Save the listing first so media can be attached to it.');
+      return;
+    }
 
     setIsUploading(true);
     try {
-      const storageRef = ref(storage, `listings/${Date.now()}_${file.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, file);
-
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          // You can track progress here if needed
-        },
-        (error) => {
-          console.error('Upload error:', error);
-          toast.error('Failed to upload image. Please try again.');
-          setIsUploading(false);
-        },
-        async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          onChange([...value, downloadURL]);
-          setIsUploading(false);
-          if (fileInputRef.current) {
-            fileInputRef.current.value = '';
-          }
-        }
-      );
+      const publicUrl = await uploadListingMedia({
+        listingId,
+        file,
+      });
+      onChange([...value, publicUrl]);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } catch (error) {
-      console.error('Upload setup error:', error);
+      console.error('Upload error:', error);
+      toast.error('Failed to upload image. Please try again.');
+    } finally {
       setIsUploading(false);
     }
   };

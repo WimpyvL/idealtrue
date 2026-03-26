@@ -13,14 +13,16 @@ export default function GuestDashboard({
   listings, 
   onReview, 
   onExplore,
-  onChat
+  onChat,
+  onSubmitPaymentProof
 }: { 
   profile: UserProfile | null, 
   bookings: Booking[], 
   listings: Listing[], 
   onReview: (b: Booking) => void, 
   onExplore: () => void,
-  onChat: (b: Booking) => void
+  onChat: (b: Booking) => void,
+  onSubmitPaymentProof: (b: Booking) => Promise<void> | void
 }) {
   const navigate = useNavigate();
 
@@ -46,12 +48,17 @@ export default function GuestDashboard({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {bookings.map(booking => {
           const listing = listings.find(l => l.id === booking.listingId);
+          const statusLabel = booking.status === 'awaiting_guest_payment'
+            ? 'Awaiting Payment'
+            : booking.status === 'payment_submitted'
+              ? 'Proof Submitted'
+              : booking.status;
           return (
             <Card key={booking.id} className="p-0 overflow-hidden flex flex-col">
               <div className="aspect-video bg-surface-container relative">
                 <img src={listing?.images[0] || `https://picsum.photos/seed/${booking.id}/800/600`} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                 <div className="absolute top-3 left-3">
-                  <Badge variant={booking.status === 'confirmed' ? 'success' : 'warning'}>{booking.status}</Badge>
+                  <Badge variant={booking.status === 'confirmed' ? 'success' : 'warning'}>{statusLabel}</Badge>
                 </div>
               </div>
               <div className="p-5 flex-1 space-y-3">
@@ -67,10 +74,17 @@ export default function GuestDashboard({
                 <div className="pt-4 border-t border-outline-variant flex justify-between items-center gap-2">
                   <div className="flex flex-col">
                     <span className="font-bold text-lg">${booking.totalPrice}</span>
-                    <span className="text-[10px] text-outline-variant">Payment handled by host</span>
+                    <span className="text-[10px] text-outline-variant">
+                      {booking.status === 'awaiting_guest_payment'
+                        ? 'Pay host directly and submit proof here'
+                        : 'Payment handled by host'}
+                    </span>
                   </div>
                   <div className="flex gap-2">
                     <Button size="sm" variant="outline" onClick={() => onChat(booking)}>Message</Button>
+                    {booking.status === 'awaiting_guest_payment' && (
+                      <Button size="sm" variant="secondary" onClick={() => onSubmitPaymentProof(booking)}>Submit Payment</Button>
+                    )}
                     {booking.status === 'confirmed' && (
                       <Button size="sm" variant="secondary" onClick={() => onReview(booking)}>Review</Button>
                     )}
