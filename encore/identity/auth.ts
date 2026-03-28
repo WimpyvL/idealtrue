@@ -23,7 +23,7 @@ function base64UrlDecode(value: string) {
 }
 
 function getSigningSecret() {
-  return authTokenSecret() || "idealtrue-local-dev-secret";
+  return authTokenSecret() || "ideal-stay-local-dev-secret";
 }
 
 function signValue(value: string) {

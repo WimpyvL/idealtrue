@@ -521,7 +521,7 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
                     </div>
                     <h3 className="text-3xl font-black text-slate-950">Every paid host plan includes the content engine.</h3>
                     <p className="text-base leading-7 text-slate-700">
-                        This is not generic template fluff. The engine is meant to take any listing you already have on IdealTrue and turn it
+                        This is not generic template fluff. The engine is meant to take any listing you already have on Ideal Stay and turn it
                         into styled promotional content that feels usable on real social channels.
                     </p>
                 </div>

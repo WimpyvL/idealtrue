@@ -1,5 +1,5 @@
 const ENCORE_API_URL = (import.meta as any).env?.VITE_ENCORE_API_URL || "http://127.0.0.1:4100";
-const TOKEN_STORAGE_KEY = "idealtrue.encore.token";
+const TOKEN_STORAGE_KEY = "idealstay.encore.token";
 
 type EncoreUserRole = "guest" | "host" | "admin";
 

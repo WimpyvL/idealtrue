@@ -137,7 +137,7 @@ export default function ExploreView({ listings, onBook }: { listings: Listing[],
             <section className="space-y-6 pt-4 pb-8 border-b border-outline-variant/30">
               <header className="space-y-1">
                 <h2 className="text-2xl font-bold tracking-tight">Recently Added</h2>
-                <p className="text-on-surface-variant">Check out the newest properties on IdealTrue.</p>
+                <p className="text-on-surface-variant">Check out the newest properties on Ideal Stay.</p>
               </header>
               <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 sm:gap-x-6 gap-y-8 sm:gap-y-10">
                 {recentlyAddedListings.map((listing) => (
@@ -152,7 +152,7 @@ export default function ExploreView({ listings, onBook }: { listings: Listing[],
           )}
 
           <header className="space-y-2 pt-4">
-            <h1 className="text-4xl font-bold tracking-tight">Find your next IdealTrue stay</h1>
+            <h1 className="text-4xl font-bold tracking-tight">Find your next Ideal Stay</h1>
             <p className="text-on-surface-variant text-lg">Discover unique accommodations around the world.</p>
           </header>
 

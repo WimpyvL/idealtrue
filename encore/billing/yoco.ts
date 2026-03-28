@@ -6,7 +6,7 @@ export const yocoSecretKey = secret<"YOCO_SECRET_KEY">("YOCO_SECRET_KEY");
 export const yocoWebhookSecret = secret<"YOCO_WEBHOOK_SECRET">("YOCO_WEBHOOK_SECRET");
 
 const YOCO_API_BASE = process.env.YOCO_API_BASE || "https://payments.yoco.com/api";
-const DEFAULT_APP_URL = process.env.IDEALTRUE_APP_URL || "http://127.0.0.1:5173";
+const DEFAULT_APP_URL = process.env.IDEAL_STAY_APP_URL || "http://127.0.0.1:5173";
 
 export interface YocoCheckoutRequest {
   amount: number;

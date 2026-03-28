@@ -200,7 +200,7 @@ const TONE_GUIDANCE: Record<SocialTone, { opener: string; voice: string; cta: st
 
 function buildHashtags(listing: ListingSnapshot, platform: SocialPlatform) {
   const tags = [
-    "#IdealTrue",
+    "#IdealStay",
     "#SouthAfricaTravel",
     `#${listing.location.replace(/\s+/g, "")}`,
     listing.type ? `#${listing.type.replace(/\s+/g, "")}` : "",

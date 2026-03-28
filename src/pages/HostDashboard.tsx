@@ -72,7 +72,7 @@ export default function HostDashboard({
       <div className="flex justify-between items-end">
         <header className="space-y-1">
           <h1 className="text-3xl font-bold tracking-tight">Hospitality Management</h1>
-          <p className="text-on-surface-variant">Manage your properties and guest interactions. <span className="text-amber-600 font-medium">IdealTrue coordinates the booking flow, but accommodation payments are collected directly by you.</span></p>
+          <p className="text-on-surface-variant">Manage your properties and guest interactions. <span className="text-amber-600 font-medium">Ideal Stay coordinates the booking flow, but accommodation payments are collected directly by you.</span></p>
         </header>
         <Button onClick={() => navigate('/host/create-listing')}>
           <Plus className="w-4 h-4 mr-2" /> Add New Listing

@@ -54,7 +54,7 @@ function pickHighlights(listing: Listing) {
 
 function buildHashtags(listing: Listing, platform: string) {
   const tags = [
-    "#IdealTrue",
+    "#IdealStay",
     "#SouthAfricaTravel",
     `#${listing.location.replace(/\s+/g, "")}`,
     listing.type ? `#${listing.type.replace(/\s+/g, "")}` : "",

@@ -206,7 +206,7 @@ export default function App() {
                   <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary-container rounded-lg flex items-center justify-center shadow-md shadow-primary/20">
                     <Home className="w-5 h-5 text-white" />
                   </div>
-                  <span className="text-xl font-bold tracking-tight">IdealTrue</span>
+                  <span className="text-xl font-bold tracking-tight">Ideal Stay</span>
                 </div>
 
                 {/* Desktop Nav */}

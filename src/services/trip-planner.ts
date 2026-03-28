@@ -70,7 +70,7 @@ export function buildTripPlannerResponse(query: string) {
     "## Draft itinerary",
     ...itinerary.map((item) => `- ${item}`),
     "",
-    "## Stay filters to use on IdealTrue",
+    "## Stay filters to use on Ideal Stay",
     "- Prioritize exact area before you obsess over amenities.",
     "- Match occupancy, self-catering, and budget to the actual trip shape.",
     "- Save 2-3 strong options and compare host responsiveness before booking.",

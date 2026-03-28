@@ -317,7 +317,7 @@ export default function AccountPage() {
                           id="paymentReferencePrefix"
                           value={formData.paymentReferencePrefix}
                           onChange={(e) => setFormData({ ...formData, paymentReferencePrefix: e.target.value })}
-                          placeholder="e.g. IDEALTRUE"
+                          placeholder="e.g. IDEALSTAY"
                         />
                       </div>
                       <div className="space-y-2">

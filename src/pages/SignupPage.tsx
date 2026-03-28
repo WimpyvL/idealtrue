@@ -44,7 +44,7 @@ export default function SignupPage() {
     <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 py-12">
       <div className="max-w-2xl w-full space-y-8 text-center">
         <div className="space-y-2">
-          <h1 className="text-4xl font-bold tracking-tight text-on-surface">Join IdealTrue</h1>
+          <h1 className="text-4xl font-bold tracking-tight text-on-surface">Join Ideal Stay</h1>
           <p className="text-on-surface-variant text-lg">Set up your account and choose how you want to use the platform.</p>
         </div>
 
@@ -136,7 +136,7 @@ export default function SignupPage() {
             {isSubmitting ? (
               <Loader2 className="w-6 h-6 animate-spin mr-2" />
             ) : (
-              <>Continue to IdealTrue <ChevronRight className="w-5 h-5 ml-2" /></>
+              <>Continue to Ideal Stay <ChevronRight className="w-5 h-5 ml-2" /></>
             )}
           </Button>
           <p className="text-sm text-on-surface-variant">

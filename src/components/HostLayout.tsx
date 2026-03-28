@@ -92,7 +92,7 @@ export default function HostLayout() {
           <div className="w-10 h-10 bg-gradient-to-br from-slate-900 to-blue-600 rounded-lg flex items-center justify-center overflow-hidden shadow-lg shadow-blue-900/20">
             <span className="text-xl font-black text-white">IS</span>
           </div>
-          <span className="text-xl font-black tracking-tight text-on-surface">IDEALTRUE</span>
+          <span className="text-xl font-black tracking-tight text-on-surface">IDEAL STAY</span>
         </div>
 
         <div className="px-4 mb-2">

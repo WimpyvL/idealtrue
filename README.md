@@ -1,6 +1,6 @@
-# IdealTrue
+# Ideal Stay
 
-IdealTrue is a South Africa-focused accommodation marketplace and host workspace. The repo now has two clear halves:
+Ideal Stay is a South Africa-focused accommodation marketplace and host workspace. The repo now has two clear halves:
 
 - a React/Vite frontend in the root
 - an Encore TypeScript backend in [`encore`](/C:/Git%20Repos/IdealTrue/encore)
@@ -123,6 +123,6 @@ npx tsc --noEmit
 - Gemini client usage removed
 - AI Studio/template residue removed
 - deterministic content and trip-planning helpers added
-- root app identity rewritten toward IdealTrue
+- root app identity rewritten toward Ideal Stay
 - mock listing fallback removed from the marketplace shell
 - Firebase auth/storage/firestore app dependencies removed from the frontend code path
