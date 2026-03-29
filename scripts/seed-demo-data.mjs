@@ -1,4 +1,5 @@
 const API_BASE = process.env.IDEAL_STAY_API_URL || "https://staging-ideal-stay-online-gh5i.encr.app";
+const DEMO_PASSWORD = process.env.IDEAL_STAY_DEMO_PASSWORD || "IdealStayDemo123!";
 
 const hosts = [
   {
@@ -142,6 +143,17 @@ async function ensureUser({ email, displayName, role }) {
   });
 }
 
+async function setPassword(adminToken, userId, password) {
+  await apiRequest(
+    `/admin/users/${encodeURIComponent(userId)}/password`,
+    {
+      method: "POST",
+      body: JSON.stringify({ userId, password }),
+    },
+    adminToken,
+  );
+}
+
 async function updateUser(adminToken, userId, { displayName, role, hostPlan, kycStatus }) {
   await apiRequest(
     `/admin/users/${encodeURIComponent(userId)}`,
@@ -198,9 +210,12 @@ async function main() {
   const adminToken = admin.token;
   const summary = [];
 
+  await setPassword(adminToken, admin.user.id, DEMO_PASSWORD);
+
   for (const host of hosts) {
     const hostSession = await ensureUser(host);
     await updateUser(adminToken, hostSession.user.id, host);
+    await setPassword(adminToken, hostSession.user.id, DEMO_PASSWORD);
     const refreshedHostSession = await ensureUser(host);
     const existingListings = await listHostListings(refreshedHostSession.user.id);
 
@@ -224,7 +239,7 @@ async function main() {
     });
   }
 
-  console.log(JSON.stringify({ apiBase: API_BASE, hosts: summary }, null, 2));
+  console.log(JSON.stringify({ apiBase: API_BASE, demoPassword: DEMO_PASSWORD, hosts: summary }, null, 2));
 }
 
 main().catch((error) => {

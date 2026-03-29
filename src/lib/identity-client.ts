@@ -1,4 +1,4 @@
-import { encoreRequest, setEncoreSessionToken, syncEncoreSession } from './encore-client';
+import { encoreRequest, setEncoreSessionToken } from './encore-client';
 import type { UserProfile } from '@/types';
 
 type EncoreUserRole = 'guest' | 'host' | 'admin';
@@ -26,15 +26,18 @@ interface EncoreUser {
   updatedAt: string;
 }
 
-interface EnsureEncoreProfileParams {
+interface SignupParams {
   email: string;
   displayName: string;
+  password: string;
   photoUrl?: string | null;
   role?: EncoreUserRole;
   referredByCode?: string | null;
-  paymentMethod?: string | null;
-  paymentInstructions?: string | null;
-  paymentReferencePrefix?: string | null;
+}
+
+interface LoginParams {
+  email: string;
+  password: string;
 }
 
 interface UpdateEncoreProfileParams {
@@ -70,16 +73,40 @@ function mapEncoreUserToProfile(user: EncoreUser): UserProfile {
   };
 }
 
-export async function ensureEncoreProfile(params: EnsureEncoreProfileParams) {
-  const response = await syncEncoreSession({
-    email: params.email,
-    displayName: params.displayName,
-    photoUrl: params.photoUrl,
-    role: params.role || 'guest',
-    referredByCode: params.referredByCode,
-  });
+async function storeSessionResponse(response: { token: string; user: EncoreUser }) {
+  setEncoreSessionToken(response.token);
+  return mapEncoreUserToProfile(response.user);
+}
 
-  return mapEncoreUserToProfile(response.user as EncoreUser);
+export async function signUpWithPassword(params: SignupParams) {
+  const response = await encoreRequest<{ token: string; user: EncoreUser }>(
+    '/auth/signup',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        email: params.email,
+        displayName: params.displayName,
+        password: params.password,
+        photoUrl: params.photoUrl,
+        role: params.role || 'guest',
+        referredByCode: params.referredByCode,
+      }),
+    },
+  );
+
+  return storeSessionResponse(response);
+}
+
+export async function signInWithPassword(params: LoginParams) {
+  const response = await encoreRequest<{ token: string; user: EncoreUser }>(
+    '/auth/login',
+    {
+      method: 'POST',
+      body: JSON.stringify(params),
+    },
+  );
+
+  return storeSessionResponse(response);
 }
 
 export async function getEncoreSessionProfile() {

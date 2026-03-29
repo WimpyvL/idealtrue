@@ -2,10 +2,25 @@ import { api, APIError } from "encore.dev/api";
 import { randomUUID } from "node:crypto";
 import { identityDB } from "./db";
 import { issueToken } from "./auth";
+import { hashPassword, verifyPassword } from "./passwords";
 import { requireAuth, requireRole } from "../shared/auth";
 import { profileMediaBucket } from "./storage";
 import { platformEvents } from "../analytics/events";
 import type { HostPlan, KycStatus, ReferralTier, UserProfile, UserRole } from "../shared/domain";
+
+interface SignupParams {
+  email: string;
+  displayName: string;
+  password: string;
+  role?: UserRole;
+  photoUrl?: string | null;
+  referredByCode?: string | null;
+}
+
+interface LoginParams {
+  email: string;
+  password: string;
+}
 
 interface DevLoginParams {
   email: string;
@@ -51,10 +66,16 @@ interface AdminUpdateUserParams {
   tier?: ReferralTier;
 }
 
+interface AdminSetPasswordParams {
+  userId: string;
+  password: string;
+}
+
 type UserRow = {
   id: string;
   email: string;
   display_name: string;
+  password_hash: string | null;
   photo_url: string | null;
   role: UserRole;
   host_plan: HostPlan;
@@ -67,9 +88,20 @@ type UserRow = {
   payment_method: string | null;
   payment_instructions: string | null;
   payment_reference_prefix: string | null;
+  last_login_at: string | null;
   created_at: string;
   updated_at: string;
 };
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+function validatePassword(password: string) {
+  if (password.length < 8) {
+    throw APIError.invalidArgument("Password must be at least 8 characters long.");
+  }
+}
 
 function mapUser(row: UserRow): UserProfile {
   return {
@@ -97,11 +129,117 @@ function makeReferralCode(email: string) {
   return email.split("@")[0].replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase() || "IDEAL";
 }
 
+function issueSession(user: UserProfile): SessionResponse {
+  return {
+    token: issueToken({
+      userID: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      role: user.role,
+      hostPlan: user.hostPlan,
+      kycStatus: user.kycStatus,
+    }),
+    user,
+  };
+}
+
+export const signup = api<SignupParams, SessionResponse>(
+  { expose: true, method: "POST", path: "/auth/signup" },
+  async (params) => {
+    const email = normalizeEmail(params.email);
+    validatePassword(params.password);
+
+    const existing = await identityDB.queryRow<UserRow>`
+      SELECT * FROM users WHERE email = ${email}
+    `;
+    if (existing) {
+      if (existing.password_hash) {
+        throw APIError.alreadyExists("An account already exists for this email.");
+      }
+      throw APIError.failedPrecondition("This account exists without password access yet. Reset or migration flow still needs to be added.");
+    }
+
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    const role = params.role ?? "guest";
+    const referralCode = `${makeReferralCode(email)}${Math.floor(Math.random() * 900 + 100)}`;
+    const passwordHash = await hashPassword(params.password);
+
+    await identityDB.exec`
+      INSERT INTO users (
+        id, email, display_name, password_hash, photo_url, role, host_plan, kyc_status, balance, referral_count, tier, referral_code, referred_by_code, last_login_at, created_at, updated_at
+      )
+      VALUES (
+        ${id}, ${email}, ${params.displayName}, ${passwordHash}, ${params.photoUrl ?? null}, ${role}, ${"free"}, ${"none"}, ${0}, ${0}, ${"bronze"}, ${referralCode}, ${params.referredByCode ?? null}, ${now}, ${now}, ${now}
+      )
+    `;
+
+    const user: UserProfile = {
+      id,
+      email,
+      displayName: params.displayName,
+      photoUrl: params.photoUrl ?? null,
+      role,
+      hostPlan: "free",
+      kycStatus: "none",
+      balance: 0,
+      referralCount: 0,
+      tier: "bronze",
+      referralCode,
+      referredByCode: params.referredByCode ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await platformEvents.publish({
+      type: "user.registered",
+      aggregateId: user.id,
+      actorId: user.id,
+      occurredAt: now,
+      payload: JSON.stringify({ role: user.role, email: user.email }),
+    });
+
+    return issueSession(user);
+  },
+);
+
+export const login = api<LoginParams, SessionResponse>(
+  { expose: true, method: "POST", path: "/auth/login" },
+  async (params) => {
+    const email = normalizeEmail(params.email);
+    const existing = await identityDB.queryRow<UserRow>`
+      SELECT * FROM users WHERE email = ${email}
+    `;
+    if (!existing || !existing.password_hash) {
+      throw APIError.unauthenticated("Invalid email or password.");
+    }
+
+    const matches = await verifyPassword(params.password, existing.password_hash);
+    if (!matches) {
+      throw APIError.unauthenticated("Invalid email or password.");
+    }
+
+    const now = new Date().toISOString();
+    await identityDB.exec`
+      UPDATE users
+      SET last_login_at = ${now},
+          updated_at = ${existing.updated_at}
+      WHERE id = ${existing.id}
+    `;
+
+    return issueSession(mapUser({
+      ...existing,
+      last_login_at: now,
+    }));
+  },
+);
+
 export const devLogin = api<DevLoginParams, DevLoginResponse>(
   { expose: true, method: "POST", path: "/auth/dev-login" },
   async (params) => {
+    const email = normalizeEmail(params.email);
     const existing = await identityDB.queryRow<UserRow>`
-      SELECT * FROM users WHERE email = ${params.email}
+      SELECT * FROM users WHERE email = ${email}
     `;
 
     const now = new Date().toISOString();
@@ -132,18 +270,18 @@ export const devLogin = api<DevLoginParams, DevLoginResponse>(
       });
     } else {
       const id = randomUUID();
-      const referralCode = `${makeReferralCode(params.email)}${Math.floor(Math.random() * 900 + 100)}`;
+      const referralCode = `${makeReferralCode(email)}${Math.floor(Math.random() * 900 + 100)}`;
       await identityDB.exec`
         INSERT INTO users (
           id, email, display_name, photo_url, role, host_plan, kyc_status, balance, referral_count, tier, referral_code, referred_by_code, created_at, updated_at
         )
         VALUES (
-          ${id}, ${params.email}, ${params.displayName}, ${params.photoUrl ?? null}, ${role}, ${"free"}, ${"none"}, ${0}, ${0}, ${"bronze"}, ${referralCode}, ${params.referredByCode ?? null}, ${now}, ${now}
+          ${id}, ${email}, ${params.displayName}, ${params.photoUrl ?? null}, ${role}, ${"free"}, ${"none"}, ${0}, ${0}, ${"bronze"}, ${referralCode}, ${params.referredByCode ?? null}, ${now}, ${now}
         )
       `;
       user = {
         id,
-        email: params.email,
+        email,
         displayName: params.displayName,
         photoUrl: params.photoUrl ?? null,
         role,
@@ -166,17 +304,7 @@ export const devLogin = api<DevLoginParams, DevLoginResponse>(
       });
     }
 
-    return {
-      token: issueToken({
-        userID: user.id,
-        email: user.email,
-        displayName: user.displayName,
-        role: user.role,
-        hostPlan: user.hostPlan,
-        kycStatus: user.kycStatus,
-      }),
-      user,
-    };
+    return issueSession(user);
   },
 );
 
@@ -189,17 +317,7 @@ export const getSession = api<void, SessionResponse>(
     `;
     if (!user) throw APIError.notFound("User session could not be resolved.");
     const mappedUser = mapUser(user);
-    return {
-      token: issueToken({
-        userID: mappedUser.id,
-        email: mappedUser.email,
-        displayName: mappedUser.displayName,
-        role: mappedUser.role,
-        hostPlan: mappedUser.hostPlan,
-        kycStatus: mappedUser.kycStatus,
-      }),
-      user: mappedUser,
-    };
+    return issueSession(mappedUser);
   },
 );
 
@@ -252,17 +370,7 @@ export const upsertProfile = api<UpsertProfileParams, SessionResponse>(
       updated_at: now,
     });
 
-    return {
-      token: issueToken({
-        userID: user.id,
-        email: user.email,
-        displayName: user.displayName,
-        role: user.role,
-        hostPlan: user.hostPlan,
-        kycStatus: user.kycStatus,
-      }),
-      user,
-    };
+    return issueSession(user);
   },
 );
 
@@ -357,6 +465,28 @@ export const adminDeleteUser = api<{ userId: string }, { deleted: true }>(
       DELETE FROM users WHERE id = ${userId}
     `;
     return { deleted: true };
+  },
+);
+
+export const adminSetPassword = api<AdminSetPasswordParams, { ok: true }>(
+  { expose: true, method: "POST", path: "/admin/users/:userId/password", auth: true },
+  async ({ userId, password }) => {
+    requireRole("admin", "support");
+    validatePassword(password);
+    const existing = await identityDB.queryRow<UserRow>`
+      SELECT * FROM users WHERE id = ${userId}
+    `;
+    if (!existing) throw APIError.notFound("User not found.");
+
+    const passwordHash = await hashPassword(password);
+    const now = new Date().toISOString();
+    await identityDB.exec`
+      UPDATE users
+      SET password_hash = ${passwordHash},
+          updated_at = ${now}
+      WHERE id = ${userId}
+    `;
+    return { ok: true };
   },
 );
 

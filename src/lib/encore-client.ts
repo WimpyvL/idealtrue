@@ -2,16 +2,6 @@ const ENCORE_API_URL =
   (import.meta as any).env?.VITE_ENCORE_API_URL || "https://staging-ideal-stay-online-gh5i.encr.app";
 const TOKEN_STORAGE_KEY = "idealstay.encore.token";
 
-type EncoreUserRole = "guest" | "host" | "admin";
-
-interface EncoreSessionUser {
-  email: string;
-  displayName: string;
-  photoUrl?: string | null;
-  role: EncoreUserRole;
-  referredByCode?: string | null;
-}
-
 function getStoredToken() {
   return window.localStorage.getItem(TOKEN_STORAGE_KEY);
 }
@@ -55,17 +45,4 @@ export async function encoreRequest<T>(
   }
 
   return response.json() as Promise<T>;
-}
-
-export async function syncEncoreSession(user: EncoreSessionUser) {
-  const response = await encoreRequest<{ token: string; user: unknown }>(
-    "/auth/dev-login",
-    {
-      method: "POST",
-      body: JSON.stringify(user),
-    },
-  );
-
-  setEncoreSessionToken(response.token);
-  return response;
 }

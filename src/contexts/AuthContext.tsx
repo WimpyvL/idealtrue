@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { clearEncoreSession, hasEncoreSessionToken } from '@/lib/encore-client';
-import { ensureEncoreProfile, getEncoreSessionProfile } from '@/lib/identity-client';
+import { getEncoreSessionProfile, signInWithPassword, signUpWithPassword } from '@/lib/identity-client';
 import { UserProfile, UserRole } from '@/types';
 
 export interface AuthSessionUser {
@@ -12,7 +12,13 @@ export interface AuthSessionUser {
 
 interface LoginParams {
   email: string;
+  password: string;
+}
+
+interface SignupParams {
+  email: string;
   displayName: string;
+  password: string;
   role?: UserRole;
   photoUrl?: string | null;
   referredByCode?: string | null;
@@ -23,7 +29,8 @@ interface AuthContextType {
   profile: UserProfile | null;
   loading: boolean;
   refreshProfile: () => Promise<void>;
-  login: (params: LoginParams) => Promise<UserProfile>;
+  signIn: (params: LoginParams) => Promise<UserProfile>;
+  signUp: (params: SignupParams) => Promise<UserProfile>;
   logout: () => void;
 }
 
@@ -32,7 +39,10 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   loading: true,
   refreshProfile: async () => {},
-  login: async () => {
+  signIn: async () => {
+    throw new Error('Auth context not ready.');
+  },
+  signUp: async () => {
     throw new Error('Auth context not ready.');
   },
   logout: () => {},
@@ -74,14 +84,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const login = async ({ email, displayName, role = 'guest', photoUrl = null, referredByCode }: LoginParams) => {
-    const nextProfile = await ensureEncoreProfile({
+  const signUp = async ({ email, displayName, password, role = 'guest', photoUrl = null, referredByCode }: SignupParams) => {
+    const nextProfile = await signUpWithPassword({
       email,
       displayName,
+      password,
       photoUrl,
       role,
       referredByCode,
     });
+    setProfile(nextProfile);
+    setUser(toSessionUser(nextProfile));
+    return nextProfile;
+  };
+
+  const signIn = async ({ email, password }: LoginParams) => {
+    const nextProfile = await signInWithPassword({ email, password });
     setProfile(nextProfile);
     setUser(toSessionUser(nextProfile));
     return nextProfile;
@@ -125,7 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, refreshProfile, login, logout }}>
+    <AuthContext.Provider value={{ user, profile, loading, refreshProfile, signIn, signUp, logout }}>
       {!loading && children}
     </AuthContext.Provider>
   );
