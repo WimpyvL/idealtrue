@@ -8,7 +8,6 @@ import {
     CarouselNext,
     CarouselPrevious,
 } from "@/components/ui/carousel";
-import { Star } from "lucide-react";
 import Autoplay, { type AutoplayType } from "embla-carousel-autoplay";
 
 interface FeaturedCarouselProps {
@@ -27,14 +26,8 @@ export default function FeaturedCarousel({ listings, onListingClick }: FeaturedC
         <section className="w-full bg-[#FAFAFA] py-16 mb-16 border-y border-outline-variant overflow-visible">
             <div className="container mx-auto px-4 mb-10">
                 <div className="flex items-end justify-between">
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 flex items-center justify-center shadow-xl shadow-orange-200/40">
-                            <Star className="text-white w-7 h-7 fill-white" />
-                        </div>
-                        <div>
-                            <h2 className="text-3xl font-bold text-on-surface tracking-tight font-primary">Featured Stays</h2>
-                            <p className="text-on-surface-variant mt-1 text-lg">Experience the finest hospitality in handpicked locations</p>
-                        </div>
+                    <div>
+                        <h2 className="text-3xl font-bold text-on-surface tracking-tight font-primary">Featured Stays</h2>
                     </div>
                 </div>
             </div>
