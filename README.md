@@ -92,12 +92,27 @@ The frontend runs at [http://localhost:3000](http://localhost:3000).
 
 ### Backend notes
 
-The frontend now targets Encore Cloud staging by default at `https://staging-ideal-stay-online-gh5i.encr.app`.
+The frontend now targets a local Encore backend by default at `http://127.0.0.1:4000`.
 
-If you explicitly want to run against a local Encore backend instead, override:
+If you want to be explicit in your local env file, set:
 
 ```bash
 VITE_ENCORE_API_URL=http://127.0.0.1:4000
+```
+
+If you explicitly want to point the frontend at a remote Encore environment, set `VITE_ENCORE_API_URL` to that environment URL in your local env file. Do not rely on a checked-in staging default.
+
+Dev login is now opt-in only and should never be enabled in a shared environment:
+
+```bash
+IDEAL_STAY_ENABLE_DEV_LOGIN=true
+```
+
+The demo seed script also defaults to local and refuses to hit a non-local API target unless you opt in:
+
+```bash
+IDEAL_STAY_ALLOW_REMOTE_SEED=true
+```
 
 Backend auth email delivery is optional in local/dev but should be configured in any serious environment:
 
@@ -120,6 +135,7 @@ The following pass in the current repo state:
 
 ```bash
 npm run lint
+npm run test
 npm run build
 cd encore
 npx tsc --noEmit

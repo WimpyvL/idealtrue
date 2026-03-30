@@ -8,8 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Loader2, ShieldCheck, Camera, IdCard, CheckCircle2, AlertCircle, Clock, X, RefreshCw } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
-import { updateEncoreProfile } from '@/lib/identity-client';
 import { submitKyc, uploadKycAsset, uploadKycDataUrl } from '@/lib/ops-client';
+import { useEffectiveKycStatus } from '@/hooks/use-effective-kyc-status';
 
 interface KYCModalProps {
   isOpen: boolean;
@@ -19,7 +19,9 @@ interface KYCModalProps {
 export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
   const { user, profile, refreshProfile } = useAuth();
   const { toast } = useToast();
+  const { effectiveKycStatus, submission, refreshKycStatus } = useEffectiveKycStatus(profile);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSubmissionForm, setShowSubmissionForm] = useState(false);
   const [formData, setFormData] = useState({
     idNumber: '',
     idType: 'id_card' as 'id_card' | 'passport' | 'drivers_license',
@@ -41,6 +43,24 @@ export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
       }
     };
   }, [stream]);
+
+  useEffect(() => {
+    if (!isOpen || !submission) {
+      return;
+    }
+
+    setFormData((current) => ({
+      ...current,
+      idNumber: submission.idNumber,
+      idType: submission.idType,
+    }));
+  }, [isOpen, submission]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setShowSubmissionForm(false);
+    }
+  }, [isOpen]);
 
   const startCamera = async () => {
     try {
@@ -152,15 +172,13 @@ export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
         idImageKey,
         selfieImageKey,
       });
-      await updateEncoreProfile({
-        kycStatus: 'pending',
-      });
+      setShowSubmissionForm(false);
+      await refreshKycStatus();
       await refreshProfile();
       toast({ 
         title: "Success", 
         description: "Verification submitted! Admin will review it shortly." 
       });
-      onClose();
     } catch (error) {
       console.error("KYC submission error:", error);
       toast({ 
@@ -173,32 +191,25 @@ export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
     }
   };
 
-  const simulateApproval = async () => {
-    if (!user) return;
-    setIsSubmitting(true);
-    try {
-      await updateEncoreProfile({
-        kycStatus: 'verified'
-      });
-      await refreshProfile();
-      toast({ title: "Demo: Verified", description: "Your identity has been verified (Demo Mode)." });
-    } catch (error) {
-      console.error("Simulation error:", error);
-      toast({ title: "Error", description: "Simulation failed. (Are you an admin in rules?)", variant: "destructive" });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const handleClose = () => {
     stopCamera();
     onClose();
   };
 
+  const resetForResubmission = () => {
+    setShowSubmissionForm(true);
+    setFormData({
+      idNumber: submission?.idNumber || '',
+      idType: submission?.idType || 'id_card',
+      idImage: null,
+      selfieImage: null,
+    });
+  };
+
   const renderStatus = () => {
     if (!profile) return null;
 
-    switch (profile.kycStatus) {
+    switch (showSubmissionForm ? 'none' : effectiveKycStatus) {
       case 'pending':
         return (
           <div className="flex flex-col items-center justify-center py-10 text-center space-y-4">
@@ -214,13 +225,6 @@ export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
             <div className="flex flex-col gap-2 w-full px-8">
               <Button onClick={handleClose} variant="outline" className="rounded-xl w-full">
                 Close
-              </Button>
-              <Button 
-                onClick={simulateApproval} 
-                variant="ghost" 
-                className="text-xs text-outline-variant hover:text-primary"
-              >
-                Demo: Simulate Admin Approval
               </Button>
             </div>
           </div>
@@ -251,12 +255,10 @@ export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
             <div className="space-y-2">
               <h3 className="text-xl font-bold">Verification Rejected</h3>
               <p className="text-on-surface-variant">
-                Unfortunately, your verification was not successful. Please try again with clearer documents.
+                {submission?.rejectionReason || 'Unfortunately, your verification was not successful. Please try again with clearer documents.'}
               </p>
             </div>
-            <Button onClick={() => {
-              updateEncoreProfile({ kycStatus: 'none' }).then(() => refreshProfile());
-            }} className="rounded-xl px-8">
+            <Button onClick={resetForResubmission} className="rounded-xl px-8">
               Try Again
             </Button>
           </div>

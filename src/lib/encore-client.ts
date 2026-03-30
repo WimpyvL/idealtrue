@@ -1,9 +1,24 @@
-const ENCORE_API_URL =
-  (import.meta as any).env?.VITE_ENCORE_API_URL || "https://staging-ideal-stay-online-gh5i.encr.app";
-const TOKEN_STORAGE_KEY = "idealstay.encore.token";
+export const DEFAULT_ENCORE_API_URL = "http://127.0.0.1:4000";
+export const TOKEN_STORAGE_KEY = "idealstay.encore.token";
+
+export function getEncoreApiUrl() {
+  return (import.meta as any).env?.VITE_ENCORE_API_URL || DEFAULT_ENCORE_API_URL;
+}
+
+function getStorage() {
+  if (typeof window === "undefined") {
+    throw new Error("Encore session storage is unavailable outside the browser.");
+  }
+
+  return window.localStorage;
+}
 
 function getStoredToken() {
-  return window.localStorage.getItem(TOKEN_STORAGE_KEY);
+  return getStorage().getItem(TOKEN_STORAGE_KEY);
+}
+
+export function getEncoreSessionToken() {
+  return getStoredToken();
 }
 
 export function hasEncoreSessionToken() {
@@ -11,11 +26,11 @@ export function hasEncoreSessionToken() {
 }
 
 export function clearEncoreSession() {
-  window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+  getStorage().removeItem(TOKEN_STORAGE_KEY);
 }
 
 export function setEncoreSessionToken(token: string) {
-  window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  getStorage().setItem(TOKEN_STORAGE_KEY, token);
 }
 
 export async function encoreRequest<T>(
@@ -34,7 +49,7 @@ export async function encoreRequest<T>(
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${ENCORE_API_URL}${path}`, {
+  const response = await fetch(`${getEncoreApiUrl()}${path}`, {
     ...init,
     headers,
   });

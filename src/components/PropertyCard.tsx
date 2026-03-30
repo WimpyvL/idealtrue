@@ -88,13 +88,13 @@ export default function PropertyCard({ listing, onClick, showBorder = false }: P
           />
         </button>
 
-        {/* Badges row */}
-        <div className="absolute top-3 left-3 z-10 flex gap-2">
-          {/* Mock badges */}
-          <Badge variant="secondary" className="bg-surface/95 text-on-surface font-semibold shadow-sm hover:bg-surface px-2.5 py-1 backdrop-blur-sm border-none">
-            Guest favorite
-          </Badge>
-        </div>
+        {listing.discount > 0 && (
+          <div className="absolute top-3 left-3 z-10 flex gap-2">
+            <Badge variant="secondary" className="bg-surface/95 text-on-surface font-semibold shadow-sm hover:bg-surface px-2.5 py-1 backdrop-blur-sm border-none">
+              Save {listing.discount}%
+            </Badge>
+          </div>
+        )}
       </div>
 
       <div className="flex justify-between items-start">

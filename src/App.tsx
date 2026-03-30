@@ -24,6 +24,7 @@ import ListingDetail from './components/ListingDetail';
 import ReviewForm from './components/ReviewForm';
 import ChatModal from './components/ChatModal';
 import HostLayout from './components/HostLayout';
+import PaymentProofDialog from './components/PaymentProofDialog';
 import { Button } from './components/ui/button';
 import { 
   Listing, 
@@ -86,14 +87,13 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 // --- Main App ---
 
 import SocialDashboard from './pages/SocialDashboard';
-import PlaceholderView from './pages/PlaceholderView';
 import HostListings from './pages/HostListings';
 import HostAvailability from './pages/HostAvailability';
 import HostEnquiries from './pages/HostEnquiries';
 import HostReports from './pages/HostReports';
 import HostInbox from './pages/HostInbox';
 
-export default function App() {
+function AppContent() {
   const navigate = useNavigate();
   const location = useLocation();
   const { socket } = useNotifications();
@@ -107,6 +107,7 @@ export default function App() {
   const [selectedListingForDetail, setSelectedListingForDetail] = useState<Listing | null>(null);
   const [bookingToReview, setBookingToReview] = useState<Booking | null>(null);
   const [selectedBookingForChat, setSelectedBookingForChat] = useState<Booking | null>(null);
+  const [bookingForPaymentProof, setBookingForPaymentProof] = useState<Booking | null>(null);
 
   const syncUpdatedBooking = (updatedBooking: Booking) => {
     setMyBookings((current) => current.map((item) => item.id === updatedBooking.id ? updatedBooking : item));
@@ -193,10 +194,8 @@ export default function App() {
   }
 
   return (
-    <ErrorBoundary>
-      <NotificationProvider user={user}>
-        <div className={cn("min-h-screen font-sans text-on-surface", isHostRoute ? "bg-surface" : "bg-surface-container-low")}>
-          <Toaster position="top-center" richColors />
+    <div className={cn("min-h-screen font-sans text-on-surface", isHostRoute ? "bg-surface" : "bg-surface-container-low")}>
+      <Toaster position="top-center" richColors />
         {/* Navigation */}
         {!isHostRoute && !isAdminRoute && (
           <nav className="sticky top-0 z-50 bg-surface-variant/60 backdrop-blur-md">
@@ -318,17 +317,14 @@ export default function App() {
                 <Navigate to="/" />
               )
             }>
-              <Route index element={<HostDashboard profile={profile} listings={myListings} bookings={hostBookings} onUpgrade={() => navigate('/pricing')} onChat={(b: Booking) => setSelectedBookingForChat(b)} />} />
+              <Route index element={<HostDashboard profile={profile} listings={myListings} bookings={hostBookings} onUpgrade={() => navigate('/pricing')} onChat={(b: Booking) => setSelectedBookingForChat(b)} onBookingUpdated={syncUpdatedBooking} />} />
               <Route path="inbox" element={<HostInbox bookings={hostBookings} listings={myListings} onChat={(b: Booking) => setSelectedBookingForChat(b)} />} />
-              <Route path="enquiries" element={<HostEnquiries bookings={hostBookings} listings={myListings} onChat={(b: Booking) => setSelectedBookingForChat(b)} />} />
+              <Route path="enquiries" element={<HostEnquiries bookings={hostBookings} listings={myListings} onChat={(b: Booking) => setSelectedBookingForChat(b)} onBookingUpdated={syncUpdatedBooking} />} />
               <Route path="listings" element={<HostListings listings={myListings} onListingUpdated={syncUpdatedListing} onListingRemoved={removeListing} />} />
               <Route path="availability" element={<HostAvailability listings={myListings} bookings={hostBookings} onListingUpdated={syncUpdatedListing} />} />
               <Route path="reports" element={<HostReports bookings={hostBookings} listings={myListings} />} />
               <Route path="social" element={<SocialDashboard listings={myListings} />} />
-              <Route path="social/calendar" element={<PlaceholderView title="Content Calendar" description="Schedule and manage your social media posts." />} />
               <Route path="referrals" element={<ReferralView profile={profile} referrals={referrals} />} />
-              <Route path="referrals/network" element={<PlaceholderView title="My Network" description="View and manage your referral network." />} />
-              <Route path="settings" element={<PlaceholderView title="Settings" description="Configure your host account preferences." />} />
               <Route path="create-listing" element={<CreateListing />} />
               <Route path="edit-listing/:id" element={<CreateListing />} />
               <Route path="*" element={<Navigate to="/host" />} />
@@ -342,23 +338,7 @@ export default function App() {
               )
             } />
             <Route path="/planner" element={<HolidayPlanner />} />
-            <Route path="/guest" element={<GuestDashboard profile={profile} bookings={myBookings} listings={listings} onReview={(b: Booking) => setBookingToReview(b)} onExplore={() => navigate('/')} onChat={(b: Booking) => setSelectedBookingForChat(b)} onSubmitPaymentProof={async (booking: Booking) => {
-              const paymentReference = window.prompt('Enter the payment reference or proof note for this booking.');
-              if (paymentReference === null) return;
-              const paymentProofUrl = window.prompt('Optional: paste a proof-of-payment URL. Leave blank if you are only submitting a reference.') || null;
-              try {
-                const updatedBooking = await submitPaymentProof({
-                  id: booking.id,
-                  paymentReference,
-                  paymentProofUrl,
-                });
-                syncUpdatedBooking(updatedBooking);
-                toast.success('Payment proof submitted. The host can now confirm receipt.');
-              } catch (error) {
-                console.error('Failed to submit payment proof:', error);
-                toast.error('Failed to submit payment proof.');
-              }
-            }} />} />
+            <Route path="/guest" element={<GuestDashboard profile={profile} bookings={myBookings} listings={listings} onReview={(b: Booking) => setBookingToReview(b)} onExplore={() => navigate('/')} onChat={(b: Booking) => setSelectedBookingForChat(b)} onSubmitPaymentProof={(b: Booking) => setBookingForPaymentProof(b)} />} />
             <Route path="/referral" element={<ReferralView profile={profile} referrals={referrals} />} />
             <Route path="/account" element={<AccountPage />} />
             <Route path="/signup" element={<SignupPage />} />
@@ -366,6 +346,28 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </main>
+
+        <PaymentProofDialog
+          booking={bookingForPaymentProof}
+          listing={bookingForPaymentProof ? listings.find((listing) => listing.id === bookingForPaymentProof.listingId) ?? null : null}
+          open={!!bookingForPaymentProof}
+          onClose={() => setBookingForPaymentProof(null)}
+          onSubmit={async ({ id, paymentReference, paymentProofUrl }) => {
+            try {
+              const updatedBooking = await submitPaymentProof({
+                id,
+                paymentReference,
+                paymentProofUrl,
+              });
+              syncUpdatedBooking(updatedBooking);
+              toast.success('Payment proof submitted. The host can now confirm receipt.');
+            } catch (error) {
+              console.error('Failed to submit payment proof:', error);
+              toast.error('Failed to submit payment proof.');
+              throw error;
+            }
+          }}
+        />
 
         {/* Listing Detail Modal */}
         <AnimatePresence>
@@ -460,7 +462,17 @@ export default function App() {
           )}
         </AnimatePresence>
       </div>
-    </NotificationProvider>
-  </ErrorBoundary>
-);
+  );
+}
+
+export default function App() {
+  const { user } = useAuth();
+
+  return (
+    <ErrorBoundary>
+      <NotificationProvider user={user}>
+        <AppContent />
+      </NotificationProvider>
+    </ErrorBoundary>
+  );
 }

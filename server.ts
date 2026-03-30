@@ -7,7 +7,7 @@ import path from "path";
 const ENCORE_API_URL =
   process.env.ENCORE_API_URL ||
   process.env.VITE_ENCORE_API_URL ||
-  "https://staging-ideal-stay-online-gh5i.encr.app";
+  "http://127.0.0.1:4000";
 
 function getAllowedOrigins() {
   const raw = process.env.SOCKET_IO_ORIGINS || process.env.CLIENT_ORIGIN || "http://localhost:3000";

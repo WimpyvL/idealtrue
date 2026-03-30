@@ -12,11 +12,13 @@ import { formatRand } from '@/lib/currency';
 export default function HostEnquiries({ 
   bookings, 
   listings,
-  onChat
+  onChat,
+  onBookingUpdated,
 }: { 
   bookings: Booking[], 
   listings: Listing[],
-  onChat: (b: Booking) => void
+  onChat: (b: Booking) => void,
+  onBookingUpdated: (booking: Booking) => void,
 }) {
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
   const { socket } = useNotifications();
@@ -26,13 +28,13 @@ export default function HostEnquiries({
   const handleBookingAction = async (booking: Booking, action: 'awaiting_guest_payment' | 'cancelled') => {
     setIsProcessing(booking.id);
     try {
-      await updateBookingStatus(booking.id, action);
+      const updatedBooking = await updateBookingStatus(booking.id, action);
+      onBookingUpdated(updatedBooking);
       
       const listing = listings.find(l => l.id === booking.listingId);
       
       // Emit notification to guest
-      const eventName = action === 'awaiting_guest_payment' ? 'booking:confirmed' : 'booking:update';
-      socket?.emit(eventName, {
+      socket?.emit('booking:update', {
         guestUid: booking.guestUid,
         hostUid: booking.hostUid,
         listingId: booking.listingId,

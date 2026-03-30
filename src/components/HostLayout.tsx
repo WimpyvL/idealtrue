@@ -17,7 +17,7 @@ import {
   Share2,
   Sparkles,
   CalendarDays,
-  Users
+  UserCircle2
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
@@ -55,7 +55,6 @@ export default function HostLayout() {
       icon: Share2,
       items: [
         { name: 'Content Studio', path: '/host/social', icon: Sparkles },
-        { name: 'Content Calendar', path: '/host/social/calendar', icon: CalendarDays },
       ]
     },
     {
@@ -63,14 +62,13 @@ export default function HostLayout() {
       icon: Trophy,
       items: [
         { name: 'Rewards Dashboard', path: '/host/referrals', icon: Trophy },
-        { name: 'My Network', path: '/host/referrals/network', icon: Users },
       ]
     },
     {
       title: 'Administration',
       icon: Settings,
       items: [
-        { name: 'Settings', path: '/host/settings', icon: Settings },
+        { name: 'Account', path: '/account', icon: UserCircle2 },
       ]
     }
   ];

@@ -1,5 +1,20 @@
-const API_BASE = process.env.IDEAL_STAY_API_URL || "https://staging-ideal-stay-online-gh5i.encr.app";
+const API_BASE = process.env.IDEAL_STAY_API_URL || "http://127.0.0.1:4000";
 const DEMO_PASSWORD = process.env.IDEAL_STAY_DEMO_PASSWORD || "IdealStayDemo123!";
+
+function isLocalApi(url) {
+  try {
+    const parsed = new URL(url);
+    return ["127.0.0.1", "localhost"].includes(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+if (!isLocalApi(API_BASE) && process.env.IDEAL_STAY_ALLOW_REMOTE_SEED !== "true") {
+  throw new Error(
+    `Refusing to seed non-local API target ${API_BASE}. Set IDEAL_STAY_ALLOW_REMOTE_SEED=true if you really mean it.`,
+  );
+}
 
 const hosts = [
   {

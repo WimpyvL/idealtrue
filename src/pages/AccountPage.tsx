@@ -11,10 +11,12 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import KYCModal from '@/components/KYCModal';
 import { requestEmailVerification, requestProfilePhotoUpload, updateEncoreProfile } from '@/lib/identity-client';
+import { useEffectiveKycStatus } from '@/hooks/use-effective-kyc-status';
 
 export default function AccountPage() {
   const { user, profile, refreshProfile } = useAuth();
   const { toast } = useToast();
+  const { effectiveKycStatus } = useEffectiveKycStatus(profile);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isSwitchingRole, setIsSwitchingRole] = useState(false);
@@ -81,7 +83,7 @@ export default function AccountPage() {
           : "You are now in Guest mode. You can explore and book accommodations.",
       });
 
-      if (newRole === 'host' && profile.kycStatus === 'none') {
+      if (newRole === 'host' && effectiveKycStatus === 'none') {
         // Additional prompt for verification
         toast({
           variant: "default",
@@ -211,8 +213,12 @@ export default function AccountPage() {
                 <Shield className="w-4 h-4" />
                 <span>KYC Status: <span className={cn(
                   "font-bold uppercase text-[10px] px-2 py-0.5 rounded-full",
-                  profile.kycStatus === 'verified' ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
-                )}>{profile.kycStatus}</span></span>
+                  effectiveKycStatus === 'verified'
+                    ? "bg-green-100 text-green-700"
+                    : effectiveKycStatus === 'rejected'
+                      ? "bg-rose-100 text-rose-700"
+                      : "bg-amber-100 text-amber-700"
+                )}>{effectiveKycStatus}</span></span>
               </div>
               <div className="flex items-center gap-3 text-sm text-on-surface-variant">
                 <Calendar className="w-4 h-4" />
@@ -369,9 +375,9 @@ export default function AccountPage() {
             <Card className="mt-8 p-8 border-primary/20 bg-primary/5">
               <div className="flex items-start gap-4">
                 <div className="p-3 bg-primary/10 rounded-2xl">
-                  {profile.kycStatus === 'verified' ? (
+                  {effectiveKycStatus === 'verified' ? (
                     <ShieldCheck className="w-6 h-6 text-primary" />
-                  ) : profile.kycStatus === 'pending' ? (
+                  ) : effectiveKycStatus === 'pending' ? (
                     <Clock className="w-6 h-6 text-amber-600" />
                   ) : (
                     <ShieldAlert className="w-6 h-6 text-rose-600" />
@@ -380,17 +386,17 @@ export default function AccountPage() {
                 <div className="space-y-2">
                   <h3 className="text-lg font-bold">Host Verification</h3>
                   <p className="text-sm text-on-surface-variant">
-                    Your account is currently <span className="font-bold text-on-surface capitalize">{profile.kycStatus}</span>. 
+                    Your account is currently <span className="font-bold text-on-surface capitalize">{effectiveKycStatus}</span>. 
                     Verified hosts receive a badge on their listings and higher search visibility.
                   </p>
-                  {profile.kycStatus !== 'verified' && (
+                  {effectiveKycStatus !== 'verified' && (
                     <Button 
                       variant="outline" 
                       size="sm" 
                       className="mt-2"
                       onClick={() => setIsKYCModalOpen(true)}
                     >
-                      {profile.kycStatus === 'pending' ? "Check Status" : "Complete Verification"}
+                      {effectiveKycStatus === 'pending' ? "Check Status" : "Complete Verification"}
                     </Button>
                   )}
                 </div>

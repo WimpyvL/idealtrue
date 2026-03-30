@@ -72,6 +72,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { 
   Dialog,
@@ -83,16 +84,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatRand } from '@/lib/currency';
-
-// --- Mock Data for the Chart (since real data might be sparse) ---
-const chartData = [
-  { name: '10', value: 120 },
-  { name: '11', value: 150 },
-  { name: '12', value: 180 },
-  { name: '01', value: 140 },
-  { name: '02', value: 210 },
-  { name: '03', value: 190 },
-];
+import { format, subMonths } from 'date-fns';
 
 type KycReviewState = KycSubmission & {
   user?: UserProfile | null;
@@ -164,6 +156,9 @@ export default function AdminDashboard() {
   const [kycSubmissions, setKycSubmissions] = useState<KycSubmission[]>([]);
   const [viewingKYCSubmission, setViewingKYCSubmission] = useState<KycReviewState | null>(null);
   const [kycAssetsLoading, setKycAssetsLoading] = useState(false);
+  const [rejectingKycSubmission, setRejectingKycSubmission] = useState<KycReviewState | null>(null);
+  const [kycRejectionReason, setKycRejectionReason] = useState('Documents were unclear or incomplete.');
+  const [isRejectingKyc, setIsRejectingKyc] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -423,28 +418,38 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleRejectKYC = async (uid: string) => {
+  const openRejectKycDialog = (submission: KycReviewState) => {
+    setRejectingKycSubmission(submission);
+    setKycRejectionReason(submission.rejectionReason || 'Documents were unclear or incomplete.');
+  };
+
+  const handleRejectKYC = async () => {
+    if (!rejectingKycSubmission) return;
+
+    setIsRejectingKyc(true);
     try {
-      const rejectionReason = window.prompt('Why are you rejecting this KYC submission?', 'Documents were unclear or incomplete.');
       await reviewKycSubmission({
-        userId: uid,
+        userId: rejectingKycSubmission.userId,
         status: 'rejected',
-        rejectionReason: rejectionReason || 'Rejected during review.',
+        rejectionReason: kycRejectionReason.trim() || 'Rejected during review.',
       });
-      await setUserKycStatus({ userId: uid, kycStatus: 'rejected' });
+      await setUserKycStatus({ userId: rejectingKycSubmission.userId, kycStatus: 'rejected' });
       const notification = await createAdminNotification({
         title: 'Verification Rejected',
         message: 'Your identity verification was rejected. Please re-submit clearer documents.',
         type: 'error',
-        target: uid,
+        target: rejectingKycSubmission.userId,
       });
       setAllNotifications((current) => [notification, ...current]);
       toast({ title: "Verification Rejected", description: "User verification has been rejected." });
       setViewingKYCSubmission(null);
-      setKycSubmissions((current) => current.filter((submission) => submission.userId !== uid));
+      setRejectingKycSubmission(null);
+      setKycSubmissions((current) => current.filter((submission) => submission.userId !== rejectingKycSubmission.userId));
     } catch (err) {
       console.error('Failed to reject KYC submission', err);
       toast({ title: 'Rejection failed', description: 'Could not reject this KYC submission.', variant: 'destructive' });
+    } finally {
+      setIsRejectingKyc(false);
     }
   };
 
@@ -518,6 +523,15 @@ export default function AdminDashboard() {
   ];
 
   const renderOverview = () => {
+    const platformGrowthData = Array.from({ length: 6 }).map((_, index) => {
+      const month = subMonths(new Date(), 5 - index);
+      const monthKey = format(month, 'yyyy-MM');
+      return {
+        name: format(month, 'MM'),
+        value: allBookings.filter((booking) => format(new Date(booking.createdAt), 'yyyy-MM') === monthKey).length,
+      };
+    });
+
     return (
       <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
         <div className="flex flex-col gap-1">
@@ -530,8 +544,6 @@ export default function AdminDashboard() {
           <StatCard 
             title="Total Users" 
             value={stats.totalUsers} 
-            trend="+12.5%" 
-            isUp={true} 
             icon={Users} 
             iconBg="bg-blue-50" 
             iconColor="text-blue-600" 
@@ -539,8 +551,6 @@ export default function AdminDashboard() {
           <StatCard 
             title="Active Listings" 
             value={stats.activeListings} 
-            trend="+5.2%" 
-            isUp={true} 
             icon={Home} 
             iconBg="bg-green-50" 
             iconColor="text-green-600" 
@@ -548,8 +558,6 @@ export default function AdminDashboard() {
           <StatCard 
             title="Total Enquiries" 
             value={stats.totalEnquiries} 
-            trend="-2.4%" 
-            isUp={false} 
             icon={MessageSquare} 
             iconBg="bg-purple-50" 
             iconColor="text-purple-600" 
@@ -557,8 +565,6 @@ export default function AdminDashboard() {
           <StatCard 
             title="Pending Reviews" 
             value={stats.pendingReviews} 
-            trend="+18%" 
-            isUp={true} 
             icon={Star} 
             iconBg="bg-yellow-50" 
             iconColor="text-yellow-600" 
@@ -577,7 +583,7 @@ export default function AdminDashboard() {
             </div>
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
+                <BarChart data={platformGrowthData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis 
                     dataKey="name" 
@@ -596,8 +602,8 @@ export default function AdminDashboard() {
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                   />
                   <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={index === chartData.length - 1 ? '#0f172a' : '#e2e8f0'} />
+                    {platformGrowthData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={index === platformGrowthData.length - 1 ? '#0f172a' : '#e2e8f0'} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -605,24 +611,36 @@ export default function AdminDashboard() {
             </div>
           </Card>
 
-          {/* System Health */}
+          {/* Instrumentation Status */}
           <Card className="p-8 bg-[#0f172a] text-white space-y-8">
             <div className="space-y-1">
-              <h2 className="text-xl font-bold">System Health</h2>
-              <p className="text-slate-400 text-xs">Real-time platform performance.</p>
+              <h2 className="text-xl font-bold">Operational Coverage</h2>
+              <p className="text-slate-400 text-xs">What the admin surface can actually trust right now.</p>
             </div>
-            
+             
             <div className="space-y-6">
-              <HealthMetric label="Server Uptime" value={99.9} color="bg-green-500" />
-              <HealthMetric label="API Response" value={124} max={500} color="bg-blue-500" />
-              <HealthMetric label="Database Load" value={24} color="bg-purple-500" />
-              <HealthMetric label="Error Rate" value={0.02} max={1} color="bg-yellow-500" />
+              <div className="space-y-2 rounded-2xl border border-slate-800 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Live signals</p>
+                <p className="text-2xl font-bold">{allNotifications.length}</p>
+                <p className="text-sm text-slate-300">Stored admin notifications</p>
+              </div>
+              <div className="space-y-2 rounded-2xl border border-slate-800 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Manual review queue</p>
+                <p className="text-2xl font-bold">{kycSubmissions.length}</p>
+                <p className="text-sm text-slate-300">KYC submissions waiting on human review</p>
+              </div>
+              <div className="space-y-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-amber-300">Missing instrumentation</p>
+                <p className="text-sm text-amber-100">
+                  Uptime, latency, database load, and error-rate metrics are not wired into this repo yet. Treat infra health as unknown until observability is connected.
+                </p>
+              </div>
             </div>
 
             <div className="pt-4 border-t border-slate-800">
               <div className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-xs font-medium text-slate-300">All systems operational</span>
+                <div className="w-2 h-2 rounded-full bg-amber-400" />
+                <span className="text-xs font-medium text-slate-300">Operational telemetry still needs real observability wiring.</span>
               </div>
             </div>
           </Card>
@@ -1921,7 +1939,7 @@ export default function AdminDashboard() {
                             variant="destructive" 
                             size="sm" 
                             className="text-xs h-8"
-                            onClick={() => handleRejectKYC(submission.userId)}
+                            onClick={() => openRejectKycDialog({ ...submission })}
                           >
                             Reject
                           </Button>
@@ -1997,8 +2015,35 @@ export default function AdminDashboard() {
             )}
             <DialogFooter className="gap-2 sm:gap-0">
               <Button variant="outline" onClick={() => setViewingKYCSubmission(null)}>Close</Button>
-              <Button variant="destructive" onClick={() => handleRejectKYC(viewingKYCSubmission!.userId)}>Reject</Button>
+                    <Button variant="destructive" onClick={() => openRejectKycDialog(viewingKYCSubmission!)}>Reject</Button>
               <Button className="bg-green-600 hover:bg-green-700" onClick={() => handleApproveKYC(viewingKYCSubmission!.userId)}>Approve Verification</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!rejectingKycSubmission} onOpenChange={() => !isRejectingKyc && setRejectingKycSubmission(null)}>
+          <DialogContent className="sm:max-w-[520px]">
+            <DialogHeader>
+              <DialogTitle>Reject Verification</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <p className="text-sm text-on-surface-variant">
+                Give the host a concrete reason so they know exactly what to fix before resubmitting.
+              </p>
+              <Textarea
+                value={kycRejectionReason}
+                onChange={(event) => setKycRejectionReason(event.target.value)}
+                placeholder="Explain what was missing, blurred, or inconsistent."
+                className="min-h-[140px]"
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRejectingKycSubmission(null)} disabled={isRejectingKyc}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleRejectKYC} disabled={isRejectingKyc}>
+                {isRejectingKyc ? 'Rejecting...' : 'Reject Verification'}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

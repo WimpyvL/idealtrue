@@ -34,6 +34,7 @@ import { geocodeAddress } from "@/lib/geocoding";
 import { getErrorMessage } from "@/lib/errors";
 import { Listing } from "@/types";
 import KYCModal from "@/components/KYCModal";
+import { useEffectiveKycStatus } from "@/hooks/use-effective-kyc-status";
 
 import { CATEGORIES, AMENITIES, FACILITIES, PROVINCES } from "@/constants/categories";
 import { CATEGORY_ICONS } from "@/components/icons/CategoryIcons";
@@ -66,6 +67,7 @@ export default function CreateListing() {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
   const { toast } = useToast();
+  const { effectiveKycStatus } = useEffectiveKycStatus(profile);
   const { id } = useParams();
   const isEditMode = !!id;
   const [step, setStep] = useState(1);
@@ -95,18 +97,16 @@ export default function CreateListing() {
     images: [] as string[],
     video_url: null as string | null,
     is_occupied: false,
-    coordinates: { lat: -29.8587, lng: 31.0218 } as { lat: number; lng: number } | null
+    coordinates: null as { lat: number; lng: number } | null
   });
 
   const [plan, setPlan] = useState<'standard' | 'professional' | 'premium'>('standard');
   const [checkingLimit, setCheckingLimit] = useState(true);
   const [canCreate, setCanCreate] = useState(true);
-  const [verificationStatus, setVerificationStatus] = useState<'none' | 'pending' | 'verified' | 'rejected' | null>(null);
 
   const checkLimits = useCallback(async () => {
     if (!profile || !user) return;
     setPlan(profile.host_plan || 'standard');
-    setVerificationStatus(profile.kycStatus);
     if (isEditMode) {
       setCanCreate(true);
       setCheckingLimit(false);
@@ -117,7 +117,7 @@ export default function CreateListing() {
     const nonArchivedListings = existingListings.filter((listing) => listing.status !== 'archived');
     setCanCreate((profile.host_plan || 'standard') !== 'standard' || nonArchivedListings.length < 1);
     setCheckingLimit(false);
-  }, [isEditMode, profile, user]);
+  }, [effectiveKycStatus, isEditMode, profile, user]);
 
   useEffect(() => {
     checkLimits();
@@ -227,19 +227,13 @@ export default function CreateListing() {
     setIsSubmitting(true);
 
     try {
-      let latitude = formData.coordinates?.lat || -33.9249;
-      let longitude = formData.coordinates?.lng || 18.4241;
+      let coordinates = formData.coordinates;
 
-      // Only geocode if user hasn't manually picked a location or if we want to refine it
-      // For now, let's prefer the manually picked coordinates if they differ from the default
-      if (!formData.coordinates || (formData.coordinates.lat === -29.8587 && formData.coordinates.lng === 31.0218)) {
-        if (formData.location) {
-          const addressToGeocode = formData.location + (formData.province ? `, ${formData.province}` : "");
-          const coords = await geocodeAddress(addressToGeocode);
-          if (coords) {
-            latitude = coords.lat;
-            longitude = coords.lng;
-          }
+      if (!coordinates && formData.location) {
+        const addressToGeocode = formData.location + (formData.province ? `, ${formData.province}` : "");
+        const resolvedCoordinates = await geocodeAddress(addressToGeocode);
+        if (resolvedCoordinates) {
+          coordinates = resolvedCoordinates;
         }
       }
 
@@ -270,7 +264,7 @@ export default function CreateListing() {
         category: parentCategory || "",
         rating: 0,
         reviews: 0,
-        coordinates: { lat: latitude, lng: longitude }
+        coordinates
       };
 
       await getClient.hospitality.saveListing({
@@ -300,7 +294,7 @@ export default function CreateListing() {
 
   if (checkingLimit) return <div className="flex justify-center p-20"><Loader2 className="animate-spin" /></div>;
 
-  if (profile?.kycStatus !== 'verified') {
+  if (effectiveKycStatus !== 'verified') {
     return (
       <div className="max-w-2xl mx-auto py-20 text-center space-y-6">
         <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -308,8 +302,10 @@ export default function CreateListing() {
         </div>
         <h1 className="text-3xl font-bold text-on-surface">Verification Required</h1>
         <p className="text-on-surface-variant text-lg max-w-md mx-auto">
-          {profile?.kycStatus === 'pending'
+          {effectiveKycStatus === 'pending'
             ? "Your identity verification is currently under review. You'll be able to list properties once approved."
+            : effectiveKycStatus === 'rejected'
+              ? "Your last verification attempt was rejected. Re-submit clearer documents to unlock listing access."
             : "To ensure the safety of our community, all hosts must verify their identity before listing properties."}
         </p>
         <div className="pt-6">
@@ -317,7 +313,7 @@ export default function CreateListing() {
             onClick={() => setIsKYCModalOpen(true)} 
             className="h-12 px-8 text-base font-bold rounded-xl"
           >
-            {profile?.kycStatus === 'pending' ? "Check Status" : "Verify Identity Now"}
+            {effectiveKycStatus === 'pending' ? "Check Status" : effectiveKycStatus === 'rejected' ? "Resubmit Verification" : "Verify Identity Now"}
           </Button>
           <div className="mt-4">
             <Link to="/host" className="text-sm text-on-surface-variant hover:text-on-surface font-medium">

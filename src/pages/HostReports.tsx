@@ -17,7 +17,7 @@ export default function HostReports({ bookings, listings }: { bookings: Booking[
   const recentBookings = confirmedBookings.filter(b => isAfter(new Date(b.createdAt), thirtyDaysAgo));
   const recentRevenue = recentBookings.reduce((sum, b) => sum + b.totalPrice, 0);
 
-  // Generate chart data (mocked for the last 7 days based on actual data if available)
+  // Generate chart data from confirmed bookings in the last 7 days.
   const chartData = Array.from({ length: 7 }).map((_, i) => {
     const date = subDays(new Date(), 6 - i);
     const dayBookings = confirmedBookings.filter(b => format(new Date(b.createdAt), 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd'));
