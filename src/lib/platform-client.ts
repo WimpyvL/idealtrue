@@ -181,7 +181,11 @@ export async function listPublicListings() {
 }
 
 export async function listHostListings(hostId: string) {
-  const response = await encoreRequest<{ listings: EncoreListing[] }>(`/listings?hostId=${encodeURIComponent(hostId)}`);
+  const response = await encoreRequest<{ listings: EncoreListing[] }>(
+    `/listings?hostId=${encodeURIComponent(hostId)}`,
+    {},
+    { auth: true },
+  );
   return response.listings.map(mapListing);
 }
 

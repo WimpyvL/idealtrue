@@ -13,11 +13,11 @@ import {
 import { format } from 'date-fns';
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
-import { listReferralLeaderboard } from '@/lib/identity-client';
+import { listReferralLeaderboard, type LeaderboardUser } from '@/lib/identity-client';
 
 export default function ReferralView({ profile, referrals }: { profile: UserProfile | null, referrals: Referral[] }) {
   const [copied, setCopied] = useState(false);
-  const [leaderboard, setLeaderboard] = useState<UserProfile[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardUser[]>([]);
   const referralLink = `${window.location.origin}?ref=${profile?.referralCode}`;
 
   useEffect(() => {

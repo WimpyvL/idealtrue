@@ -6,6 +6,7 @@ import { Listing } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Star } from "lucide-react";
 import L from "leaflet";
+import { formatRand } from "@/lib/currency";
 
 // Fix for default marker icon using CDN
 const DefaultIcon = L.icon({
@@ -81,7 +82,7 @@ export default function PropertyMap({ listings = [], onListingClick }: PropertyM
                 </div>
                 <h3 className="font-semibold text-sm mb-1">{listing.title}</h3>
                 <div className="flex justify-between items-center">
-                  <span className="font-bold text-sm">${listing.pricePerNight} <span className="font-normal text-on-surface-variant">/ night</span></span>
+                  <span className="font-bold text-sm">{formatRand(listing.pricePerNight)} <span className="font-normal text-on-surface-variant">/ night</span></span>
                   <Button
                     size="sm"
                     className="h-7 text-xs"

@@ -123,6 +123,8 @@ export default function CreateListing() {
     checkLimits();
   }, [checkLimits]);
 
+  const maxImagesForPlan = plan === 'standard' ? 5 : 20;
+
   const fetchListingData = useCallback(async () => {
     if (!id || !user) return;
 
@@ -758,14 +760,16 @@ export default function CreateListing() {
                   <div className="space-y-2">
                     <div className="mb-2">
                       <Label>Property Photos</Label>
-                      <p className="text-sm text-on-surface-variant">Upload up to 5 high-quality photos. Lead with a strong exterior or hero room shot.</p>
+                      <p className="text-sm text-on-surface-variant">
+                        Upload up to {maxImagesForPlan} high-quality photos. Standard hosts get 5 images; Professional and Premium hosts get 20.
+                      </p>
                     </div>
                     <ImageUpload
                       value={formData.images}
                       onChange={(urls) => updateData("images", urls)}
                       onRemove={(url) => updateData("images", formData.images.filter(i => i !== url))}
                       listingId={id}
-                      maxFiles={5}
+                      maxFiles={maxImagesForPlan}
                     />
                   </div>
 

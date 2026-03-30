@@ -1,8 +1,9 @@
 import { api, APIError } from "encore.dev/api";
+import { getAuthData } from "encore.dev/internal/codegen/auth";
 import { randomUUID } from "node:crypto";
 import { catalogDB } from "./db";
 import { listingMediaBucket } from "./storage";
-import { requireAuth, requireRole } from "../shared/auth";
+import { requireRole, type AuthData } from "../shared/auth";
 import { identityDB } from "../identity/db";
 import { platformEvents } from "../analytics/events";
 import type { ListingRecord, ListingStatus } from "../shared/domain";
@@ -80,9 +81,57 @@ interface ListListingsParams {
 }
 
 interface UploadUrlParams {
-  listingId: string;
+  listingId?: string;
   filename: string;
   contentType: string;
+}
+
+const ALLOWED_LISTING_MEDIA_CONTENT_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+]);
+
+function getMaxImagesForPlan(plan: HostAccessRow["host_plan"]) {
+  return plan === "standard" ? 5 : 20;
+}
+
+async function getHostAccess(hostId: string) {
+  const host = await identityDB.queryRow<HostAccessRow>`
+    SELECT id, host_plan, kyc_status
+    FROM users
+    WHERE id = ${hostId}
+  `;
+
+  if (!host) {
+    throw APIError.notFound("Host profile not found.");
+  }
+
+  return host;
+}
+
+function assertListingImageCount(images: string[], plan: HostAccessRow["host_plan"]) {
+  const maxImages = getMaxImagesForPlan(plan);
+  if (images.length > maxImages) {
+    throw APIError.invalidArgument(`Your ${plan} plan allows up to ${maxImages} images per listing.`);
+  }
+}
+
+function sanitizeObjectFilename(filename: string) {
+  const trimmed = filename.trim();
+  const normalized = trimmed.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return normalized.slice(0, 120) || "upload.bin";
+}
+
+function canReadUnpublishedListing(auth: AuthData | null, listingHostId: string) {
+  if (!auth) return false;
+  if (auth.role === "admin" || auth.role === "support") return true;
+  if (auth.role === "host" && auth.userID === listingHostId) return true;
+  return false;
 }
 
 interface UpdateAvailabilityParams {
@@ -125,15 +174,7 @@ function mapListing(row: ListingRow): ListingRecord {
 }
 
 async function assertHostCanCreateListing(hostId: string) {
-  const host = await identityDB.queryRow<HostAccessRow>`
-    SELECT id, host_plan, kyc_status
-    FROM users
-    WHERE id = ${hostId}
-  `;
-
-  if (!host) {
-    throw APIError.notFound("Host profile not found.");
-  }
+  const host = await getHostAccess(hostId);
 
   if (host.kyc_status !== "verified") {
     throw APIError.permissionDenied("Hosts must complete KYC before creating listings.");
@@ -154,8 +195,44 @@ async function assertHostCanCreateListing(hostId: string) {
 export const listListings = api<ListListingsParams, { listings: ListingRecord[] }>(
   { expose: true, method: "GET", path: "/listings" },
   async (params) => {
+    const auth = getAuthData<AuthData>();
     const hostId = params.hostId ?? null;
     const status = params.status ?? null;
+
+    if (!auth) {
+      const rows = await catalogDB.rawQueryAll<ListingRow>(
+        `
+        SELECT * FROM listings
+        WHERE status = $1
+          AND ($2::text IS NULL OR host_id = $2)
+        ORDER BY created_at DESC
+        `,
+        "active",
+        hostId,
+      );
+
+      return { listings: rows.map(mapListing) };
+    }
+
+    const canSeeUnpublished =
+      auth.role === "admin" ||
+      auth.role === "support" ||
+      (auth.role === "host" && hostId === auth.userID);
+
+    if (!canSeeUnpublished) {
+      const rows = await catalogDB.rawQueryAll<ListingRow>(
+        `
+        SELECT * FROM listings
+        WHERE status = $1
+          AND ($2::text IS NULL OR host_id = $2)
+        ORDER BY created_at DESC
+        `,
+        "active",
+        hostId,
+      );
+
+      return { listings: rows.map(mapListing) };
+    }
 
     const rows = await catalogDB.rawQueryAll<ListingRow>(
       `
@@ -179,6 +256,12 @@ export const getListing = api<{ id: string }, { listing: ListingRecord }>(
       SELECT * FROM listings WHERE id = ${id}
     `;
     if (!row) throw APIError.notFound("Listing not found.");
+
+    const auth = getAuthData<AuthData>();
+    if (row.status !== "active" && !canReadUnpublishedListing(auth, row.host_id)) {
+      throw APIError.notFound("Listing not found.");
+    }
+
     return { listing: mapListing(row) };
   },
 );
@@ -188,6 +271,10 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
   async (params) => {
     const auth = requireRole("host", "admin");
     const now = new Date().toISOString();
+    const hostAccess = auth.role === "admin" ? null : await getHostAccess(auth.userID);
+    if (hostAccess) {
+      assertListingImageCount(params.images, hostAccess.host_plan);
+    }
 
     if (params.id) {
       const existing = await catalogDB.queryRow<ListingRow>`
@@ -196,6 +283,20 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
       if (!existing) throw APIError.notFound("Listing not found.");
       if (existing.host_id !== auth.userID && auth.role !== "admin") {
         throw APIError.permissionDenied("You cannot edit another host's listing.");
+      }
+
+      let nextStatus = params.status;
+      if (auth.role !== "admin") {
+        if (existing.status === "archived" && params.status !== "archived") {
+          throw APIError.failedPrecondition("Archived listings cannot be reactivated by hosts.");
+        }
+
+        const moderationLocked = existing.status === "pending" || existing.status === "rejected";
+        if (moderationLocked) {
+          nextStatus = existing.status;
+        } else if (!["active", "inactive", "archived"].includes(params.status)) {
+          nextStatus = existing.status;
+        }
       }
 
       await catalogDB.exec`
@@ -224,7 +325,7 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
             latitude = ${params.latitude ?? null},
             longitude = ${params.longitude ?? null},
             blocked_dates = ${params.blockedDates ?? existing.blocked_dates ?? []},
-            status = ${params.status},
+            status = ${nextStatus},
             updated_at = ${now}
         WHERE id = ${params.id}
       `;
@@ -234,12 +335,13 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
         aggregateId: params.id,
         actorId: auth.userID,
         occurredAt: now,
-        payload: JSON.stringify({ hostId: auth.userID, status: params.status }),
+        payload: JSON.stringify({ hostId: auth.userID, status: nextStatus }),
       });
 
       return {
         listing: {
           ...params,
+          status: nextStatus,
           id: params.id,
           hostId: existing.host_id,
           createdAt: existing.created_at,
@@ -251,6 +353,7 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
     if (auth.role !== "admin") {
       await assertHostCanCreateListing(auth.userID);
     }
+    const createdStatus = auth.role === "admin" ? params.status : "pending";
 
     const id = randomUUID();
     await catalogDB.exec`
@@ -267,7 +370,7 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
         ${params.bedrooms}, ${params.bathrooms}, ${params.amenities}, ${params.facilities},
         ${params.restaurantOffers}, ${params.images}, ${params.videoUrl ?? null},
         ${params.isSelfCatering}, ${params.hasRestaurant}, ${params.isOccupied},
-        ${params.latitude ?? null}, ${params.longitude ?? null}, ${params.blockedDates ?? []}, ${params.status}, ${now}, ${now}
+        ${params.latitude ?? null}, ${params.longitude ?? null}, ${params.blockedDates ?? []}, ${createdStatus}, ${now}, ${now}
       )
     `;
 
@@ -276,12 +379,13 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
       aggregateId: id,
       actorId: auth.userID,
       occurredAt: now,
-      payload: JSON.stringify({ hostId: auth.userID, status: params.status }),
+      payload: JSON.stringify({ hostId: auth.userID, status: createdStatus }),
     });
 
     return {
       listing: {
         ...params,
+        status: createdStatus,
         id,
         hostId: auth.userID,
         createdAt: now,
@@ -327,15 +431,23 @@ export const requestListingMediaUpload = api<UploadUrlParams, { objectKey: strin
   { expose: true, method: "POST", path: "/host/listings/media/upload-url", auth: true },
   async ({ listingId, filename, contentType }) => {
     const auth = requireRole("host", "admin");
-    const listing = await catalogDB.queryRow<ListingRow>`
-      SELECT * FROM listings WHERE id = ${listingId}
-    `;
-    if (!listing) throw APIError.notFound("Listing not found.");
-    if (listing.host_id !== auth.userID && auth.role !== "admin") {
-      throw APIError.permissionDenied("You cannot upload media for another host's listing.");
+    if (!ALLOWED_LISTING_MEDIA_CONTENT_TYPES.has(contentType)) {
+      throw APIError.invalidArgument("Unsupported listing media content type.");
+    }
+    const safeFilename = sanitizeObjectFilename(filename);
+    if (listingId) {
+      const listing = await catalogDB.queryRow<ListingRow>`
+        SELECT * FROM listings WHERE id = ${listingId}
+      `;
+      if (!listing) throw APIError.notFound("Listing not found.");
+      if (listing.host_id !== auth.userID && auth.role !== "admin") {
+        throw APIError.permissionDenied("You cannot upload media for another host's listing.");
+      }
     }
 
-    const objectKey = `${listingId}/${Date.now()}-${filename}`;
+    const objectKey = listingId
+      ? `${listingId}/${Date.now()}-${safeFilename}`
+      : `drafts/${auth.userID}/${Date.now()}-${safeFilename}`;
     const signed = await listingMediaBucket.signedUploadUrl(objectKey, {
       ttl: 60 * 15,
     });

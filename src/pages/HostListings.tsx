@@ -8,6 +8,7 @@ import { Building2, Plus, Edit, Trash2, Share2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ConfirmationDialog } from '../components/ui/confirmation-dialog';
 import { getClient } from '../lib/client';
+import { formatRand } from '@/lib/currency';
 
 type Props = {
   listings: Listing[];
@@ -105,7 +106,7 @@ export default function HostListings({ listings, onListingUpdated, onListingRemo
                 <div>
                   <h3 className="font-bold text-lg truncate">{listing.title}</h3>
                   <p className="text-sm text-on-surface-variant mb-1">{listing.location}</p>
-                  <p className="font-medium text-primary">${listing.pricePerNight} <span className="text-sm text-on-surface-variant font-normal">/ night</span></p>
+                  <p className="font-medium text-primary">{formatRand(listing.pricePerNight)} <span className="text-sm text-on-surface-variant font-normal">/ night</span></p>
                 </div>
                 <div className="flex flex-col items-end gap-3">
                   <Badge variant={listing.status === 'active' ? 'success' : listing.status === 'pending' ? 'warning' : 'secondary'}>

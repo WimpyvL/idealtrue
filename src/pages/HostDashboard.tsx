@@ -21,6 +21,7 @@ import { Badge } from '../components/ui/badge';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { updateBookingStatus } from '@/lib/platform-client';
+import { formatRand } from '@/lib/currency';
 
 export default function HostDashboard({ 
   profile,
@@ -107,7 +108,7 @@ export default function HostDashboard({
             <DollarSign className="w-5 h-5 text-green-500" />
             <h3 className="font-medium">Total Revenue</h3>
           </div>
-          <p className="text-3xl font-bold">${totalRevenue.toLocaleString()}</p>
+          <p className="text-3xl font-bold">{formatRand(totalRevenue)}</p>
         </Card>
       </div>
 
@@ -144,7 +145,7 @@ export default function HostDashboard({
                   <h3 className="font-bold truncate group-hover:text-primary transition-colors">{listing.title}</h3>
                   <p className="text-xs text-on-surface-variant mb-2 truncate">{listing.location}</p>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-primary">${listing.pricePerNight}<span className="text-xs text-on-surface-variant font-normal">/night</span></span>
+                    <span className="text-sm font-bold text-primary">{formatRand(listing.pricePerNight)}<span className="text-xs text-on-surface-variant font-normal">/night</span></span>
                     <Badge variant="success" className="text-[10px]">Active</Badge>
                   </div>
                 </div>
@@ -192,7 +193,7 @@ export default function HostDashboard({
                   </p>
                   <div className="mt-3 pt-3 border-t border-outline-variant flex justify-between items-center">
                     <div className="flex flex-col">
-                      <span className="text-sm font-bold">${booking.totalPrice}</span>
+                      <span className="text-sm font-bold">{formatRand(booking.totalPrice)}</span>
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={() => onChat(booking)}>Message</Button>

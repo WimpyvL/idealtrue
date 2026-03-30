@@ -27,6 +27,22 @@ interface EncoreUser {
   updatedAt: string;
 }
 
+interface EncoreLeaderboardUser {
+  id: string;
+  displayName: string;
+  photoUrl?: string | null;
+  tier: EncoreReferralTier;
+  referralCount: number;
+}
+
+export interface LeaderboardUser {
+  uid: string;
+  displayName: string;
+  photoURL: string;
+  tier: EncoreReferralTier;
+  referralCount: number;
+}
+
 interface SignupParams {
   email: string;
   displayName: string;
@@ -177,8 +193,14 @@ export async function updateEncoreProfile(params: UpdateEncoreProfileParams) {
 }
 
 export async function listReferralLeaderboard() {
-  const response = await encoreRequest<{ users: EncoreUser[] }>('/users/leaderboard/referrals');
-  return response.users.map(mapEncoreUserToProfile);
+  const response = await encoreRequest<{ users: EncoreLeaderboardUser[] }>('/users/leaderboard/referrals');
+  return response.users.map((user): LeaderboardUser => ({
+    uid: user.id,
+    displayName: user.displayName,
+    photoURL: user.photoUrl || '',
+    tier: user.tier,
+    referralCount: user.referralCount,
+  }));
 }
 
 export async function setUserKycStatus(params: { userId: string; kycStatus: EncoreKycStatus }) {

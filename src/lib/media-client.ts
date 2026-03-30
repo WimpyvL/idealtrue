@@ -14,7 +14,7 @@ async function uploadToSignedUrl(uploadUrl: string, file: File) {
   }
 }
 
-export async function uploadListingMedia(params: { listingId: string; file: File }) {
+export async function uploadListingMedia(params: { listingId?: string; file: File }) {
   const signed = await encoreRequest<{ objectKey: string; uploadUrl: string; publicUrl: string }>(
     '/host/listings/media/upload-url',
     {

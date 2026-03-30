@@ -13,6 +13,7 @@ interface GatewayAuthParams {
 }
 
 const authTokenSecret = secret("AUTH_TOKEN_SECRET");
+const allowInsecureAuthSecret = process.env.IDEAL_STAY_ALLOW_INSECURE_AUTH === "true";
 
 function base64UrlEncode(value: string) {
   return Buffer.from(value, "utf8").toString("base64url");
@@ -23,7 +24,16 @@ function base64UrlDecode(value: string) {
 }
 
 function getSigningSecret() {
-  return authTokenSecret() || "ideal-stay-local-dev-secret";
+  const configuredSecret = authTokenSecret();
+  if (configuredSecret) {
+    return configuredSecret;
+  }
+  if (allowInsecureAuthSecret) {
+    return "ideal-stay-local-dev-secret";
+  }
+  throw new Error(
+    "Missing AUTH_TOKEN_SECRET. Set AUTH_TOKEN_SECRET or explicitly opt in to insecure local auth via IDEAL_STAY_ALLOW_INSECURE_AUTH=true.",
+  );
 }
 
 function signValue(value: string) {

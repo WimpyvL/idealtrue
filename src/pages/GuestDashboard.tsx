@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Calendar, MapPin, Shield } from 'lucide-react';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
+import { formatRand } from '@/lib/currency';
 
 export default function GuestDashboard({ 
   profile, 
@@ -73,7 +74,7 @@ export default function GuestDashboard({
                 </div>
                 <div className="pt-4 border-t border-outline-variant flex justify-between items-center gap-2">
                   <div className="flex flex-col">
-                    <span className="font-bold text-lg">${booking.totalPrice}</span>
+                    <span className="font-bold text-lg">{formatRand(booking.totalPrice)}</span>
                     <span className="text-[10px] text-outline-variant">
                       {booking.status === 'awaiting_guest_payment'
                         ? 'Pay host directly and submit proof here'

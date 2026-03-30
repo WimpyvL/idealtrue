@@ -365,7 +365,7 @@ export async function deleteAdminReview(reviewId: string) {
 }
 
 export async function listAdminListings() {
-  const response = await encoreRequest<{ listings: EncoreListing[] }>('/listings');
+  const response = await encoreRequest<{ listings: EncoreListing[] }>('/listings', {}, { auth: true });
   return response.listings.map(mapListing);
 }
 

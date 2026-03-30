@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { bookingDB } from "./db";
 import { requireAuth, requireRole } from "../shared/auth";
 import { platformEvents } from "../analytics/events";
+import { getListing } from "../catalog/api";
 import type { BookingRecord, BookingStatus } from "../shared/domain";
 
 type BookingRow = {
@@ -28,12 +29,12 @@ type BookingRow = {
 
 interface CreateBookingParams {
   listingId: string;
-  hostId: string;
+  hostId?: string;
   checkIn: string;
   checkOut: string;
   adults: number;
   children: number;
-  totalPrice: number;
+  totalPrice?: number;
 }
 
 interface UpdateBookingStatusParams {
@@ -83,6 +84,31 @@ function mapBookingAccessRecord(row: BookingRow): BookingAccessRecord {
   return mapBooking(row);
 }
 
+const CLEANING_FEE = 45;
+
+function normalizeDateOnly(value: string) {
+  return value.slice(0, 10);
+}
+
+function computeBookingTotalPrice(pricePerNight: number, checkIn: Date, checkOut: Date) {
+  const millisecondsPerNight = 1000 * 60 * 60 * 24;
+  const nights = Math.floor((checkOut.getTime() - checkIn.getTime()) / millisecondsPerNight);
+  if (nights <= 0) {
+    throw APIError.invalidArgument("Checkout must be after check-in.");
+  }
+  const subtotal = pricePerNight * nights;
+  return subtotal + CLEANING_FEE;
+}
+
+function bookingOverlapsBlockedDates(checkIn: Date, checkOut: Date, blockedDates: string[] | undefined) {
+  const blocked = blockedDates ?? [];
+  if (blocked.length === 0) return false;
+
+  const checkInDay = normalizeDateOnly(checkIn.toISOString());
+  const checkOutDay = normalizeDateOnly(checkOut.toISOString());
+  return blocked.some((blockedDate) => blockedDate >= checkInDay && blockedDate < checkOutDay);
+}
+
 export async function getBookingById(id: string) {
   const row = await bookingDB.queryRow<BookingRow>`
     SELECT * FROM bookings WHERE id = ${id}
@@ -94,9 +120,37 @@ export const createBooking = api<CreateBookingParams, { booking: BookingRecord }
   { expose: true, method: "POST", path: "/bookings", auth: true },
   async (params) => {
     const auth = requireAuth();
-    if (auth.userID === params.hostId) {
+    const parsedCheckIn = new Date(params.checkIn);
+    const parsedCheckOut = new Date(params.checkOut);
+    if (Number.isNaN(parsedCheckIn.getTime()) || Number.isNaN(parsedCheckOut.getTime())) {
+      throw APIError.invalidArgument("Check-in and checkout must be valid ISO dates.");
+    }
+
+    if (params.adults < 1) {
+      throw APIError.invalidArgument("At least one adult is required.");
+    }
+    if (params.children < 0) {
+      throw APIError.invalidArgument("Children count cannot be negative.");
+    }
+
+    const { listing } = await getListing({ id: params.listingId });
+    if (listing.status !== "active") {
+      throw APIError.failedPrecondition("Bookings can only be created for active listings.");
+    }
+    if (auth.userID === listing.hostId) {
       throw APIError.failedPrecondition("Hosts cannot create bookings for their own listings.");
     }
+    if (params.hostId && params.hostId !== listing.hostId) {
+      throw APIError.invalidArgument("Listing host information is invalid.");
+    }
+    if (params.adults > listing.adults || params.children > listing.children) {
+      throw APIError.failedPrecondition("Guest count exceeds listing capacity.");
+    }
+    if (bookingOverlapsBlockedDates(parsedCheckIn, parsedCheckOut, listing.blockedDates)) {
+      throw APIError.failedPrecondition("Selected dates are not available for this listing.");
+    }
+
+    const serverTotalPrice = computeBookingTotalPrice(listing.pricePerNight, parsedCheckIn, parsedCheckOut);
 
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -107,8 +161,8 @@ export const createBooking = api<CreateBookingParams, { booking: BookingRecord }
         total_price, status, created_at, updated_at
       )
       VALUES (
-        ${id}, ${params.listingId}, ${auth.userID}, ${params.hostId}, ${params.checkIn},
-        ${params.checkOut}, ${params.adults}, ${params.children}, ${params.totalPrice},
+        ${id}, ${params.listingId}, ${auth.userID}, ${listing.hostId}, ${params.checkIn},
+        ${params.checkOut}, ${params.adults}, ${params.children}, ${serverTotalPrice},
         ${"pending"}, ${now}, ${now}
       )
     `;
@@ -121,7 +175,7 @@ export const createBooking = api<CreateBookingParams, { booking: BookingRecord }
       payload: JSON.stringify({
         listingId: params.listingId,
         guestId: auth.userID,
-        hostId: params.hostId,
+        hostId: listing.hostId,
         status: "pending",
       }),
     });
@@ -131,12 +185,12 @@ export const createBooking = api<CreateBookingParams, { booking: BookingRecord }
         id,
         listingId: params.listingId,
         guestId: auth.userID,
-        hostId: params.hostId,
+        hostId: listing.hostId,
         checkIn: params.checkIn,
         checkOut: params.checkOut,
         adults: params.adults,
         children: params.children,
-        totalPrice: params.totalPrice,
+        totalPrice: serverTotalPrice,
         status: "pending",
         createdAt: now,
         updatedAt: now,

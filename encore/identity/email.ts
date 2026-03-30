@@ -4,6 +4,7 @@ const resendApiKey = secret("RESEND_API_KEY");
 const authEmailFrom = secret("AUTH_EMAIL_FROM");
 const authEmailReplyTo = secret("AUTH_EMAIL_REPLY_TO");
 const idealStayAppUrl = secret("IDEAL_STAY_APP_URL");
+const allowAuthEmailLogFallback = process.env.IDEAL_STAY_ALLOW_AUTH_EMAIL_LOG === "true";
 
 type AuthEmailKind = "verify_email" | "reset_password";
 
@@ -62,6 +63,11 @@ export async function sendAuthEmail(params: {
   const apiKey = resendApiKey();
   const from = authEmailFrom();
   if (!apiKey || !from) {
+    if (!allowAuthEmailLogFallback) {
+      throw new Error(
+        "Auth email transport is not configured. Set RESEND_API_KEY and AUTH_EMAIL_FROM, or explicitly enable local log fallback with IDEAL_STAY_ALLOW_AUTH_EMAIL_LOG=true.",
+      );
+    }
     console.log(`[auth-email:${params.kind}] ${params.to} -> ${link}`);
     return { delivery: "log" as const, link };
   }

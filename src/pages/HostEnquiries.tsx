@@ -7,6 +7,7 @@ import { MessageSquare, CheckCircle2, XCircle, Clock, CalendarDays, User } from 
 import { format } from 'date-fns';
 import { useNotifications } from '../context/NotificationContext';
 import { updateBookingStatus } from '@/lib/platform-client';
+import { formatRand } from '@/lib/currency';
 
 export default function HostEnquiries({ 
   bookings, 
@@ -88,7 +89,7 @@ export default function HostEnquiries({
                   
                   <div className="bg-surface-container-lowest p-4 rounded-lg border border-outline-variant">
                     <p className="text-sm font-medium text-on-surface-variant mb-1">Total Payout</p>
-                    <p className="text-2xl font-bold text-primary">${booking.totalPrice}</p>
+                    <p className="text-2xl font-bold text-primary">{formatRand(booking.totalPrice)}</p>
                   </div>
                 </div>
 

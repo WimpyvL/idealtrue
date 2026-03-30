@@ -67,6 +67,14 @@ interface UpsertProfileParams {
   paymentReferencePrefix?: string | null;
 }
 
+interface ReferralLeaderboardUser {
+  id: string;
+  displayName: string;
+  photoUrl: string | null;
+  tier: ReferralTier;
+  referralCount: number;
+}
+
 interface RequestProfilePhotoUploadParams {
   filename: string;
 }
@@ -164,6 +172,27 @@ function validatePassword(password: string | null | undefined) {
   if (!password || password.length < 8) {
     throw APIError.invalidArgument("Password must be at least 8 characters long.");
   }
+}
+
+function resolveSelfServiceRole(existingRole: UserRole, requestedRole?: UserRole) {
+  if (!requestedRole || requestedRole === existingRole) {
+    return existingRole;
+  }
+
+  const existingIsUserRole = existingRole === "guest" || existingRole === "host";
+  const requestedIsUserRole = requestedRole === "guest" || requestedRole === "host";
+  if (existingIsUserRole && requestedIsUserRole) {
+    return requestedRole;
+  }
+
+  throw APIError.permissionDenied("Self-service role updates can only switch between guest and host.");
+}
+
+function isDevLoginEnabled() {
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+  return process.env.IDEAL_STAY_DISABLE_DEV_LOGIN !== "true";
 }
 
 function mapUser(row: UserRow): UserProfile {
@@ -363,6 +392,10 @@ export const login = api<LoginParams, SessionResponse>(
 export const devLogin = api<DevLoginParams, DevLoginResponse>(
   { expose: true, method: "POST", path: "/auth/dev-login" },
   async (params) => {
+    if (!isDevLoginEnabled()) {
+      throw APIError.permissionDenied("Dev login is disabled in this environment.");
+    }
+
     const email = normalizeEmail(params.email);
     const existing = await identityDB.rawQueryRow<UserRow>(
       `${USER_SELECT} WHERE email = $1`,
@@ -371,6 +404,9 @@ export const devLogin = api<DevLoginParams, DevLoginResponse>(
 
     const now = new Date().toISOString();
     const role = params.role ?? "guest";
+    if (!["guest", "host"].includes(role)) {
+      throw APIError.invalidArgument("Dev login only supports guest or host roles.");
+    }
     let user: UserProfile;
 
     if (existing) {
@@ -543,9 +579,13 @@ export const upsertProfile = api<UpsertProfileParams, SessionResponse>(
     );
     if (!existing) throw APIError.notFound("User not found.");
 
-    const nextRole = params.role ?? existing.role;
-    const nextPlan = params.hostPlan ?? existing.host_plan;
-    const nextKyc = params.kycStatus ?? existing.kyc_status;
+    if (params.hostPlan !== undefined || params.kycStatus !== undefined) {
+      throw APIError.permissionDenied("Host plan and KYC status can only be changed by administrators.");
+    }
+
+    const nextRole = resolveSelfServiceRole(existing.role, params.role);
+    const nextPlan = existing.host_plan;
+    const nextKyc = existing.kyc_status;
     const nextDisplayName = params.displayName ?? existing.display_name;
     const nextPhoto = params.photoUrl ?? existing.photo_url;
     const nextReferredByCode = params.referredByCode ?? existing.referred_by_code;
@@ -587,15 +627,30 @@ export const upsertProfile = api<UpsertProfileParams, SessionResponse>(
   },
 );
 
-export const listReferralLeaderboard = api<void, { users: UserProfile[] }>(
+export const listReferralLeaderboard = api<void, { users: ReferralLeaderboardUser[] }>(
   { expose: true, method: "GET", path: "/users/leaderboard/referrals" },
   async () => {
-    const rows = await identityDB.queryAll<UserRow>`
-      SELECT * FROM users
+    const rows = await identityDB.queryAll<{
+      id: string;
+      display_name: string;
+      photo_url: string | null;
+      tier: ReferralTier;
+      referral_count: number;
+    }>`
+      SELECT id, display_name, photo_url, tier, referral_count
+      FROM users
       ORDER BY referral_count DESC, created_at ASC
       LIMIT 5
     `;
-    return { users: rows.map(mapUser) };
+    return {
+      users: rows.map((row) => ({
+        id: row.id,
+        displayName: row.display_name,
+        photoUrl: row.photo_url,
+        tier: row.tier,
+        referralCount: row.referral_count,
+      })),
+    };
   },
 );
 

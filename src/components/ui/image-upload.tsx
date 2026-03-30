@@ -39,23 +39,29 @@ export default function ImageUpload({ value, onChange, onRemove, listingId, maxF
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const file = files[0];
-    if (value.length >= maxFiles) {
+    const remainingSlots = maxFiles - value.length;
+    if (remainingSlots <= 0) {
       toast.error(`You can only upload up to ${maxFiles} images.`);
-      return;
-    }
-    if (!listingId) {
-      toast.error('Save the listing first so media can be attached to it.');
       return;
     }
 
     setIsUploading(true);
     try {
-      const publicUrl = await uploadListingMedia({
-        listingId,
-        file,
-      });
-      onChange([...value, publicUrl]);
+      const uploadQueue = Array.from(files).slice(0, remainingSlots);
+      if (uploadQueue.length < files.length) {
+        toast.message(`Only the first ${uploadQueue.length} image${uploadQueue.length === 1 ? '' : 's'} were added to stay within your limit.`);
+      }
+
+      const uploadedUrls: string[] = [];
+      for (const file of uploadQueue) {
+        const publicUrl = await uploadListingMedia({
+          listingId,
+          file,
+        });
+        uploadedUrls.push(publicUrl);
+      }
+
+      onChange([...value, ...uploadedUrls]);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -84,6 +90,7 @@ export default function ImageUpload({ value, onChange, onRemove, listingId, maxF
           <input
             type="file"
             accept="image/*"
+            multiple
             className="hidden"
             ref={fileInputRef}
             onChange={handleFileUpload}
@@ -149,7 +156,7 @@ export default function ImageUpload({ value, onChange, onRemove, listingId, maxF
         )}
       </div>
       <p className="text-xs text-on-surface-variant">
-        {value.length} / {maxFiles} images added. The first image will be used as the primary photo.
+        {value.length} / {maxFiles} images added. The first image will be used as the primary photo, and you can upload multiple files at once.
       </p>
     </div>
   );

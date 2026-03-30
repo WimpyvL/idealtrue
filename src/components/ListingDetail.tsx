@@ -11,6 +11,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DateRange } from 'react-day-picker';
 import { listListingReviews } from '@/lib/platform-client';
+import { formatRand } from '@/lib/currency';
 
 export default function ListingDetail({ 
   listing, 
@@ -28,6 +29,7 @@ export default function ListingDetail({
   const [reviewSummary, setReviewSummary] = useState('');
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   // Booking state
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -59,6 +61,10 @@ export default function ListingDetail({
     return () => {
       cancelled = true;
     };
+  }, [listing.id]);
+
+  useEffect(() => {
+    setSelectedImageIndex(0);
   }, [listing.id]);
 
   const handleSummarizeReviews = async () => {
@@ -93,6 +99,10 @@ export default function ListingDetail({
   const cleaningFee = 45;
   const subtotal = listing.pricePerNight * nights;
   const totalPrice = subtotal + (nights > 0 ? cleaningFee : 0);
+  const galleryImages = listing.images.length > 0
+    ? listing.images
+    : [`https://picsum.photos/seed/${listing.id}/1200/900`];
+  const selectedImage = galleryImages[Math.min(selectedImageIndex, galleryImages.length - 1)];
 
   const handleBookClick = async () => {
     if (!dateRange?.from || !dateRange?.to) {
@@ -127,11 +137,21 @@ export default function ListingDetail({
       
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
         {/* Images */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <img src={listing.images[0] || `https://picsum.photos/seed/${listing.id}/800/600`} className="w-full aspect-square md:aspect-video rounded-2xl object-cover" alt="" referrerPolicy="no-referrer" />
-          <div className="grid grid-cols-2 gap-4">
-            <img src={`https://picsum.photos/seed/${listing.id}1/400/300`} className="w-full aspect-square rounded-2xl object-cover" alt="" referrerPolicy="no-referrer" />
-            <img src={`https://picsum.photos/seed/${listing.id}2/400/300`} className="w-full aspect-square rounded-2xl object-cover" alt="" referrerPolicy="no-referrer" />
+        <div className="space-y-4">
+          <img src={selectedImage} className="w-full aspect-square md:aspect-video rounded-2xl object-cover" alt="" referrerPolicy="no-referrer" />
+          <div className="flex gap-3 overflow-x-auto pb-2">
+            {galleryImages.map((imageUrl, index) => (
+              <button
+                key={`${imageUrl}-${index}`}
+                type="button"
+                onClick={() => setSelectedImageIndex(index)}
+                className={`relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border transition-all ${
+                  selectedImageIndex === index ? 'border-primary ring-2 ring-primary/30' : 'border-outline-variant'
+                }`}
+              >
+                <img src={imageUrl} className="h-full w-full object-cover" alt="" referrerPolicy="no-referrer" />
+              </button>
+            ))}
           </div>
         </div>
 
@@ -233,7 +253,7 @@ export default function ListingDetail({
             <Card className="p-6 sticky top-24 shadow-[0_10px_40px_rgba(18,28,42,0.06)] border-outline-variant space-y-6">
               <div className="flex justify-between items-end">
                 <div>
-                  <span className="text-2xl font-bold">${listing.pricePerNight}</span>
+                  <span className="text-2xl font-bold">{formatRand(listing.pricePerNight)}</span>
                   <span className="text-on-surface-variant"> / night</span>
                 </div>
                 <div className="flex items-center gap-1 text-sm font-medium">
@@ -353,16 +373,16 @@ export default function ListingDetail({
               {nights > 0 && (
                 <div className="space-y-3 pt-4 border-t border-outline-variant">
                   <div className="flex justify-between text-on-surface-variant">
-                    <span className="underline">${listing.pricePerNight} x {nights} night{nights !== 1 ? 's' : ''}</span>
-                    <span>${subtotal}</span>
+                    <span className="underline">{formatRand(listing.pricePerNight)} x {nights} night{nights !== 1 ? 's' : ''}</span>
+                    <span>{formatRand(subtotal)}</span>
                   </div>
                   <div className="flex justify-between text-on-surface-variant">
                     <span className="underline">Cleaning fee</span>
-                    <span>${cleaningFee}</span>
+                    <span>{formatRand(cleaningFee)}</span>
                   </div>
                   <div className="flex justify-between font-bold text-lg pt-3 border-t border-outline-variant">
                     <span>Estimated Total</span>
-                    <span>${totalPrice}</span>
+                    <span>{formatRand(totalPrice)}</span>
                   </div>
                   <p className="text-[10px] text-outline-variant italic text-center">Final price and payment details will be provided by the host upon confirmation.</p>
                 </div>

@@ -82,6 +82,7 @@ import {
 } from '@/components/ui/dialog';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
+import { formatRand } from '@/lib/currency';
 
 // --- Mock Data for the Chart (since real data might be sparse) ---
 const chartData = [
@@ -676,7 +677,7 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-bold text-slate-900">${listing.pricePerNight}</p>
+                          <p className="text-sm font-bold text-slate-900">{formatRand(listing.pricePerNight)}</p>
                     <p className="text-[10px] text-slate-400 uppercase font-bold">Per Night</p>
                   </div>
                 </div>
@@ -763,7 +764,7 @@ export default function AdminDashboard() {
                     <td className="px-6 py-4">
                       <div className="text-xs space-y-1">
                         <p><span className="text-slate-400">Referrals:</span> {user.referralCount}</p>
-                        <p><span className="text-slate-400">Balance:</span> ${user.balance}</p>
+                    <p><span className="text-slate-400">Balance:</span> {formatRand(user.balance)}</p>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
@@ -881,7 +882,7 @@ export default function AdminDashboard() {
                         <p className="text-[10px] text-slate-400">{listing.hostUid.slice(0, 8)}...</p>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-sm font-bold">${listing.pricePerNight}</p>
+                          <p className="text-sm font-bold">{formatRand(listing.pricePerNight)}</p>
                       </td>
                       <td className="px-6 py-4">
                         <Badge variant={listing.status === 'active' ? 'success' : 'neutral'} className="text-[10px] uppercase">
@@ -999,7 +1000,7 @@ export default function AdminDashboard() {
                         </p>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-sm font-bold">${booking.totalPrice}</p>
+                    <p className="text-sm font-bold">{formatRand(booking.totalPrice)}</p>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <Badge variant={
@@ -1728,9 +1729,9 @@ export default function AdminDashboard() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Referral Reward Amount ($)</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase">Referral Reward Amount (R)</label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">R</span>
                   <Input 
                     type="number" 
                     className="pl-8"
@@ -1740,9 +1741,9 @@ export default function AdminDashboard() {
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Min. Withdrawal Amount ($)</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase">Min. Withdrawal Amount (R)</label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">R</span>
                   <Input 
                     type="number" 
                     className="pl-8"
@@ -2052,7 +2053,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Balance ($)</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">Balance (R)</label>
                   <Input 
                     type="number"
                     value={editingUser.balance} 
@@ -2092,7 +2093,7 @@ export default function AdminDashboard() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Price per Night ($)</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">Price per Night (R)</label>
                     <Input 
                       type="number"
                       value={editingListing.pricePerNight} 

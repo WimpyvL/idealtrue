@@ -18,7 +18,6 @@ export default function AccountPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isSwitchingRole, setIsSwitchingRole] = useState(false);
-  const [isMakingAdmin, setIsMakingAdmin] = useState(false);
   const [isSendingVerification, setIsSendingVerification] = useState(false);
   const [isKYCModalOpen, setIsKYCModalOpen] = useState(false);
   const [formData, setFormData] = useState({
@@ -94,27 +93,6 @@ export default function AccountPage() {
       console.error('Failed to switch role:', error);
     } finally {
       setIsSwitchingRole(false);
-    }
-  };
-
-  const handleMakeAdmin = async () => {
-    if (!user || !profile || profile.role === 'admin') return;
-
-    setIsMakingAdmin(true);
-    try {
-      await updateEncoreProfile({
-        role: 'admin',
-      });
-      await refreshProfile();
-      
-      toast({
-        title: "Admin access granted",
-        description: "You are now an administrator. You can access the Admin Dashboard from the navigation menu.",
-      });
-    } catch (error) {
-      console.error('Failed to grant admin role:', error);
-    } finally {
-      setIsMakingAdmin(false);
     }
   };
 
@@ -374,22 +352,11 @@ export default function AccountPage() {
               </div>
 
               <div className="pt-4 border-t border-outline-variant flex justify-between items-center">
-                {profile.role !== 'admin' ? (
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    className="text-amber-600 border-amber-200 hover:bg-amber-50"
-                    onClick={handleMakeAdmin}
-                    disabled={isMakingAdmin}
-                  >
-                    {isMakingAdmin ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Shield className="w-4 h-4 mr-2" />}
-                    Make me Admin
-                  </Button>
-                ) : (
+                {profile.role === 'admin' ? (
                   <Badge variant="success" className="flex items-center gap-1">
                     <Shield className="w-3 h-3" /> Administrator
                   </Badge>
-                )}
+                ) : <span />}
                 <Button type="submit" disabled={isSaving} className="min-w-[120px]">
                   {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                   Save Changes

@@ -4,6 +4,7 @@ import { Card } from '../components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { TrendingUp, Users, Calendar, DollarSign } from 'lucide-react';
 import { format, subDays, isAfter } from 'date-fns';
+import { formatRand } from '@/lib/currency';
 
 export default function HostReports({ bookings, listings }: { bookings: Booking[], listings: Listing[] }) {
   const confirmedBookings = bookings.filter(b => b.status === 'confirmed' || b.status === 'completed');
@@ -42,7 +43,7 @@ export default function HostReports({ bookings, listings }: { bookings: Booking[
           </div>
           <div>
             <p className="text-sm font-medium text-on-surface-variant">Total Revenue</p>
-            <p className="text-2xl font-bold">${totalRevenue.toLocaleString()}</p>
+            <p className="text-2xl font-bold">{formatRand(totalRevenue)}</p>
           </div>
         </Card>
         
@@ -52,7 +53,7 @@ export default function HostReports({ bookings, listings }: { bookings: Booking[
           </div>
           <div>
             <p className="text-sm font-medium text-on-surface-variant">30-Day Revenue</p>
-            <p className="text-2xl font-bold">${recentRevenue.toLocaleString()}</p>
+            <p className="text-2xl font-bold">{formatRand(recentRevenue)}</p>
           </div>
         </Card>
 
@@ -85,10 +86,10 @@ export default function HostReports({ bookings, listings }: { bookings: Booking[
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6b7280' }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280' }} tickFormatter={(value) => `$${value}`} dx={-10} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280' }} tickFormatter={(value) => `R${value}`} dx={-10} />
                 <Tooltip 
                   contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  formatter={(value: number) => [`$${value}`, 'Revenue']}
+                  formatter={(value: number) => [formatRand(value), 'Revenue']}
                 />
                 <Line type="monotone" dataKey="revenue" stroke="#2563eb" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
               </LineChart>
