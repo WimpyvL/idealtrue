@@ -19,46 +19,54 @@ export interface KycSubmissionAssets {
   selfieImageUrl: string;
 }
 
-async function uploadSigned(uploadUrl: string, blob: Blob, contentType: string) {
-  const response = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': contentType,
-    },
-    body: blob,
-  });
+async function blobToBase64(blob: Blob) {
+  const buffer = await blob.arrayBuffer();
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
 
-  if (!response.ok) {
-    throw new Error(`Upload failed with status ${response.status}`);
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, offset + chunkSize);
+    binary += String.fromCharCode(...chunk);
   }
+
+  return btoa(binary);
 }
 
 export async function uploadKycAsset(file: File) {
-  const signed = await encoreRequest<{ objectKey: string; uploadUrl: string }>(
-    '/ops/kyc/upload-url',
+  const dataBase64 = await blobToBase64(file);
+  const uploaded = await encoreRequest<{ objectKey: string }>(
+    '/ops/kyc/upload',
     {
       method: 'POST',
-      body: JSON.stringify({ filename: file.name, contentType: file.type || 'image/jpeg' }),
+      body: JSON.stringify({
+        filename: file.name,
+        contentType: file.type || 'image/jpeg',
+        dataBase64,
+      }),
     },
     { auth: true },
   );
-  await uploadSigned(signed.uploadUrl, file, file.type || 'image/jpeg');
-  return signed.objectKey;
+  return uploaded.objectKey;
 }
 
 export async function uploadKycDataUrl(filename: string, dataUrl: string) {
   const response = await fetch(dataUrl);
   const blob = await response.blob();
-  const signed = await encoreRequest<{ objectKey: string; uploadUrl: string }>(
-    '/ops/kyc/upload-url',
+  const dataBase64 = await blobToBase64(blob);
+  const uploaded = await encoreRequest<{ objectKey: string }>(
+    '/ops/kyc/upload',
     {
       method: 'POST',
-      body: JSON.stringify({ filename, contentType: blob.type || 'image/jpeg' }),
+      body: JSON.stringify({
+        filename,
+        contentType: blob.type || 'image/jpeg',
+        dataBase64,
+      }),
     },
     { auth: true },
   );
-  await uploadSigned(signed.uploadUrl, blob, blob.type || 'image/jpeg');
-  return signed.objectKey;
+  return uploaded.objectKey;
 }
 
 export async function submitKyc(params: {

@@ -1,4 +1,4 @@
-export const DEFAULT_ENCORE_API_URL = "http://127.0.0.1:4000";
+export const DEFAULT_ENCORE_API_URL = "https://staging-ideal-stay-online-gh5i.encr.app";
 export const TOKEN_STORAGE_KEY = "idealstay.encore.token";
 
 export function getEncoreApiUrl() {

@@ -75,6 +75,12 @@ interface RequestKycUploadParams {
   contentType: string;
 }
 
+interface UploadKycAssetParams {
+  filename: string;
+  contentType: string;
+  dataBase64: string;
+}
+
 type KycSubmissionRow = {
   id: string;
   user_id: string;
@@ -169,6 +175,23 @@ function sanitizeKycFilename(filename: string) {
   return normalized.slice(0, 120) || "kyc-upload.bin";
 }
 
+function decodeBase64Payload(dataBase64: string) {
+  const normalized = dataBase64.trim().replace(/^data:[^;]+;base64,/, "");
+  let buffer: Buffer;
+
+  try {
+    buffer = Buffer.from(normalized, "base64");
+  } catch {
+    throw APIError.invalidArgument("Invalid base64 upload payload.");
+  }
+
+  if (!buffer.length) {
+    throw APIError.invalidArgument("Upload payload cannot be empty.");
+  }
+
+  return buffer;
+}
+
 function validatePlatformSettings(settings: PlatformSettingsRecord) {
   if (!Number.isFinite(settings.referralRewardAmount) || settings.referralRewardAmount < 0) {
     throw APIError.invalidArgument("Referral reward amount must be zero or positive.");
@@ -203,6 +226,26 @@ export const requestKycUpload = api<RequestKycUploadParams, { objectKey: string;
     const objectKey = `${auth.userID}/${Date.now()}-${sanitizeKycFilename(filename)}`;
     const signed = await kycDocumentsBucket.signedUploadUrl(objectKey, { ttl: 900 });
     return { objectKey, uploadUrl: signed.url };
+  },
+);
+
+export const uploadKycAsset = api<UploadKycAssetParams, { objectKey: string }>(
+  { expose: true, method: "POST", path: "/ops/kyc/upload", auth: true },
+  async ({ filename, contentType, dataBase64 }) => {
+    const auth = requireRole("host", "admin");
+    if (!ALLOWED_KYC_CONTENT_TYPES.has(contentType)) {
+      throw APIError.invalidArgument("Unsupported KYC upload content type.");
+    }
+
+    const data = decodeBase64Payload(dataBase64);
+    const maxBytes = 7 * 1024 * 1024;
+    if (data.byteLength > maxBytes) {
+      throw APIError.invalidArgument("KYC upload exceeds the 7MB limit.");
+    }
+
+    const objectKey = `${auth.userID}/${Date.now()}-${sanitizeKycFilename(filename)}`;
+    await kycDocumentsBucket.upload(objectKey, data, { contentType });
+    return { objectKey };
   },
 );
 
