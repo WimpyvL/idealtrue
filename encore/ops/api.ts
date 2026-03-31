@@ -1,6 +1,15 @@
 import { api, APIError } from "encore.dev/api";
+import { Counter, Gauge, GaugeGroup } from "encore.dev/metrics";
 import { randomUUID } from "node:crypto";
+import { analyticsDB } from "../analytics/db";
+import { billingDB } from "../billing/db";
+import { bookingDB } from "../booking/db";
+import { catalogDB } from "../catalog/db";
+import { identityDB } from "../identity/db";
+import { messagingDB } from "../messaging/db";
 import { opsDB } from "./db";
+import { referralsDB } from "../referrals/db";
+import { reviewsDB } from "../reviews/db";
 import { kycDocumentsBucket } from "./storage";
 import { requireRole } from "../shared/auth";
 import { requireAuth } from "../shared/auth";
@@ -37,6 +46,25 @@ interface PlatformSettingsRecord {
   enableReferrals: boolean;
   maintenanceMode: boolean;
   updatedAt: string;
+}
+
+interface DatabaseObservabilityRecord {
+  name: string;
+  healthy: boolean;
+  latencyMs: number;
+}
+
+interface ObservabilitySnapshot {
+  checkedAt: string;
+  backendStartedAt: string;
+  uptimeSeconds: number;
+  averageDbPingMs: number;
+  healthyDatabases: number;
+  totalDatabases: number;
+  databases: DatabaseObservabilityRecord[];
+  encoreCloudTracingAvailable: true;
+  encoreCloudMetricsAvailable: true;
+  encoreCloudLogsAvailable: true;
 }
 
 interface UpdatePlatformSettingsParams {
@@ -121,6 +149,13 @@ const ALLOWED_KYC_CONTENT_TYPES = new Set([
   "image/webp",
   "image/heic",
 ]);
+
+const backendStartedAt = new Date();
+const observabilityChecks = new Counter("admin_observability_checks_total");
+const observabilityFailures = new Counter("admin_observability_check_failures_total");
+const observabilityDbPing = new GaugeGroup<{ database: string }>("admin_observability_db_ping_ms");
+const observabilityDbHealthy = new GaugeGroup<{ database: string }>("admin_observability_db_healthy");
+const observabilityUptime = new Gauge("admin_observability_uptime_seconds");
 
 function mapKycSubmission(row: KycSubmissionRow): KycSubmission {
   return {
@@ -210,6 +245,26 @@ function validatePlatformSettings(settings: PlatformSettingsRecord) {
   }
   if (!Number.isInteger(settings.maxGuestsPerListing) || settings.maxGuestsPerListing < 1) {
     throw APIError.invalidArgument("Maximum guests per listing must be at least one.");
+  }
+}
+
+async function measureDatabase(
+  name: string,
+  query: () => Promise<unknown>,
+): Promise<DatabaseObservabilityRecord> {
+  const startedAt = Date.now();
+
+  try {
+    await query();
+    const latencyMs = Date.now() - startedAt;
+    observabilityDbPing.with({ database: name }).set(latencyMs);
+    observabilityDbHealthy.with({ database: name }).set(1);
+    return { name, healthy: true, latencyMs };
+  } catch {
+    const latencyMs = Date.now() - startedAt;
+    observabilityDbPing.with({ database: name }).set(latencyMs);
+    observabilityDbHealthy.with({ database: name }).set(0);
+    return { name, healthy: false, latencyMs };
   }
 }
 
@@ -494,6 +549,54 @@ export const listMyNotifications = api<void, { notifications: NotificationRecord
     `;
 
     return { notifications: notifications.map(mapNotification) };
+  },
+);
+
+export const getAdminObservability = api<void, { snapshot: ObservabilitySnapshot }>(
+  { expose: true, method: "GET", path: "/ops/admin/observability", auth: true },
+  async () => {
+    requireRole("admin", "support");
+    observabilityChecks.increment();
+
+    const checkedAt = new Date();
+    const uptimeSeconds = Math.max(0, Math.floor((checkedAt.getTime() - backendStartedAt.getTime()) / 1000));
+    observabilityUptime.set(uptimeSeconds);
+
+    const databases = await Promise.all([
+      measureDatabase("analytics", () => analyticsDB.queryRow<{ ok: number }>`SELECT 1 AS ok`),
+      measureDatabase("billing", () => billingDB.queryRow<{ ok: number }>`SELECT 1 AS ok`),
+      measureDatabase("booking", () => bookingDB.queryRow<{ ok: number }>`SELECT 1 AS ok`),
+      measureDatabase("catalog", () => catalogDB.queryRow<{ ok: number }>`SELECT 1 AS ok`),
+      measureDatabase("identity", () => identityDB.queryRow<{ ok: number }>`SELECT 1 AS ok`),
+      measureDatabase("messaging", () => messagingDB.queryRow<{ ok: number }>`SELECT 1 AS ok`),
+      measureDatabase("ops", () => opsDB.queryRow<{ ok: number }>`SELECT 1 AS ok`),
+      measureDatabase("referrals", () => referralsDB.queryRow<{ ok: number }>`SELECT 1 AS ok`),
+      measureDatabase("reviews", () => reviewsDB.queryRow<{ ok: number }>`SELECT 1 AS ok`),
+    ]);
+
+    const healthyDatabases = databases.filter((database) => database.healthy).length;
+    if (healthyDatabases !== databases.length) {
+      observabilityFailures.increment();
+    }
+
+    const averageDbPingMs = databases.length
+      ? Math.round(databases.reduce((sum, database) => sum + database.latencyMs, 0) / databases.length)
+      : 0;
+
+    return {
+      snapshot: {
+        checkedAt: checkedAt.toISOString(),
+        backendStartedAt: backendStartedAt.toISOString(),
+        uptimeSeconds,
+        averageDbPingMs,
+        healthyDatabases,
+        totalDatabases: databases.length,
+        databases,
+        encoreCloudTracingAvailable: true,
+        encoreCloudMetricsAvailable: true,
+        encoreCloudLogsAvailable: true,
+      },
+    };
   },
 );
 

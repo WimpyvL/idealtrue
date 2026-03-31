@@ -46,6 +46,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { Listing, Booking, UserProfile, Referral, Review, Subscription, Notification, PlatformSettings } from '@/types';
 import {
+  type AdminObservabilitySnapshot,
   type AdminCheckout,
   createAdminNotification,
   createAdminReferralReward,
@@ -53,6 +54,7 @@ import {
   deleteAdminReferralReward,
   deleteAdminReview,
   deleteAdminUser,
+  getAdminObservability,
   getAdminPlatformSettings,
   listAdminBookings,
   listAdminCheckouts,
@@ -156,6 +158,7 @@ export default function AdminDashboard() {
   const [allCheckouts, setAllCheckouts] = useState<AdminCheckout[]>([]);
   const [allNotifications, setAllNotifications] = useState<Notification[]>([]);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings | null>(null);
+  const [observability, setObservability] = useState<AdminObservabilitySnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [manualReferrerEmail, setManualReferrerEmail] = useState('');
@@ -212,6 +215,20 @@ export default function AdminDashboard() {
     </button>
   );
 
+  const formatUptime = (uptimeSeconds: number) => {
+    const days = Math.floor(uptimeSeconds / 86400);
+    const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+    const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+
+    if (days > 0) {
+      return `${days}d ${hours}h`;
+    }
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+    return `${minutes}m`;
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -225,7 +242,8 @@ export default function AdminDashboard() {
       listAdminCheckouts(),
       listAdminNotifications(),
       getAdminPlatformSettings(),
-    ]).then(([users, listings, bookings, reviews, referrals, subscriptions, checkouts, notifications, settings]) => {
+      getAdminObservability(),
+    ]).then(([users, listings, bookings, reviews, referrals, subscriptions, checkouts, notifications, settings, observabilitySnapshot]) => {
       if (cancelled) return;
 
       setAllUsers(users);
@@ -237,6 +255,7 @@ export default function AdminDashboard() {
       setAllCheckouts(checkouts);
       setAllNotifications(notifications);
       setPlatformSettings(settings);
+      setObservability(observabilitySnapshot);
       setRecentEnquiries([...bookings].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5));
       setTopListings([...listings].filter((listing) => listing.status === 'active').slice(0, 5));
       setStats({
@@ -707,35 +726,55 @@ export default function AdminDashboard() {
              
             <div className="space-y-6">
               <div className="space-y-2 rounded-2xl border border-slate-800 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Live signals</p>
-                <p className="text-2xl font-bold">{allNotifications.length}</p>
-                <p className="text-sm text-slate-300">Stored admin notifications</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Backend uptime</p>
+                <p className="text-2xl font-bold">{observability ? formatUptime(observability.uptimeSeconds) : '...'}</p>
+                <p className="text-sm text-slate-300">
+                  {observability ? `Checked ${format(new Date(observability.checkedAt), 'MMM d, HH:mm')}` : 'Waiting for health snapshot'}
+                </p>
               </div>
               <div className="space-y-2 rounded-2xl border border-slate-800 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Manual review queue</p>
-                <p className="text-2xl font-bold">{pendingKycCount}</p>
-                <p className="text-sm text-slate-300">KYC submissions waiting on human review</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Database health</p>
+                <p className="text-2xl font-bold">
+                  {observability ? `${observability.healthyDatabases}/${observability.totalDatabases}` : '...'}
+                </p>
+                <p className="text-sm text-slate-300">
+                  {observability ? `${observability.averageDbPingMs}ms average ping across Encore databases` : 'Waiting for database checks'}
+                </p>
               </div>
               <div className="space-y-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">Frontend telemetry</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">Observability coverage</p>
                 <p className="text-sm text-emerald-100">
-                  Vercel Web Analytics is now wired into the frontend. Traffic and pageview telemetry live in the
-                  Vercel dashboard instead of being guessed at from UI behavior.
+                  Vercel Web Analytics is live for frontend traffic, and Encore Cloud already gives us tracing, metrics,
+                  and logs for the backend outside this admin panel.
                 </p>
               </div>
-              <div className="space-y-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-amber-300">Backend observability gap</p>
-                <p className="text-sm text-amber-100">
-                  Uptime, latency, database load, and error-rate metrics are still not wired into this repo. Infra
-                  health is still unknown until real backend observability is connected.
-                </p>
+              <div className="space-y-3 rounded-2xl border border-slate-800 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Database probes</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(observability?.databases || []).map((database) => (
+                    <div key={database.name} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">{database.name}</span>
+                        <span className={cn(
+                          'text-[10px] font-bold uppercase tracking-wider',
+                          database.healthy ? 'text-emerald-300' : 'text-red-300',
+                        )}>
+                          {database.healthy ? 'Healthy' : 'Down'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">{database.latencyMs}ms ping</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
             <div className="pt-4 border-t border-slate-800">
               <div className="flex items-center gap-3">
                 <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                <span className="text-xs font-medium text-slate-300">Frontend analytics are live. Backend observability still needs real wiring.</span>
+                <span className="text-xs font-medium text-slate-300">
+                  The admin panel now shows a real backend health snapshot. Deep traces and runtime metrics still live in Encore Cloud.
+                </span>
               </div>
             </div>
           </Card>

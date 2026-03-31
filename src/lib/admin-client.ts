@@ -124,6 +124,25 @@ export interface AdminCheckout {
   updated_at: string;
 }
 
+export interface AdminObservabilityDatabase {
+  name: string;
+  healthy: boolean;
+  latencyMs: number;
+}
+
+export interface AdminObservabilitySnapshot {
+  checkedAt: string;
+  backendStartedAt: string;
+  uptimeSeconds: number;
+  averageDbPingMs: number;
+  healthyDatabases: number;
+  totalDatabases: number;
+  databases: AdminObservabilityDatabase[];
+  encoreCloudTracingAvailable: boolean;
+  encoreCloudMetricsAvailable: boolean;
+  encoreCloudLogsAvailable: boolean;
+}
+
 interface EncoreSubscription {
   id: string;
   user_id: string;
@@ -416,6 +435,15 @@ export async function listAdminCheckouts() {
 export async function listAdminNotifications() {
   const response = await encoreRequest<{ notifications: EncoreNotification[] }>('/ops/admin/notifications', {}, { auth: true });
   return response.notifications.map(mapNotification);
+}
+
+export async function getAdminObservability() {
+  const response = await encoreRequest<{ snapshot: AdminObservabilitySnapshot }>(
+    '/ops/admin/observability',
+    {},
+    { auth: true },
+  );
+  return response.snapshot;
 }
 
 export async function createAdminNotification(params: {
