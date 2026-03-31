@@ -154,7 +154,7 @@ export default function AdminDashboard() {
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [editingListing, setEditingListing] = useState<Listing | null>(null);
   const [kycSubmissions, setKycSubmissions] = useState<KycSubmission[]>([]);
-  const [kycFilter, setKycFilter] = useState<'all' | 'pending' | 'verified' | 'rejected'>('all');
+  const [kycFilter, setKycFilter] = useState<'all' | 'pending' | 'verified' | 'rejected'>('pending');
   const [viewingKYCSubmission, setViewingKYCSubmission] = useState<KycReviewState | null>(null);
   const [kycAssetsLoading, setKycAssetsLoading] = useState(false);
   const [rejectingKycSubmission, setRejectingKycSubmission] = useState<KycReviewState | null>(null);
