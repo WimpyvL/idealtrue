@@ -6,7 +6,9 @@
 	"global_cors": {
 		"allow_origins_with_credentials": [
 			"http://localhost:3000",
-			"http://127.0.0.1:3000"
+			"http://127.0.0.1:3000",
+			"https://ideal-stay.vercel.app",
+			"https://ideal-stay-mobmc3b3o-loop69.vercel.app"
 		]
 	}
 }

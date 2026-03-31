@@ -24,12 +24,17 @@ export const NotificationProvider = ({ children, user }: { children: React.React
 
   useEffect(() => {
     const token = getEncoreSessionToken();
-    if (!user || !token) {
+    const env = (import.meta as any).env ?? {};
+    const explicitSocketUrl = typeof env.VITE_SOCKET_SERVER_URL === 'string' ? env.VITE_SOCKET_SERVER_URL.trim() : '';
+    const allowImplicitLocalSocket = !!env.DEV;
+    const socketUrl = explicitSocketUrl || (allowImplicitLocalSocket ? window.location.origin : '');
+
+    if (!user || !token || !socketUrl) {
       setSocket(null);
       return;
     }
 
-    const newSocket = io({
+    const newSocket = io(socketUrl, {
       auth: {
         token,
       },
@@ -45,7 +50,7 @@ export const NotificationProvider = ({ children, user }: { children: React.React
     });
 
     newSocket.on('connect_error', (error) => {
-      console.error('Socket connection failed:', error);
+      console.error(`Socket connection failed for ${socketUrl}:`, error);
     });
 
     return () => {

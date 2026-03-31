@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -80,7 +80,9 @@ export default function SignupPage() {
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+
     if (isResetPasswordMode) {
       if (!password.trim() || password !== confirmPassword) {
         toast.error('Passwords do not match.');
@@ -199,6 +201,7 @@ export default function SignupPage() {
         </div>
         )}
 
+        <form className="space-y-8" onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 text-left">
           {isSignupMode && !isResetPasswordMode && (
             <div className="space-y-2">
@@ -305,6 +308,7 @@ export default function SignupPage() {
 
         <div className="pt-8 flex flex-col items-center space-y-4">
           <Button 
+            type="submit"
             size="lg" 
             className="w-full max-w-sm h-14 text-lg font-bold rounded-2xl shadow-xl shadow-primary/20"
             disabled={
@@ -314,7 +318,6 @@ export default function SignupPage() {
               (isResetPasswordMode && !confirmPassword.trim()) ||
               isSubmitting
             }
-            onClick={handleSubmit}
           >
             {isSubmitting ? (
               <Loader2 className="w-6 h-6 animate-spin mr-2" />
@@ -346,6 +349,7 @@ export default function SignupPage() {
             </>
           )}
         </div>
+        </form>
       </div>
     </div>
   );
