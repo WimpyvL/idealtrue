@@ -13,6 +13,7 @@ interface EncoreUser {
   displayName: string;
   photoUrl?: string | null;
   role: EncoreUserRole;
+  isAdmin: boolean;
   hostPlan: EncoreHostPlan;
   kycStatus: EncoreKycStatus;
   balance: number;
@@ -77,6 +78,7 @@ function mapEncoreUserToProfile(user: EncoreUser): UserProfile {
     emailVerified: user.emailVerified,
     photoURL: user.photoUrl || '',
     role: user.role,
+    isAdmin: user.isAdmin,
     referralCode: user.referralCode || '',
     referredBy: user.referredByCode || null,
     balance: user.balance,

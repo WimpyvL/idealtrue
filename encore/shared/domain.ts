@@ -22,6 +22,7 @@ export interface UserProfile {
   displayName: string;
   photoUrl?: string | null;
   role: UserRole;
+  isAdmin: boolean;
   hostPlan: HostPlan;
   kycStatus: KycStatus;
   balance: number;

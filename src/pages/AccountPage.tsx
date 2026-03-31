@@ -66,7 +66,7 @@ export default function AccountPage() {
     }
   };
 
-  const handleRoleSwitch = async (newRole: 'guest' | 'host') => {
+  const handleRoleSwitch = async (newRole: 'guest' | 'host' | 'admin') => {
     if (!user || !profile || profile.role === newRole) return;
 
     setIsSwitchingRole(true);
@@ -78,9 +78,11 @@ export default function AccountPage() {
       
       toast({
         title: `Switched to ${newRole} mode`,
-        description: newRole === 'host' 
-          ? "You are now in Host mode. Please complete your verification to start listing properties." 
-          : "You are now in Guest mode. You can explore and book accommodations.",
+        description: newRole === 'host'
+          ? "You are now in Host mode. Please complete your verification to start listing properties."
+          : newRole === 'admin'
+            ? "You are back in Admin mode."
+            : "You are now in Guest mode. You can explore and book accommodations.",
       });
 
       if (newRole === 'host' && effectiveKycStatus === 'none') {
@@ -288,7 +290,10 @@ export default function AccountPage() {
                   <div className="space-y-4 pt-4 border-t border-outline-variant">
                     <div className="space-y-1">
                       <Label>Account Mode</Label>
-                      <p className="text-xs text-on-surface-variant">Switch between Guest and Host modes to access different features.</p>
+                      <p className="text-xs text-on-surface-variant">
+                        Switch between Guest and Host modes to access different features.
+                        {profile.isAdmin ? ' Active admins can always switch back into Admin mode.' : ''}
+                      </p>
                     </div>
                     <div className="flex gap-4">
                       <Button 
@@ -316,6 +321,18 @@ export default function AccountPage() {
                         Host Mode
                       </Button>
                     </div>
+                    {profile.isAdmin && profile.role !== 'admin' && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="w-full rounded-2xl h-12 font-bold"
+                        onClick={() => handleRoleSwitch('admin')}
+                        disabled={isSwitchingRole}
+                      >
+                        {isSwitchingRole ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Shield className="w-4 h-4 mr-2" />}
+                        Return to Admin Mode
+                      </Button>
+                    )}
                   </div>
 
                   {profile.role === 'host' && (
@@ -358,9 +375,9 @@ export default function AccountPage() {
               </div>
 
               <div className="pt-4 border-t border-outline-variant flex justify-between items-center">
-                {profile.role === 'admin' ? (
+                {profile.isAdmin ? (
                   <Badge variant="success" className="flex items-center gap-1">
-                    <Shield className="w-3 h-3" /> Administrator
+                    <Shield className="w-3 h-3" /> {profile.role === 'admin' ? 'Administrator' : 'Admin Account'}
                   </Badge>
                 ) : <span />}
                 <Button type="submit" disabled={isSaving} className="min-w-[120px]">

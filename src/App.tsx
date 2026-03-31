@@ -181,6 +181,9 @@ function AppContent() {
   const isAdmin = useMemo(() => {
     return profile?.role === 'admin';
   }, [profile]);
+  const isAdminAccount = useMemo(() => {
+    return !!profile?.isAdmin;
+  }, [profile]);
 
   const isHostRoute = location.pathname.startsWith('/host');
   const isAdminRoute = location.pathname.startsWith('/admin');
@@ -218,6 +221,9 @@ function AppContent() {
                       )}
                       {isAdmin && (
                         <Link to="/admin" className={cn('text-sm font-medium', location.pathname.startsWith('/admin') ? 'text-on-surface' : 'text-on-surface-variant hover:text-on-surface')}>Admin Panel</Link>
+                      )}
+                      {isAdminAccount && !isAdmin && (
+                        <Link to="/account" className="text-sm font-medium text-primary hover:text-primary/80">Return to Admin</Link>
                       )}
                       <Link to="/guest" className={cn('text-sm font-medium', location.pathname === '/guest' ? 'text-on-surface' : 'text-on-surface-variant hover:text-on-surface')}>My Stays</Link>
                       <Link to="/referral" className={cn('text-sm font-medium', location.pathname === '/referral' ? 'text-on-surface' : 'text-on-surface-variant hover:text-on-surface')}>Rewards</Link>
@@ -288,6 +294,9 @@ function AppContent() {
                     )}
                     {isAdmin && (
                       <Link to="/admin" onClick={() => setIsMenuOpen(false)} className="text-2xl font-bold">Admin Panel</Link>
+                    )}
+                    {isAdminAccount && !isAdmin && (
+                      <Link to="/account" onClick={() => setIsMenuOpen(false)} className="text-2xl font-bold text-primary">Return to Admin</Link>
                     )}
                     <Link to="/guest" onClick={() => setIsMenuOpen(false)} className="text-2xl font-bold">My Stays</Link>
                     <Link to="/referral" onClick={() => setIsMenuOpen(false)} className="text-2xl font-bold">Rewards</Link>

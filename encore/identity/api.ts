@@ -102,6 +102,7 @@ type UserRow = {
   password_hash: string | null;
   photo_url: string | null;
   role: UserRole;
+  is_admin: boolean;
   host_plan: HostPlan;
   kyc_status: KycStatus;
   balance: number;
@@ -136,6 +137,7 @@ const USER_SELECT = `
     password_hash,
     photo_url,
     role,
+    is_admin,
     host_plan,
     kyc_status,
     balance,
@@ -174,14 +176,21 @@ function validatePassword(password: string | null | undefined) {
   }
 }
 
-function resolveSelfServiceRole(existingRole: UserRole, requestedRole?: UserRole) {
+function resolveSelfServiceRole(existingRole: UserRole, isAdmin: boolean, requestedRole?: UserRole) {
   if (!requestedRole || requestedRole === existingRole) {
     return existingRole;
   }
 
+  if (requestedRole === "admin") {
+    if (isAdmin) {
+      return "admin";
+    }
+    throw APIError.permissionDenied("Only active admins can switch back into admin mode.");
+  }
+
   const existingIsUserRole = existingRole === "guest" || existingRole === "host";
   const requestedIsUserRole = requestedRole === "guest" || requestedRole === "host";
-  if (existingIsUserRole && requestedIsUserRole) {
+  if ((existingIsUserRole || isAdmin || existingRole === "admin") && requestedIsUserRole) {
     return requestedRole;
   }
 
@@ -203,6 +212,7 @@ function mapUser(row: UserRow): UserProfile {
     displayName: row.display_name,
     photoUrl: row.photo_url,
     role: row.role,
+    isAdmin: row.is_admin,
     hostPlan: row.host_plan,
     kycStatus: row.kyc_status,
     balance: row.balance,
@@ -312,10 +322,10 @@ export const signup = api<SignupParams, SessionResponse>(
 
     await identityDB.exec`
       INSERT INTO users (
-        id, email, email_verified, display_name, password_hash, photo_url, role, host_plan, kyc_status, balance, referral_count, tier, referral_code, referred_by_code, last_login_at, created_at, updated_at
+        id, email, email_verified, display_name, password_hash, photo_url, role, is_admin, host_plan, kyc_status, balance, referral_count, tier, referral_code, referred_by_code, last_login_at, created_at, updated_at
       )
       VALUES (
-        ${id}, ${email}, ${false}, ${params.displayName}, ${passwordHash}, ${params.photoUrl ?? null}, ${role}, ${"standard"}, ${"none"}, ${0}, ${0}, ${"bronze"}, ${referralCode}, ${params.referredByCode ?? null}, ${now}, ${now}, ${now}
+        ${id}, ${email}, ${false}, ${params.displayName}, ${passwordHash}, ${params.photoUrl ?? null}, ${role}, ${false}, ${"standard"}, ${"none"}, ${0}, ${0}, ${"bronze"}, ${referralCode}, ${params.referredByCode ?? null}, ${now}, ${now}, ${now}
       )
     `;
 
@@ -326,6 +336,7 @@ export const signup = api<SignupParams, SessionResponse>(
       displayName: params.displayName,
       photoUrl: params.photoUrl ?? null,
       role,
+      isAdmin: false,
       hostPlan: "standard",
       kycStatus: "none",
       balance: 0,
@@ -415,6 +426,7 @@ export const devLogin = api<DevLoginParams, DevLoginResponse>(
         SET display_name = ${params.displayName},
             photo_url = ${params.photoUrl ?? existing.photo_url},
             role = ${role},
+            is_admin = CASE WHEN ${role} = ${"admin"} THEN true ELSE is_admin END,
             email_verified = ${true},
             referred_by_code = COALESCE(${params.referredByCode ?? null}, referred_by_code),
             payment_method = ${existing.payment_method},
@@ -429,6 +441,7 @@ export const devLogin = api<DevLoginParams, DevLoginResponse>(
         display_name: params.displayName,
         photo_url: params.photoUrl ?? existing.photo_url,
         role,
+        is_admin: role === "admin" ? true : existing.is_admin,
         email_verified: true,
         referred_by_code: params.referredByCode ?? existing.referred_by_code,
         updated_at: now,
@@ -438,10 +451,10 @@ export const devLogin = api<DevLoginParams, DevLoginResponse>(
       const referralCode = `${makeReferralCode(email)}${Math.floor(Math.random() * 900 + 100)}`;
       await identityDB.exec`
         INSERT INTO users (
-          id, email, email_verified, display_name, photo_url, role, host_plan, kyc_status, balance, referral_count, tier, referral_code, referred_by_code, created_at, updated_at
+          id, email, email_verified, display_name, photo_url, role, is_admin, host_plan, kyc_status, balance, referral_count, tier, referral_code, referred_by_code, created_at, updated_at
         )
         VALUES (
-        ${id}, ${email}, ${true}, ${params.displayName}, ${params.photoUrl ?? null}, ${role}, ${"standard"}, ${"none"}, ${0}, ${0}, ${"bronze"}, ${referralCode}, ${params.referredByCode ?? null}, ${now}, ${now}
+        ${id}, ${email}, ${true}, ${params.displayName}, ${params.photoUrl ?? null}, ${role}, ${false}, ${"standard"}, ${"none"}, ${0}, ${0}, ${"bronze"}, ${referralCode}, ${params.referredByCode ?? null}, ${now}, ${now}
         )
       `;
       user = {
@@ -451,7 +464,8 @@ export const devLogin = api<DevLoginParams, DevLoginResponse>(
         displayName: params.displayName,
         photoUrl: params.photoUrl ?? null,
         role,
-      hostPlan: "standard",
+        isAdmin: false,
+        hostPlan: "standard",
         kycStatus: "none",
         balance: 0,
         referralCount: 0,
@@ -583,7 +597,7 @@ export const upsertProfile = api<UpsertProfileParams, SessionResponse>(
       throw APIError.permissionDenied("Host plan and KYC status can only be changed by administrators.");
     }
 
-    const nextRole = resolveSelfServiceRole(existing.role, params.role);
+    const nextRole = resolveSelfServiceRole(existing.role, existing.is_admin, params.role);
     const nextPlan = existing.host_plan;
     const nextKyc = existing.kyc_status;
     const nextDisplayName = params.displayName ?? existing.display_name;
@@ -597,8 +611,8 @@ export const upsertProfile = api<UpsertProfileParams, SessionResponse>(
     await identityDB.exec`
       UPDATE users
       SET display_name = ${nextDisplayName},
-          photo_url = ${nextPhoto},
-          role = ${nextRole},
+      photo_url = ${nextPhoto},
+      role = ${nextRole},
           host_plan = ${nextPlan},
           kyc_status = ${nextKyc},
           referred_by_code = ${nextReferredByCode},
@@ -614,6 +628,7 @@ export const upsertProfile = api<UpsertProfileParams, SessionResponse>(
       display_name: nextDisplayName,
       photo_url: nextPhoto,
       role: nextRole,
+      is_admin: existing.is_admin,
       host_plan: nextPlan,
       kyc_status: nextKyc,
       referred_by_code: nextReferredByCode,
@@ -690,6 +705,7 @@ export const adminUpdateUser = api<AdminUpdateUserParams, { user: UserProfile }>
 
     const nextDisplayName = params.displayName ?? existing.display_name;
     const nextRole = params.role ?? existing.role;
+    const nextIsAdmin = nextRole === "admin" ? true : existing.is_admin;
     const nextHostPlan = params.hostPlan ?? existing.host_plan;
     const nextKycStatus = params.kycStatus ?? existing.kyc_status;
     const nextBalance = params.balance ?? existing.balance;
@@ -700,6 +716,7 @@ export const adminUpdateUser = api<AdminUpdateUserParams, { user: UserProfile }>
       UPDATE users
       SET display_name = ${nextDisplayName},
           role = ${nextRole},
+          is_admin = ${nextIsAdmin},
           host_plan = ${nextHostPlan},
           kyc_status = ${nextKycStatus},
           balance = ${nextBalance},
@@ -713,6 +730,7 @@ export const adminUpdateUser = api<AdminUpdateUserParams, { user: UserProfile }>
         ...existing,
         display_name: nextDisplayName,
         role: nextRole,
+        is_admin: nextIsAdmin,
         host_plan: nextHostPlan,
         kyc_status: nextKycStatus,
         balance: nextBalance,

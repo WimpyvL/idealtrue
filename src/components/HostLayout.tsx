@@ -26,7 +26,7 @@ import NotificationBell from './NotificationBell';
 export default function HostLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout } = useAuth();
+  const { logout, profile } = useAuth();
   const [openGroups, setOpenGroups] = useState<string[]>(['Hospitality Management', 'Social Media', 'Referral System']);
 
   const toggleGroup = (groupName: string) => {
@@ -175,6 +175,11 @@ export default function HostLayout() {
           </div>
           
           <div className="flex items-center gap-6">
+            {profile?.isAdmin && profile.role !== 'admin' && (
+              <Button variant="secondary" className="rounded-full px-6 font-medium" onClick={() => navigate('/account')}>
+                Return to Admin
+              </Button>
+            )}
             <Button variant="outline" className="rounded-full px-6 font-medium" onClick={() => navigate('/')}>
               Switch to Marketplace
             </Button>

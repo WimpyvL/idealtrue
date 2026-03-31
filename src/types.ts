@@ -9,6 +9,7 @@ export interface UserProfile {
   emailVerified?: boolean;
   photoURL: string;
   role: UserRole;
+  isAdmin?: boolean;
   referralCode: string;
   referredBy?: string | null;
   balance: number;

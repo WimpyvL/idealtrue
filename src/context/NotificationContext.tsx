@@ -118,6 +118,9 @@ export const NotificationProvider = ({ children, user }: { children: React.React
         setNotifications((current) => mergeNotifications(current, fetchedNotifications));
       })
       .catch((error) => {
+        if (error instanceof Error && error.message.includes('"code":"not_found"')) {
+          return;
+        }
         console.error('Failed to load notifications:', error);
       });
 

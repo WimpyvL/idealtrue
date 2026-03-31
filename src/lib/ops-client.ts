@@ -156,7 +156,11 @@ export async function submitKyc(params: {
     '/ops/kyc/submissions',
     {
       method: 'POST',
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        idImageKey: '',
+        selfieImageKey: '',
+        ...params,
+      }),
     },
     { auth: true },
   );
