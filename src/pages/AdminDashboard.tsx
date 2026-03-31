@@ -242,8 +242,7 @@ export default function AdminDashboard() {
       listAdminCheckouts(),
       listAdminNotifications(),
       getAdminPlatformSettings(),
-      getAdminObservability(),
-    ]).then(([users, listings, bookings, reviews, referrals, subscriptions, checkouts, notifications, settings, observabilitySnapshot]) => {
+    ]).then(([users, listings, bookings, reviews, referrals, subscriptions, checkouts, notifications, settings]) => {
       if (cancelled) return;
 
       setAllUsers(users);
@@ -255,7 +254,6 @@ export default function AdminDashboard() {
       setAllCheckouts(checkouts);
       setAllNotifications(notifications);
       setPlatformSettings(settings);
-      setObservability(observabilitySnapshot);
       setRecentEnquiries([...bookings].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5));
       setTopListings([...listings].filter((listing) => listing.status === 'active').slice(0, 5));
       setStats({
@@ -275,6 +273,23 @@ export default function AdminDashboard() {
       cancelled = true;
     };
   }, [toast]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getAdminObservability()
+      .then((snapshot) => {
+        if (cancelled) return;
+        setObservability(snapshot);
+      })
+      .catch((error) => {
+        console.error('Failed to load admin observability snapshot', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (profile?.role !== 'admin') return;
@@ -687,8 +702,8 @@ export default function AdminDashboard() {
                 <option>Last Year</option>
               </select>
             </div>
-            <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="h-[300px] w-full min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <BarChart data={platformGrowthData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis 

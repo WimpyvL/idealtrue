@@ -437,13 +437,20 @@ export async function listAdminNotifications() {
   return response.notifications.map(mapNotification);
 }
 
-export async function getAdminObservability() {
-  const response = await encoreRequest<{ snapshot: AdminObservabilitySnapshot }>(
-    '/ops/admin/observability',
-    {},
-    { auth: true },
-  );
-  return response.snapshot;
+export async function getAdminObservability(): Promise<AdminObservabilitySnapshot | null> {
+  try {
+    const response = await encoreRequest<{ snapshot: AdminObservabilitySnapshot }>(
+      '/ops/admin/observability',
+      {},
+      { auth: true },
+    );
+    return response.snapshot;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('"code":"not_found"')) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function createAdminNotification(params: {

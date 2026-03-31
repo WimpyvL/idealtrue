@@ -24,11 +24,18 @@ function mapNotification(notification: EncoreNotification): Notification {
 }
 
 export async function listMyNotifications() {
-  const response = await encoreRequest<{ notifications: EncoreNotification[] }>(
-    '/ops/my-notifications',
-    {},
-    { auth: true },
-  );
+  try {
+    const response = await encoreRequest<{ notifications: EncoreNotification[] }>(
+      '/ops/my-notifications',
+      {},
+      { auth: true },
+    );
 
-  return response.notifications.map(mapNotification);
+    return response.notifications.map(mapNotification);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('"code":"not_found"')) {
+      return [];
+    }
+    throw error;
+  }
 }
