@@ -154,11 +154,16 @@ export default function AdminDashboard() {
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [editingListing, setEditingListing] = useState<Listing | null>(null);
   const [kycSubmissions, setKycSubmissions] = useState<KycSubmission[]>([]);
+  const [kycFilter, setKycFilter] = useState<'all' | 'pending' | 'verified' | 'rejected'>('all');
   const [viewingKYCSubmission, setViewingKYCSubmission] = useState<KycReviewState | null>(null);
   const [kycAssetsLoading, setKycAssetsLoading] = useState(false);
   const [rejectingKycSubmission, setRejectingKycSubmission] = useState<KycReviewState | null>(null);
   const [kycRejectionReason, setKycRejectionReason] = useState('Documents were unclear or incomplete.');
   const [isRejectingKyc, setIsRejectingKyc] = useState(false);
+  const pendingKycCount = useMemo(
+    () => kycSubmissions.filter((submission) => submission.status === 'pending').length,
+    [kycSubmissions],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -411,8 +416,20 @@ export default function AdminDashboard() {
       setAllNotifications((current) => [notification, ...current]);
       toast({ title: "Verification Approved", description: "User has been verified." });
       setViewingKYCSubmission(null);
-      setKycSubmissions((current) => current.filter((submission) => submission.userId !== uid));
-    } catch (err) {
+        setKycSubmissions((current) =>
+          current.map((submission) =>
+            submission.userId === uid
+              ? {
+                  ...submission,
+                  status: 'verified',
+                  rejectionReason: null,
+                  reviewedAt: notification.createdAt,
+                  reviewerId: profile?.uid ?? submission.reviewerId ?? null,
+                }
+              : submission,
+          ),
+        );
+      } catch (err) {
       console.error('Failed to approve KYC submission', err);
       toast({ title: 'Approval failed', description: 'Could not approve this KYC submission.', variant: 'destructive' });
     }
@@ -444,8 +461,20 @@ export default function AdminDashboard() {
       toast({ title: "Verification Rejected", description: "User verification has been rejected." });
       setViewingKYCSubmission(null);
       setRejectingKycSubmission(null);
-      setKycSubmissions((current) => current.filter((submission) => submission.userId !== rejectingKycSubmission.userId));
-    } catch (err) {
+        setKycSubmissions((current) =>
+          current.map((submission) =>
+            submission.userId === rejectingKycSubmission.userId
+              ? {
+                  ...submission,
+                  status: 'rejected',
+                  rejectionReason: kycRejectionReason,
+                  reviewedAt: new Date().toISOString(),
+                  reviewerId: profile?.uid ?? submission.reviewerId ?? null,
+                }
+              : submission,
+          ),
+        );
+      } catch (err) {
       console.error('Failed to reject KYC submission', err);
       toast({ title: 'Rejection failed', description: 'Could not reject this KYC submission.', variant: 'destructive' });
     } finally {
@@ -626,7 +655,7 @@ export default function AdminDashboard() {
               </div>
               <div className="space-y-2 rounded-2xl border border-slate-800 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Manual review queue</p>
-                <p className="text-2xl font-bold">{kycSubmissions.length}</p>
+                <p className="text-2xl font-bold">{pendingKycCount}</p>
                 <p className="text-sm text-slate-300">KYC submissions waiting on human review</p>
               </div>
               <div className="space-y-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
@@ -1860,7 +1889,15 @@ export default function AdminDashboard() {
   };
 
   const renderKYC = () => {
-    const pendingKYC = kycSubmissions.filter((submission) => submission.status === 'pending');
+    const filteredKycSubmissions = kycFilter === 'all'
+      ? kycSubmissions
+      : kycSubmissions.filter((submission) => submission.status === kycFilter);
+    const kycCounts = {
+      all: kycSubmissions.length,
+      pending: kycSubmissions.filter((submission) => submission.status === 'pending').length,
+      verified: kycSubmissions.filter((submission) => submission.status === 'verified').length,
+      rejected: kycSubmissions.filter((submission) => submission.status === 'rejected').length,
+    };
 
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1871,6 +1908,29 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center gap-3">
+          {(['all', 'pending', 'verified', 'rejected'] as const).map((filter) => (
+            <button
+              key={filter}
+              onClick={() => setKycFilter(filter)}
+              className={cn(
+                "px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-2",
+                kycFilter === filter
+                  ? "bg-[#1a1c23] text-white"
+                  : "bg-white text-slate-500 border border-slate-200 hover:border-slate-300"
+              )}
+            >
+              <span className="capitalize">{filter}</span>
+              <span className={cn(
+                "text-[10px] px-1.5 py-0.5 rounded-full",
+                kycFilter === filter ? "bg-white/20" : "bg-slate-100"
+              )}>
+                {kycCounts[filter]}
+              </span>
+            </button>
+          ))}
+        </div>
+
         <Card className="overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -1879,22 +1939,23 @@ export default function AdminDashboard() {
                   <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">User</th>
                   <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ID Type</th>
                   <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ID Number</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Submitted</th>
                   <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {pendingKYC.length === 0 ? (
+                {filteredKycSubmissions.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-10 text-center text-slate-500">
-                      No pending verification requests.
+                    <td colSpan={6} className="px-6 py-10 text-center text-slate-500">
+                      No {kycFilter === 'all' ? '' : `${kycFilter} `}verification requests.
                     </td>
                   </tr>
                 ) : (
-                  pendingKYC.map((submission) => {
+                  filteredKycSubmissions.map((submission) => {
                     const user = allUsers.find((candidate) => candidate.uid === submission.userId);
                     return (
-                    <tr key={submission.id} className="hover:bg-slate-50 transition-colors">
+                      <tr key={submission.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <img src={user?.photoURL || 'https://placehold.co/80x80?text=User'} className="w-10 h-10 rounded-full border border-slate-100 object-cover" alt="" referrerPolicy="no-referrer" />
@@ -1909,12 +1970,26 @@ export default function AdminDashboard() {
                           {submission.idType.replace('_', ' ')}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4">
-                        <p className="text-sm font-medium">{submission.idNumber}</p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <p className="text-xs text-slate-500">
-                          {new Date(submission.submittedAt).toLocaleString()}
+                        <td className="px-6 py-4">
+                          <p className="text-sm font-medium">{submission.idNumber}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <Badge
+                            variant={
+                              submission.status === 'verified'
+                                ? 'success'
+                                : submission.status === 'rejected'
+                                  ? 'danger'
+                                  : 'warning'
+                            }
+                            className="text-[10px] uppercase"
+                          >
+                            {submission.status}
+                          </Badge>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-xs text-slate-500">
+                            {new Date(submission.submittedAt).toLocaleString()}
                         </p>
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -1927,22 +2002,24 @@ export default function AdminDashboard() {
                           >
                             <Eye className="w-3 h-3" /> Review
                           </Button>
+                            <Button 
+                              variant="default" 
+                              size="sm" 
+                              className="text-xs h-8 bg-green-600 hover:bg-green-700"
+                              onClick={() => handleApproveKYC(submission.userId)}
+                              disabled={submission.status !== 'pending'}
+                            >
+                              Approve
+                            </Button>
                           <Button 
-                            variant="default" 
-                            size="sm" 
-                            className="text-xs h-8 bg-green-600 hover:bg-green-700"
-                            onClick={() => handleApproveKYC(submission.userId)}
-                          >
-                            Approve
-                          </Button>
-                          <Button 
-                            variant="destructive" 
-                            size="sm" 
-                            className="text-xs h-8"
-                            onClick={() => openRejectKycDialog({ ...submission })}
-                          >
-                            Reject
-                          </Button>
+                              variant="destructive" 
+                              size="sm" 
+                              className="text-xs h-8"
+                              onClick={() => openRejectKycDialog({ ...submission })}
+                              disabled={submission.status !== 'pending'}
+                            >
+                              Reject
+                            </Button>
                         </div>
                       </td>
                     </tr>
