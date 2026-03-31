@@ -291,9 +291,10 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
           throw APIError.failedPrecondition("Archived listings cannot be reactivated by hosts.");
         }
 
-        const moderationLocked = existing.status === "pending" || existing.status === "rejected";
-        if (moderationLocked) {
-          nextStatus = existing.status;
+        if (existing.status === "pending") {
+          nextStatus = "pending";
+        } else if (existing.status === "rejected") {
+          nextStatus = "pending";
         } else if (!["active", "inactive", "archived"].includes(params.status)) {
           nextStatus = existing.status;
         }

@@ -108,11 +108,7 @@ function mapListing(listing: EncoreListing): Listing {
     rating: 0,
     reviews: 0,
     category: listing.category,
-    status: listing.status === 'draft' || listing.status === 'archived' || listing.status === 'rejected'
-      ? 'inactive'
-      : listing.status === 'active'
-        ? 'active'
-        : 'pending',
+    status: listing.status,
     createdAt: listing.createdAt,
     updatedAt: listing.updatedAt,
     coordinates: listing.latitude != null && listing.longitude != null

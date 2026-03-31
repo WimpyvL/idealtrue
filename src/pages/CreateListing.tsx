@@ -260,7 +260,7 @@ export default function CreateListing() {
         video_url: formData.video_url,
         is_occupied: formData.is_occupied,
         hostUid: user.uid,
-        status: 'active' as const,
+        status: 'pending' as const,
         category: parentCategory || "",
         rating: 0,
         reviews: 0,
@@ -863,11 +863,11 @@ export default function CreateListing() {
             {isSubmitting ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Publishing...
+                Submitting...
               </>
             ) : (
               <>
-                {step === totalSteps ? "Publish Listing" : "Next"}
+                {step === totalSteps ? "Submit for Approval" : "Next"}
                 {step !== totalSteps && <ChevronRight className="w-4 h-4 ml-2" />}
               </>
             )}
