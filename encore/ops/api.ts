@@ -20,6 +20,7 @@ interface NotificationRecord {
   message: string;
   type: "info" | "warning" | "success" | "error";
   target: string;
+  actionPath?: string | null;
   createdAt: string;
 }
 
@@ -95,6 +96,7 @@ type NotificationRow = {
   message: string;
   type: "info" | "warning" | "success" | "error";
   target: string;
+  action_path: string | null;
   created_at: string;
 };
 
@@ -143,6 +145,7 @@ function mapNotification(row: NotificationRow): NotificationRecord {
     message: row.message,
     type: row.type,
     target: row.target,
+    actionPath: row.action_path,
     createdAt: row.created_at,
   };
 }
@@ -461,8 +464,35 @@ export const listAdminNotifications = api<void, { notifications: NotificationRec
   async () => {
     requireRole("admin", "support");
     const notifications = await opsDB.rawQueryAll<NotificationRow>(
-      `SELECT id, title, message, type, target, created_at FROM notifications ORDER BY created_at DESC`,
+      `SELECT id, title, message, type, target, action_path, created_at FROM notifications ORDER BY created_at DESC`,
     );
+    return { notifications: notifications.map(mapNotification) };
+  },
+);
+
+export const listMyNotifications = api<void, { notifications: NotificationRecord[] }>(
+  { expose: true, method: "GET", path: "/ops/notifications", auth: true },
+  async () => {
+    const auth = requireAuth();
+    const audience = ["all", auth.userID];
+
+    if (auth.role === "host") {
+      audience.push("hosts");
+    }
+    if (auth.role === "guest") {
+      audience.push("guests");
+    }
+    if (auth.role === "admin") {
+      audience.push("admins");
+    }
+
+    const notifications = await opsDB.queryAll<NotificationRow>`
+      SELECT id, title, message, type, target, action_path, created_at
+      FROM notifications
+      WHERE target = ANY(${audience})
+      ORDER BY created_at DESC
+    `;
+
     return { notifications: notifications.map(mapNotification) };
   },
 );
@@ -472,15 +502,16 @@ export const createAdminNotification = api<{
   message: string;
   type: "info" | "warning" | "success" | "error";
   target: string;
+  actionPath?: string | null;
 }, { notification: NotificationRecord }>(
   { expose: true, method: "POST", path: "/ops/admin/notifications", auth: true },
-  async ({ title, message, type, target }) => {
+  async ({ title, message, type, target, actionPath }) => {
     requireRole("admin", "support");
     const id = randomUUID();
     const createdAt = new Date().toISOString();
     await opsDB.exec`
-      INSERT INTO notifications (id, title, message, type, target, created_at)
-      VALUES (${id}, ${title}, ${message}, ${type}, ${target}, ${createdAt})
+      INSERT INTO notifications (id, title, message, type, target, action_path, created_at)
+      VALUES (${id}, ${title}, ${message}, ${type}, ${target}, ${actionPath ?? null}, ${createdAt})
     `;
     return {
       notification: {
@@ -489,6 +520,7 @@ export const createAdminNotification = api<{
         message,
         type,
         target,
+        actionPath: actionPath ?? null,
         createdAt,
       },
     };

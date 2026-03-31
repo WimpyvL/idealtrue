@@ -126,6 +126,7 @@ export interface Notification {
   message: string;
   type: 'info' | 'warning' | 'success' | 'error';
   target: string;
+  actionPath?: string | null;
   createdAt: string;
 }
 

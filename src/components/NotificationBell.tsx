@@ -1,16 +1,61 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Bell, MessageSquare, Calendar, Info, X, Trash2 } from 'lucide-react';
-import { useNotifications } from '../context/NotificationContext';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Bell, CheckCheck, Info, MessageSquare, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
+import { useNotifications } from '@/context/NotificationContext';
+import { useAuth } from '@/contexts/AuthContext';
+import type { Notification } from '@/types';
+import { cn } from '@/lib/utils';
+
+function getNotificationIcon(type: Notification['type']) {
+  switch (type) {
+    case 'success':
+      return <ShieldCheck className="w-4 h-4 text-green-600" />;
+    case 'warning':
+      return <TriangleAlert className="w-4 h-4 text-yellow-600" />;
+    case 'error':
+      return <Info className="w-4 h-4 text-red-600" />;
+    default:
+      return <MessageSquare className="w-4 h-4 text-primary" />;
+  }
+}
+
+function resolveNotificationPath(notification: Notification, role: string | undefined) {
+  if (notification.actionPath) {
+    return notification.actionPath;
+  }
+
+  if (notification.target !== 'all' && notification.target !== 'hosts' && notification.target !== 'guests' && notification.target !== 'admins') {
+    return '/account';
+  }
+
+  if (notification.target === 'hosts' || role === 'host') {
+    return '/host';
+  }
+
+  if (notification.target === 'guests' || role === 'guest') {
+    return '/guest';
+  }
+
+  if (notification.target === 'admins' || role === 'admin') {
+    return '/admin';
+  }
+
+  return null;
+}
 
 export default function NotificationBell() {
-  const { notifications, clearNotifications } = useNotifications();
-  const [isOpen, setIsOpen] = useState(false);
+  const navigate = useNavigate();
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { profile } = useAuth();
+  const { notifications, unreadCount, isNotificationRead, markNotificationRead, markAllNotificationsRead } = useNotifications();
+  const [isOpen, setIsOpen] = useState(false);
 
-  const unreadCount = notifications.length;
+  const sortedNotifications = useMemo(
+    () => [...notifications].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
+    [notifications],
+  );
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -18,30 +63,31 @@ export default function NotificationBell() {
         setIsOpen(false);
       }
     };
+
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const getIcon = (type: string) => {
-    switch (type) {
-      case 'chat_message': return <MessageSquare className="w-4 h-4 text-primary" />;
-      case 'booking_request': return <Calendar className="w-4 h-4 text-secondary" />;
-      case 'booking_update': return <Info className="w-4 h-4 text-tertiary" />;
-      default: return <Bell className="w-4 h-4 text-outline" />;
+  const handleNotificationClick = (notification: Notification) => {
+    markNotificationRead(notification.id);
+    setIsOpen(false);
+
+    const nextPath = resolveNotificationPath(notification, profile?.role);
+    if (nextPath) {
+      navigate(nextPath);
     }
   };
 
   return (
     <div className="relative" ref={dropdownRef}>
-      <button 
-        onClick={() => setIsOpen(!isOpen)}
+      <button
+        onClick={() => setIsOpen((current) => !current)}
         className="relative p-2 hover:bg-surface-container-high rounded-full transition-colors group"
+        aria-label="Open notifications"
       >
-        <Bell className={cn("w-5 h-5 transition-transform group-hover:scale-110", isOpen ? "text-primary" : "text-on-surface-variant")} />
+        <Bell className={cn('w-5 h-5 transition-transform group-hover:scale-110', isOpen ? 'text-primary' : 'text-on-surface-variant')} />
         {unreadCount > 0 && (
-          <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-error text-on-error text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-surface">
-            {unreadCount}
-          </span>
+          <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-error rounded-full ring-2 ring-surface" />
         )}
       </button>
 
@@ -51,62 +97,81 @@ export default function NotificationBell() {
             initial={{ opacity: 0, y: 10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="absolute right-0 mt-2 w-80 bg-surface-container-lowest rounded-2xl shadow-2xl border border-outline-variant z-50 overflow-hidden"
+            className="absolute right-0 mt-2 w-96 max-w-[calc(100vw-2rem)] bg-surface-container-lowest rounded-2xl shadow-2xl border border-outline-variant z-50 overflow-hidden"
           >
-            <div className="p-4 border-b border-outline-variant flex justify-between items-center bg-surface-container-low">
-              <h3 className="font-bold text-sm">Notifications</h3>
-              {notifications.length > 0 && (
-                <button 
-                  onClick={clearNotifications}
-                  className="text-[10px] uppercase tracking-wider font-bold text-error hover:text-error-container flex items-center gap-1 transition-colors"
+            <div className="p-4 border-b border-outline-variant flex items-center justify-between bg-surface-container-low">
+              <div>
+                <h3 className="font-bold text-sm">Notifications</h3>
+                <p className="text-xs text-on-surface-variant">
+                  {unreadCount > 0 ? `${unreadCount} new` : 'All caught up'}
+                </p>
+              </div>
+              {notifications.length > 0 && unreadCount > 0 && (
+                <button
+                  onClick={markAllNotificationsRead}
+                  className="text-[10px] uppercase tracking-wider font-bold text-primary hover:underline inline-flex items-center gap-1"
                 >
-                  <Trash2 className="w-3 h-3" />
-                  Clear All
+                  <CheckCheck className="w-3 h-3" />
+                  Mark all read
                 </button>
               )}
             </div>
 
             <div className="max-h-96 overflow-y-auto">
-              {notifications.length === 0 ? (
+              {sortedNotifications.length === 0 ? (
                 <div className="p-8 text-center">
                   <Bell className="w-8 h-8 text-outline-variant mx-auto mb-2 opacity-20" />
-                  <p className="text-xs text-on-surface-variant">No new notifications</p>
+                  <p className="text-xs text-on-surface-variant">No notifications yet.</p>
                 </div>
               ) : (
                 <div className="divide-y divide-outline-variant">
-                  {notifications.map((notif, idx) => (
-                    <div key={idx} className="p-4 hover:bg-surface-container-low transition-colors cursor-pointer group">
-                      <div className="flex gap-3">
-                        <div className="mt-1 shrink-0">
-                          {getIcon(notif.type)}
+                  {sortedNotifications.map((notification) => {
+                    const isUnread = !isNotificationRead(notification.id);
+
+                    return (
+                      <button
+                        key={notification.id}
+                        type="button"
+                        onClick={() => handleNotificationClick(notification)}
+                        className={cn(
+                          'w-full text-left p-4 hover:bg-surface-container-low transition-colors',
+                          isUnread ? 'bg-primary/5' : 'bg-transparent',
+                        )}
+                      >
+                        <div className="flex gap-3">
+                          <div className="mt-1 shrink-0">
+                            {getNotificationIcon(notification.type)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-on-surface leading-tight">
+                                  {notification.title}
+                                </p>
+                                <p className="text-sm text-on-surface-variant mt-1 leading-snug">
+                                  {notification.message}
+                                </p>
+                              </div>
+                              {isUnread && <span className="mt-1 w-2 h-2 rounded-full bg-primary shrink-0" />}
+                            </div>
+                            <div className="flex items-center justify-between gap-3 mt-2">
+                              <p className="text-[11px] text-outline-variant font-medium">
+                                {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
+                              </p>
+                              {resolveNotificationPath(notification, profile?.role) && (
+                                <span className="text-[10px] uppercase tracking-wider font-bold text-primary">
+                                  Open
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-on-surface leading-tight">
-                            {notif.message}
-                          </p>
-                          {notif.data?.text && (
-                            <p className="text-xs text-on-surface-variant mt-1 line-clamp-2 italic">
-                              "{notif.data.text}"
-                            </p>
-                          )}
-                          <p className="text-[10px] text-outline-variant mt-1 font-medium">
-                            Just now
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )).reverse()}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
-            
-            {notifications.length > 0 && (
-              <div className="p-3 bg-surface-container-low border-t border-outline-variant text-center">
-                <button className="text-[10px] uppercase tracking-widest font-bold text-primary hover:underline">
-                  View All Notifications
-                </button>
-              </div>
-            )}
           </motion.div>
         )}
       </AnimatePresence>

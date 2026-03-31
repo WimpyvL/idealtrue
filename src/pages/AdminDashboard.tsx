@@ -365,13 +365,20 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleSendNotification = async (title: string, message: string, type: Notification['type'], target: Notification['target']) => {
+  const handleSendNotification = async (
+    title: string,
+    message: string,
+    type: Notification['type'],
+    target: Notification['target'],
+    actionPath?: string | null,
+  ) => {
     try {
       const notification = await createAdminNotification({
         title,
         message,
         type,
         target,
+        actionPath: actionPath?.trim() || null,
       });
       setAllNotifications((current) => [notification, ...current]);
       toast({
@@ -423,6 +430,7 @@ export default function AdminDashboard() {
         message: 'Your profile has been updated by an administrator.',
         type: 'info',
         target: user.uid,
+        actionPath: '/account',
       });
       setAllNotifications((current) => [notification, ...current]);
       toast({ title: "User Updated", description: "User profile updated and notification sent." });
@@ -441,6 +449,7 @@ export default function AdminDashboard() {
         message: `Your listing "${listing.title}" has been updated by an administrator.`,
         type: 'info',
         target: listing.hostUid,
+        actionPath: '/host/listings',
       });
       setAllNotifications((current) => [notification, ...current]);
       toast({ title: "Listing Updated", description: "Listing updated and notification sent." });
@@ -459,6 +468,7 @@ export default function AdminDashboard() {
         message: 'Your identity verification has been approved. You can now start listing properties.',
         type: 'success',
         target: uid,
+        actionPath: '/account',
       });
       setAllNotifications((current) => [notification, ...current]);
       toast({ title: "Verification Approved", description: "User has been verified." });
@@ -503,6 +513,7 @@ export default function AdminDashboard() {
         message: 'Your identity verification was rejected. Please re-submit clearer documents.',
         type: 'error',
         target: rejectingKycSubmission.userId,
+        actionPath: '/account',
       });
       setAllNotifications((current) => [notification, ...current]);
       toast({ title: "Verification Rejected", description: "User verification has been rejected." });
@@ -1746,7 +1757,8 @@ export default function AdminDashboard() {
                 formData.get('title') as string,
                 formData.get('message') as string,
                 formData.get('type') as Notification['type'],
-                formData.get('target') as Notification['target']
+                formData.get('target') as Notification['target'],
+                (formData.get('actionPath') as string | null) || null,
               );
               (e.target as HTMLFormElement).reset();
             }}>
@@ -1782,6 +1794,11 @@ export default function AdminDashboard() {
                   </select>
                 </div>
               </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500 uppercase">Open Path</label>
+                <Input name="actionPath" placeholder="/host/listings" />
+                <p className="text-[11px] text-slate-400">Optional. Clicking the notification will open this route.</p>
+              </div>
               <Button type="submit" className="w-full gap-2">
                 <Send className="w-4 h-4" /> Send Notification
               </Button>
@@ -1811,6 +1828,7 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-2 mt-2">
                       <Badge variant="neutral" className="text-[9px] uppercase">{notif.target}</Badge>
                       <Badge variant="neutral" className="text-[9px] uppercase">{notif.type}</Badge>
+                      {notif.actionPath && <Badge variant="neutral" className="text-[9px]">{notif.actionPath}</Badge>}
                     </div>
                   </div>
                   <Button 

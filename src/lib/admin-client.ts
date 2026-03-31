@@ -142,6 +142,7 @@ interface EncoreNotification {
   message: string;
   type: 'info' | 'warning' | 'success' | 'error';
   target: string;
+  actionPath?: string | null;
   createdAt: string;
 }
 
@@ -297,6 +298,7 @@ function mapNotification(notification: EncoreNotification): Notification {
     message: notification.message,
     type: notification.type,
     target: notification.target,
+    actionPath: notification.actionPath || null,
     createdAt: notification.createdAt,
   };
 }
@@ -421,6 +423,7 @@ export async function createAdminNotification(params: {
   message: string;
   type: Notification['type'];
   target: Notification['target'];
+  actionPath?: string | null;
 }) {
   const response = await encoreRequest<{ notification: EncoreNotification }>(
     '/ops/admin/notifications',

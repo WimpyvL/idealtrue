@@ -10,7 +10,6 @@ import {
   Settings, 
   LogOut, 
   Menu, 
-  Bell, 
   Plus,
   ChevronDown,
   ChevronRight,
@@ -22,6 +21,7 @@ import {
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
+import NotificationBell from './NotificationBell';
 
 export default function HostLayout() {
   const navigate = useNavigate();
@@ -178,9 +178,7 @@ export default function HostLayout() {
             <Button variant="outline" className="rounded-full px-6 font-medium" onClick={() => navigate('/')}>
               Switch to Marketplace
             </Button>
-            <button className="text-on-surface-variant hover:text-on-surface">
-              <Bell className="w-5 h-5" />
-            </button>
+            <NotificationBell />
           </div>
         </header>
 
