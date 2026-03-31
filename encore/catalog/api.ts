@@ -86,6 +86,13 @@ interface UploadUrlParams {
   contentType: string;
 }
 
+interface UploadListingImageParams {
+  listingId?: string;
+  filename: string;
+  contentType: string;
+  dataBase64: string;
+}
+
 const ALLOWED_LISTING_MEDIA_CONTENT_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -94,6 +101,12 @@ const ALLOWED_LISTING_MEDIA_CONTENT_TYPES = new Set([
   "video/mp4",
   "video/webm",
   "video/quicktime",
+]);
+
+const ALLOWED_LISTING_IMAGE_CONTENT_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
 ]);
 
 function getMaxImagesForPlan(plan: HostAccessRow["host_plan"]) {
@@ -125,6 +138,23 @@ function sanitizeObjectFilename(filename: string) {
   const trimmed = filename.trim();
   const normalized = trimmed.replace(/[^a-zA-Z0-9._-]/g, "_");
   return normalized.slice(0, 120) || "upload.bin";
+}
+
+function decodeBase64Payload(dataBase64: string) {
+  const normalized = dataBase64.trim().replace(/^data:[^;]+;base64,/, "");
+  let buffer: Buffer;
+
+  try {
+    buffer = Buffer.from(normalized, "base64");
+  } catch {
+    throw APIError.invalidArgument("Invalid image upload payload.");
+  }
+
+  if (!buffer.length) {
+    throw APIError.invalidArgument("Image upload payload cannot be empty.");
+  }
+
+  return buffer;
 }
 
 function canReadUnpublishedListing(auth: AuthData | null, listingHostId: string) {
@@ -456,6 +486,45 @@ export const requestListingMediaUpload = api<UploadUrlParams, { objectKey: strin
     return {
       objectKey,
       uploadUrl: signed.url,
+      publicUrl: listingMediaBucket.publicUrl(objectKey),
+    };
+  },
+);
+
+export const uploadListingImage = api<UploadListingImageParams, { objectKey: string; publicUrl: string }>(
+  { expose: true, method: "POST", path: "/host/listings/media/images", auth: true },
+  async ({ listingId, filename, contentType, dataBase64 }) => {
+    const auth = requireRole("host", "admin");
+    if (!ALLOWED_LISTING_IMAGE_CONTENT_TYPES.has(contentType)) {
+      throw APIError.invalidArgument("Unsupported image type. Please upload JPG, PNG, or WEBP.");
+    }
+
+    if (listingId) {
+      const listing = await catalogDB.queryRow<ListingRow>`
+        SELECT * FROM listings WHERE id = ${listingId}
+      `;
+      if (!listing) throw APIError.notFound("Listing not found.");
+      if (listing.host_id !== auth.userID && auth.role !== "admin") {
+        throw APIError.permissionDenied("You cannot upload media for another host's listing.");
+      }
+    }
+
+    const imageData = decodeBase64Payload(dataBase64);
+    if (imageData.byteLength > 2 * 1024 * 1024) {
+      throw APIError.invalidArgument("Image is still too large after compression. Please use a smaller photo.");
+    }
+
+    const safeFilename = sanitizeObjectFilename(filename).replace(/\.[^.]+$/, "") || "listing-image";
+    const objectKey = listingId
+      ? `${listingId}/${Date.now()}-${safeFilename}.jpg`
+      : `drafts/${auth.userID}/${Date.now()}-${safeFilename}.jpg`;
+
+    await listingMediaBucket.upload(objectKey, imageData, {
+      contentType,
+    });
+
+    return {
+      objectKey,
       publicUrl: listingMediaBucket.publicUrl(objectKey),
     };
   },

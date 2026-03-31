@@ -2,8 +2,8 @@ import React, { useState, useRef } from 'react';
 import { Button } from './button';
 import { toast } from 'sonner';
 import { Input } from './input';
-import { X, Plus, Image as ImageIcon, Upload, Loader2, ChevronLeft, ChevronRight, Star } from 'lucide-react';
-import { uploadListingMedia } from '@/lib/media-client';
+import { X, Plus, Image as ImageIcon, Upload, Loader2, ChevronLeft, ChevronRight, Star, ImageUp } from 'lucide-react';
+import { uploadListingImage } from '@/lib/media-client';
 
 interface ImageUploadProps {
   value: string[];
@@ -16,6 +16,8 @@ interface ImageUploadProps {
 export default function ImageUpload({ value, onChange, onRemove, listingId, maxFiles = 5 }: ImageUploadProps) {
   const [url, setUrl] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [uploadLabel, setUploadLabel] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addImage = () => {
@@ -35,8 +37,7 @@ export default function ImageUpload({ value, onChange, onRemove, listingId, maxF
     onChange(newImages);
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
+  const handleFilesSelected = async (files: FileList | File[]) => {
     if (!files || files.length === 0) return;
 
     const remainingSlots = maxFiles - value.length;
@@ -53,31 +54,82 @@ export default function ImageUpload({ value, onChange, onRemove, listingId, maxF
       }
 
       const uploadedUrls: string[] = [];
-      for (const file of uploadQueue) {
-        const publicUrl = await uploadListingMedia({
+      for (let index = 0; index < uploadQueue.length; index += 1) {
+        const file = uploadQueue[index];
+        if (!file.type.startsWith('image/')) {
+          toast.error(`"${file.name}" is not an image file.`);
+          continue;
+        }
+
+        setUploadLabel(`Uploading ${index + 1} of ${uploadQueue.length}: ${file.name}`);
+        const publicUrl = await uploadListingImage({
           listingId,
           file,
         });
         uploadedUrls.push(publicUrl);
       }
 
-      onChange([...value, ...uploadedUrls]);
+      if (uploadedUrls.length > 0) {
+        onChange([...value, ...uploadedUrls]);
+        toast.success(`${uploadedUrls.length} photo${uploadedUrls.length === 1 ? '' : 's'} uploaded.`);
+      }
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     } catch (error) {
       console.error('Upload error:', error);
-      toast.error('Failed to upload image. Please try again.');
+      toast.error(error instanceof Error ? error.message : 'Failed to upload image. Please try again.');
     } finally {
       setIsUploading(false);
+      setUploadLabel(null);
     }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    await handleFilesSelected(e.target.files ?? []);
   };
 
   return (
     <div className="space-y-4">
+      <div
+        className={`rounded-2xl border-2 border-dashed p-5 transition-colors ${dragActive ? 'border-primary bg-primary/5' : 'border-outline-variant bg-surface-container-lowest'}`}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setDragActive(true);
+        }}
+        onDragLeave={() => setDragActive(false)}
+        onDrop={async (event) => {
+          event.preventDefault();
+          setDragActive(false);
+          await handleFilesSelected(event.dataTransfer.files);
+        }}
+      >
+        <div className="flex flex-col items-center justify-center gap-2 text-center">
+          <div className="w-12 h-12 rounded-full bg-surface flex items-center justify-center">
+            <ImageUp className="w-6 h-6 text-primary" />
+          </div>
+          <div className="space-y-1">
+            <p className="font-semibold text-on-surface">Drop photos here or browse</p>
+            <p className="text-sm text-on-surface-variant">
+              JPG, PNG, and WEBP work best. We compress photos automatically to make uploads less painful.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading || value.length >= maxFiles}
+          >
+            {isUploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+            Choose Photos
+          </Button>
+          {uploadLabel && <p className="text-xs text-on-surface-variant">{uploadLabel}</p>}
+        </div>
+      </div>
+
       <div className="flex gap-2">
         <Input
-          placeholder="Enter image URL..."
+          placeholder="Or paste an image URL if you already host it somewhere..."
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && addImage()}
@@ -96,7 +148,8 @@ export default function ImageUpload({ value, onChange, onRemove, listingId, maxF
             onChange={handleFileUpload}
             disabled={isUploading || value.length >= maxFiles}
           />
-          <Button 
+          <Button
+            type="button"
             variant="outline" 
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading || value.length >= maxFiles}
@@ -151,12 +204,12 @@ export default function ImageUpload({ value, onChange, onRemove, listingId, maxF
         {value.length === 0 && (
           <div className="col-span-full py-10 border-2 border-dashed border-outline-variant rounded-xl flex flex-col items-center justify-center text-outline-variant">
             <ImageIcon className="w-8 h-8 mb-2" />
-            <p className="text-sm">No images added yet</p>
+            <p className="text-sm">No photos added yet</p>
           </div>
         )}
       </div>
       <p className="text-xs text-on-surface-variant">
-        {value.length} / {maxFiles} images added. The first image will be used as the primary photo, and you can upload multiple files at once.
+        {value.length} / {maxFiles} photos added. The first photo is the primary image, and you can drag and drop or upload multiple files at once.
       </p>
     </div>
   );
