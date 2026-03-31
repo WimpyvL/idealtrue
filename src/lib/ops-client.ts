@@ -33,22 +33,111 @@ async function blobToBase64(blob: Blob) {
   return btoa(binary);
 }
 
-export async function serializeKycAsset(file: File) {
+function canvasToBlob(canvas: HTMLCanvasElement, quality: number) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('Could not encode image.'));
+        return;
+      }
+      resolve(blob);
+    }, 'image/jpeg', quality);
+  });
+}
+
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Could not load image.'));
+    image.src = src;
+  });
+}
+
+async function compressKycBlob(
+  blob: Blob,
+  {
+    maxWidth,
+    maxHeight,
+    maxBytes,
+  }: {
+    maxWidth: number;
+    maxHeight: number;
+    maxBytes: number;
+  },
+) {
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const image = await loadImage(objectUrl);
+    const scale = Math.min(1, maxWidth / image.naturalWidth, maxHeight / image.naturalHeight);
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+      throw new Error('Could not prepare image canvas.');
+    }
+
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+
+    let bestBlob: Blob | null = null;
+    for (const quality of [0.9, 0.82, 0.74, 0.66, 0.58, 0.5, 0.42]) {
+      const candidate = await canvasToBlob(canvas, quality);
+      bestBlob = candidate;
+      if (candidate.size <= maxBytes) {
+        return candidate;
+      }
+    }
+
+    if (!bestBlob) {
+      throw new Error('Could not compress image.');
+    }
+
+    if (bestBlob.size > maxBytes) {
+      throw new Error('Image is too large. Please use a smaller or clearer photo.');
+    }
+
+    return bestBlob;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function serializeKycBlob(
+  blob: Blob,
+  filename: string,
+  limits: { maxWidth: number; maxHeight: number; maxBytes: number },
+) {
+  const compressed = await compressKycBlob(blob, limits);
+  const safeFilename = filename.replace(/\.[^.]+$/, '') || 'kyc-upload';
   return {
-    filename: file.name,
-    contentType: file.type || 'image/jpeg',
-    dataBase64: await blobToBase64(file),
+    filename: `${safeFilename}.jpg`,
+    contentType: 'image/jpeg',
+    dataBase64: await blobToBase64(compressed),
   };
+}
+
+export async function serializeKycAsset(file: File) {
+  return serializeKycBlob(file, file.name, {
+    maxWidth: 1600,
+    maxHeight: 1600,
+    maxBytes: 320 * 1024,
+  });
 }
 
 export async function serializeKycDataUrl(filename: string, dataUrl: string) {
   const response = await fetch(dataUrl);
   const blob = await response.blob();
-  return {
-    filename,
-    contentType: blob.type || 'image/jpeg',
-    dataBase64: await blobToBase64(blob),
-  };
+  return serializeKycBlob(blob, filename, {
+    maxWidth: 1200,
+    maxHeight: 1200,
+    maxBytes: 220 * 1024,
+  });
 }
 
 export async function submitKyc(params: {

@@ -111,10 +111,10 @@ export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
+      if (file.size > 12 * 1024 * 1024) {
         toast({
           title: "File too large",
-          description: "Please upload an image smaller than 5MB.",
+          description: "Please upload an image smaller than 12MB.",
           variant: "destructive"
         });
         return;
@@ -132,10 +132,10 @@ export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
   const handleSelfieFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
+      if (file.size > 12 * 1024 * 1024) {
         toast({
           title: "File too large",
-          description: "Please upload an image smaller than 5MB.",
+          description: "Please upload an image smaller than 12MB.",
           variant: "destructive"
         });
         return;
@@ -208,9 +208,10 @@ export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
       });
     } catch (error) {
       console.error("KYC submission error:", error);
+      const description = error instanceof Error ? error.message : "Failed to submit verification. Please try again.";
       toast({ 
         title: "Error", 
-        description: "Failed to submit verification. Please try again.", 
+        description,
         variant: "destructive" 
       });
     } finally {
