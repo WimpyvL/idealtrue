@@ -5,6 +5,8 @@ import { Input } from './input';
 import { X, Video, Plus, Upload, Loader2, Film } from 'lucide-react';
 import { uploadListingMedia } from '@/lib/media-client';
 
+const ALLOWED_VIDEO_TYPES = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
+
 interface VideoUploadProps {
   value: string | null;
   onChange: (url: string | null) => void;
@@ -31,8 +33,8 @@ export default function VideoUpload({ value, onChange, listingId, maxSizeMB = 50
       toast.error(`Video size must be less than ${maxSizeMB}MB.`);
       return;
     }
-    if (!file.type.startsWith('video/')) {
-      toast.error('Please choose a valid video file.');
+    if (!ALLOWED_VIDEO_TYPES.has(file.type)) {
+      toast.error('Please choose an MP4, WEBM, or MOV file.');
       return;
     }
 
@@ -79,7 +81,7 @@ export default function VideoUpload({ value, onChange, listingId, maxSizeMB = 50
         <div className="relative">
           <input
             type="file"
-            accept="video/*"
+            accept="video/mp4,video/webm,video/quicktime"
             className="hidden"
             ref={fileInputRef}
             onChange={handleFileUpload}

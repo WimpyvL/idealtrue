@@ -131,6 +131,15 @@ async function uploadToSignedUrl(uploadUrl: string, file: File) {
   }
 }
 
+function useSameOriginUploadProxy() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const { hostname } = window.location;
+  return hostname !== 'localhost' && hostname !== '127.0.0.1';
+}
+
 export async function uploadListingImage(params: { listingId?: string; file: File }) {
   const serialized = await serializeImageFile(params.file, {
     maxDimension: 1800,
@@ -155,6 +164,31 @@ export async function uploadListingImage(params: { listingId?: string; file: Fil
 }
 
 export async function uploadListingMedia(params: { listingId?: string; file: File }) {
+  if (useSameOriginUploadProxy()) {
+    const query = new URLSearchParams({
+      listingId: params.listingId ?? '',
+      filename: params.file.name,
+      contentType: params.file.type || 'application/octet-stream',
+    });
+
+    const response = await encoreFetch(`/api/listing-media-upload?${query.toString()}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': params.file.type || 'application/octet-stream',
+        'X-Upload-Filename': params.file.name,
+      },
+      body: params.file,
+    }, { auth: true });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(body || `Video upload failed with status ${response.status}`);
+    }
+
+    const payload = await response.json() as { objectKey: string; publicUrl: string };
+    return payload.publicUrl;
+  }
+
   const query = new URLSearchParams({
     listingId: params.listingId ?? '',
     filename: params.file.name,

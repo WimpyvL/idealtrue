@@ -5,6 +5,8 @@ import { Input } from './input';
 import { X, Plus, Image as ImageIcon, Upload, Loader2, ChevronLeft, ChevronRight, Star, ImageUp } from 'lucide-react';
 import { uploadListingImage } from '@/lib/media-client';
 
+const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
 interface ImageUploadProps {
   value: string[];
   onChange: (urls: string[]) => void;
@@ -56,8 +58,8 @@ export default function ImageUpload({ value, onChange, onRemove, listingId, maxF
       const uploadedUrls: string[] = [];
       for (let index = 0; index < uploadQueue.length; index += 1) {
         const file = uploadQueue[index];
-        if (!file.type.startsWith('image/')) {
-          toast.error(`"${file.name}" is not an image file.`);
+        if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+          toast.error(`"${file.name}" is not supported. Use JPG, PNG, or WEBP.`);
           continue;
         }
 
@@ -141,7 +143,7 @@ export default function ImageUpload({ value, onChange, onRemove, listingId, maxF
         <div className="relative">
           <input
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp"
             multiple
             className="hidden"
             ref={fileInputRef}
