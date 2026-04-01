@@ -105,6 +105,10 @@ export default function CreateListing() {
   const [checkingLimit, setCheckingLimit] = useState(true);
   const [canCreate, setCanCreate] = useState(true);
 
+  const countsTowardStandardPlanLimit = useCallback((listing: Listing) => {
+    return listing.status !== 'archived' && listing.status !== 'draft';
+  }, []);
+
   const checkLimits = useCallback(async () => {
     if (!profile || !user) return;
     setPlan(profile.host_plan || 'standard');
@@ -115,10 +119,10 @@ export default function CreateListing() {
     }
 
     const existingListings = await listHostListings(user.uid);
-    const nonArchivedListings = existingListings.filter((listing) => listing.status !== 'archived');
-    setCanCreate((profile.host_plan || 'standard') !== 'standard' || nonArchivedListings.length < 1);
+    const countedListings = existingListings.filter(countsTowardStandardPlanLimit);
+    setCanCreate((profile.host_plan || 'standard') !== 'standard' || countedListings.length < 1);
     setCheckingLimit(false);
-  }, [effectiveKycStatus, isEditMode, profile, user]);
+  }, [countsTowardStandardPlanLimit, effectiveKycStatus, isEditMode, profile, user]);
 
   useEffect(() => {
     checkLimits();

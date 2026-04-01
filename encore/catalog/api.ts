@@ -283,6 +283,7 @@ async function assertHostCanCreateListing(hostId: string) {
     FROM listings
     WHERE host_id = ${hostId}
       AND status <> ${"archived"}
+      AND status <> ${"draft"}
   `;
 
   if (host.host_plan === "standard" && (existingListings?.count ?? 0) >= 1) {
