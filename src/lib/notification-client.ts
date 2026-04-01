@@ -23,16 +23,7 @@ function mapNotification(notification: EncoreNotification): Notification {
   };
 }
 
-function isUserNotificationFeedEnabled() {
-  const env = (import.meta as any).env ?? {};
-  return env.DEV || env.VITE_ENABLE_USER_NOTIFICATIONS === 'true';
-}
-
 export async function listMyNotifications() {
-  if (!isUserNotificationFeedEnabled()) {
-    return [];
-  }
-
   try {
     const response = await encoreRequest<{ notifications: EncoreNotification[] }>(
       '/ops/my-notifications',

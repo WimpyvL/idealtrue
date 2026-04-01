@@ -1,23 +1,10 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { io, Socket } from 'socket.io-client';
 import type { AuthSessionUser } from '@/contexts/AuthContext';
 import type { Notification } from '@/types';
-import { getEncoreSessionToken } from '@/lib/encore-client';
 import { listMyNotifications } from '@/lib/notification-client';
 
-interface SocketNotificationPayload {
-  id?: string;
-  title?: string;
-  message: string;
-  type?: string;
-  createdAt?: string;
-  actionPath?: string | null;
-  data?: Record<string, unknown>;
-}
-
 interface NotificationContextType {
-  socket: Socket | null;
   notifications: Notification[];
   unreadCount: number;
   isNotificationRead: (notificationId: string) => boolean;
@@ -26,7 +13,6 @@ interface NotificationContextType {
 }
 
 const NotificationContext = createContext<NotificationContextType>({
-  socket: null,
   notifications: [],
   unreadCount: 0,
   isNotificationRead: () => false,
@@ -67,18 +53,6 @@ function normalizeNotification(notification: Notification) {
   };
 }
 
-function normalizeSocketNotification(notification: SocketNotificationPayload): Notification {
-  return {
-    id: notification.id || `socket-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-    title: notification.title || 'New activity',
-    message: notification.message,
-    type: notification.type === 'warning' || notification.type === 'success' || notification.type === 'error' ? notification.type : 'info',
-    target: 'session',
-    actionPath: typeof notification.actionPath === 'string' ? notification.actionPath : null,
-    createdAt: notification.createdAt || new Date().toISOString(),
-  };
-}
-
 function mergeNotifications(existing: Notification[], incoming: Notification[]) {
   const merged = new Map<string, Notification>();
 
@@ -96,7 +70,6 @@ function mergeNotifications(existing: Notification[], incoming: Notification[]) 
 }
 
 export const NotificationProvider = ({ children, user }: { children: React.ReactNode; user: AuthSessionUser | null }) => {
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
 
@@ -110,22 +83,43 @@ export const NotificationProvider = ({ children, user }: { children: React.React
     setReadIds(getReadIds(user.uid));
     let cancelled = false;
 
-    listMyNotifications()
-      .then((fetchedNotifications) => {
+    const refreshNotifications = async (showToastForNew = false) => {
+      try {
+        const fetchedNotifications = await listMyNotifications();
         if (cancelled) {
           return;
         }
-        setNotifications((current) => mergeNotifications(current, fetchedNotifications));
-      })
-      .catch((error) => {
+
+        setNotifications((current) => {
+          if (!showToastForNew) {
+            return mergeNotifications(current, fetchedNotifications);
+          }
+
+          const existingIds = new Set(current.map((notification) => notification.id));
+          for (const notification of fetchedNotifications) {
+            if (!existingIds.has(notification.id)) {
+              toast.info(notification.message);
+            }
+          }
+
+          return mergeNotifications(current, fetchedNotifications);
+        });
+      } catch (error) {
         if (error instanceof Error && error.message.includes('"code":"not_found"')) {
           return;
         }
         console.error('Failed to load notifications:', error);
-      });
+      }
+    };
+
+    void refreshNotifications(false);
+    const interval = window.setInterval(() => {
+      void refreshNotifications(true);
+    }, 15000);
 
     return () => {
       cancelled = true;
+      window.clearInterval(interval);
     };
   }, [user]);
 
@@ -136,44 +130,6 @@ export const NotificationProvider = ({ children, user }: { children: React.React
 
     persistReadIds(user.uid, readIds);
   }, [readIds, user]);
-
-  useEffect(() => {
-    const token = getEncoreSessionToken();
-    const env = (import.meta as any).env ?? {};
-    const explicitSocketUrl = typeof env.VITE_SOCKET_SERVER_URL === 'string' ? env.VITE_SOCKET_SERVER_URL.trim() : '';
-    const allowImplicitLocalSocket = !!env.DEV;
-    const socketUrl = explicitSocketUrl || (allowImplicitLocalSocket ? window.location.origin : '');
-
-    if (!user || !token || !socketUrl) {
-      setSocket(null);
-      return;
-    }
-
-    const newSocket = io(socketUrl, {
-      auth: {
-        token,
-      },
-    });
-
-    newSocket.on('notification', (notification: SocketNotificationPayload) => {
-      const normalized = normalizeSocketNotification(notification);
-      setNotifications((current) => mergeNotifications(current, [normalized]));
-      toast.info(normalized.message);
-    });
-
-    newSocket.on('connect', () => {
-      setSocket(newSocket);
-    });
-
-    newSocket.on('connect_error', (error) => {
-      console.error(`Socket connection failed for ${socketUrl}:`, error);
-    });
-
-    return () => {
-      setSocket(null);
-      newSocket.disconnect();
-    };
-  }, [user]);
 
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !readIds.has(notification.id)).length,
@@ -197,7 +153,6 @@ export const NotificationProvider = ({ children, user }: { children: React.React
   return (
     <NotificationContext.Provider
       value={{
-        socket,
         notifications,
         unreadCount,
         isNotificationRead,

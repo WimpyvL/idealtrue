@@ -1,4 +1,4 @@
-import { encoreFetch, encoreRequest, TOKEN_STORAGE_KEY } from './encore-client';
+import { encoreFetch, encoreRequest } from './encore-client';
 
 export interface SerializedImageAsset {
   filename: string;
@@ -158,15 +158,6 @@ async function uploadToSignedUrl(uploadUrl: string, file: File) {
   }
 }
 
-function useSameOriginUploadProxy() {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-
-  const { hostname } = window.location;
-  return hostname !== 'localhost' && hostname !== '127.0.0.1';
-}
-
 function normalizeListingId(listingId?: string) {
   if (!listingId) {
     return undefined;
@@ -180,24 +171,6 @@ function normalizeListingId(listingId?: string) {
   return normalized;
 }
 
-async function uploadViaAppProxy(path: string, fileBody: Blob | File, authToken: string) {
-  const response = await fetch(path, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${authToken}`,
-      'Content-Type': fileBody.type || 'application/octet-stream',
-    },
-    body: fileBody,
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(body || `Upload failed with status ${response.status}`);
-  }
-
-  return response.json() as Promise<{ objectKey: string; publicUrl: string }>;
-}
-
 export async function uploadListingImage(params: { listingId?: string; file: File }) {
   const listingId = normalizeListingId(params.listingId);
   const prepared = await prepareImageUpload(params.file, {
@@ -205,24 +178,6 @@ export async function uploadListingImage(params: { listingId?: string; file: Fil
     maxBytes: Math.round(1.6 * 1024 * 1024),
     fallbackName: 'listing-photo',
   });
-
-  if (useSameOriginUploadProxy()) {
-    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-    if (!token) {
-      throw new Error('Missing Encore session token.');
-    }
-    const query = new URLSearchParams({
-      listingId: listingId ?? '',
-      filename: prepared.filename,
-      contentType: prepared.contentType,
-    });
-    const payload = await uploadViaAppProxy(
-      `/api/listing-image-upload?${query.toString()}`,
-      prepared.blob,
-      token,
-    );
-    return payload.publicUrl;
-  }
 
   const response = await encoreRequest<{ objectKey: string; publicUrl: string }>(
     '/host/listings/media/images',
@@ -243,24 +198,6 @@ export async function uploadListingImage(params: { listingId?: string; file: Fil
 
 export async function uploadListingMedia(params: { listingId?: string; file: File }) {
   const listingId = normalizeListingId(params.listingId);
-  if (useSameOriginUploadProxy()) {
-    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-    if (!token) {
-      throw new Error('Missing Encore session token.');
-    }
-    const query = new URLSearchParams({
-      listingId: listingId ?? '',
-      filename: params.file.name,
-      contentType: params.file.type || 'application/octet-stream',
-    });
-    const payload = await uploadViaAppProxy(
-      `/api/listing-media-upload?${query.toString()}`,
-      params.file,
-      token,
-    );
-    return payload.publicUrl;
-  }
-
   const query = new URLSearchParams({
     listingId: listingId ?? '',
     filename: params.file.name,

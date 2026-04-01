@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build",
+    "check:config": "node scripts/check-production-config.mjs",
+    "build": "node scripts/build.mjs",
     "preview": "vite preview",
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "lint": "tsc --noEmit",
@@ -42,8 +43,6 @@
     "react-router-dom": "^7.13.1",
     "recharts": "^3.8.0",
     "shadcn": "^4.1.0",
-    "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tw-animate-css": "^1.4.0",

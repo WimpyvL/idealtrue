@@ -5,7 +5,14 @@ import { bookingEvidenceBucket } from "./storage";
 import { requireAuth, requireRole } from "../shared/auth";
 import { platformEvents } from "../analytics/events";
 import { getListing } from "../catalog/api";
+import { notifyBookingRequested, notifyBookingStatusChanged, notifyPaymentProofSubmitted } from "../ops/notifications";
 import type { BookingRecord, BookingStatus } from "../shared/domain";
+import {
+  bookingOverlapsBlockedDates,
+  computeBookingTotalPrice,
+  getBookingStatusTransitionError,
+  getPaymentProofSubmissionError,
+} from "./workflow";
 
 type BookingRow = {
   id: string;
@@ -130,29 +137,13 @@ async function mapBookingAccessRecord(row: BookingRow): Promise<BookingAccessRec
   };
 }
 
-const CLEANING_FEE = 45;
-
-function normalizeDateOnly(value: string) {
-  return value.slice(0, 10);
-}
-
-function computeBookingTotalPrice(pricePerNight: number, checkIn: Date, checkOut: Date) {
-  const millisecondsPerNight = 1000 * 60 * 60 * 24;
-  const nights = Math.floor((checkOut.getTime() - checkIn.getTime()) / millisecondsPerNight);
-  if (nights <= 0) {
-    throw APIError.invalidArgument("Checkout must be after check-in.");
+async function resolveListingTitle(listingId: string) {
+  try {
+    const { listing } = await getListing({ id: listingId });
+    return listing.title;
+  } catch {
+    return "your stay";
   }
-  const subtotal = pricePerNight * nights;
-  return subtotal + CLEANING_FEE;
-}
-
-function bookingOverlapsBlockedDates(checkIn: Date, checkOut: Date, blockedDates: string[] | undefined) {
-  const blocked = blockedDates ?? [];
-  if (blocked.length === 0) return false;
-
-  const checkInDay = normalizeDateOnly(checkIn.toISOString());
-  const checkOutDay = normalizeDateOnly(checkOut.toISOString());
-  return blocked.some((blockedDate) => blockedDate >= checkInDay && blockedDate < checkOutDay);
 }
 
 export async function getBookingById(id: string) {
@@ -226,6 +217,16 @@ export const createBooking = api<CreateBookingParams, { booking: BookingRecord }
       }),
     });
 
+    try {
+      await notifyBookingRequested({
+        hostId: listing.hostId,
+        listingTitle: listing.title,
+        bookingId: id,
+      });
+    } catch (error) {
+      console.error("Failed to create booking notification:", error);
+    }
+
     return {
       booking: {
         id,
@@ -288,22 +289,9 @@ export const updateBookingStatus = api<UpdateBookingStatusParams, { booking: Boo
     }
 
     const nextStatus = params.status;
-    if (
-      !["awaiting_guest_payment", "confirmed", "cancelled", "completed", "declined"].includes(nextStatus)
-    ) {
-      throw APIError.invalidArgument("Hosts can only move bookings through the payment and completion workflow.");
-    }
-    if (nextStatus === "awaiting_guest_payment" && existing.status !== "pending") {
-      throw APIError.failedPrecondition("Payment can only be requested for pending bookings.");
-    }
-    if (nextStatus === "confirmed" && !["awaiting_guest_payment", "payment_submitted"].includes(existing.status)) {
-      throw APIError.failedPrecondition("Bookings can only be confirmed after the payment step has started.");
-    }
-    if (nextStatus === "completed" && existing.status !== "confirmed") {
-      throw APIError.failedPrecondition("Only confirmed bookings can be completed.");
-    }
-    if (["cancelled", "declined"].includes(nextStatus) && ["completed", "cancelled", "declined"].includes(existing.status)) {
-      throw APIError.failedPrecondition("Closed bookings cannot be changed again.");
+    const transitionError = getBookingStatusTransitionError(existing.status, nextStatus);
+    if (transitionError) {
+      throw APIError.failedPrecondition(transitionError);
     }
 
     const now = new Date().toISOString();
@@ -331,6 +319,16 @@ export const updateBookingStatus = api<UpdateBookingStatusParams, { booking: Boo
       });
     }
 
+    try {
+      await notifyBookingStatusChanged({
+        guestId: existing.guest_id,
+        status: nextStatus as "awaiting_guest_payment" | "confirmed" | "cancelled" | "completed" | "declined",
+        listingTitle: await resolveListingTitle(existing.listing_id),
+      });
+    } catch (error) {
+      console.error("Failed to create booking status notification:", error);
+    }
+
     return {
       booking: await mapBookingAccessRecord({
         ...existing,
@@ -353,8 +351,9 @@ export const submitPaymentProof = api<SubmitPaymentProofParams, { booking: Booki
     if (existing.guest_id !== auth.userID) {
       throw APIError.permissionDenied("Only the guest can submit payment proof.");
     }
-    if (!["awaiting_guest_payment", "payment_submitted"].includes(existing.status)) {
-      throw APIError.failedPrecondition("Payment proof can only be submitted after the host requests payment.");
+    const paymentProofError = getPaymentProofSubmissionError(existing.status);
+    if (paymentProofError) {
+      throw APIError.failedPrecondition(paymentProofError);
     }
 
     let paymentProofKey = existing.payment_proof_key;
@@ -394,6 +393,15 @@ export const submitPaymentProof = api<SubmitPaymentProofParams, { booking: Booki
           updated_at = ${now}
       WHERE id = ${params.id}
     `;
+
+    try {
+      await notifyPaymentProofSubmitted({
+        hostId: existing.host_id,
+        listingTitle: await resolveListingTitle(existing.listing_id),
+      });
+    } catch (error) {
+      console.error("Failed to create payment proof notification:", error);
+    }
 
     return {
       booking: await mapBookingAccessRecord({

@@ -6,41 +6,11 @@ import {
   clearEncoreSession,
   encoreRequest,
   getEncoreApiUrl,
-  getEncoreSessionToken,
-  setEncoreSessionToken,
 } from '../src/lib/encore-client.ts';
 import { getEncoreSessionProfile } from '../src/lib/identity-client.ts';
 import { getAdminPlatformSettings, listAdminNotifications } from '../src/lib/admin-client.ts';
 import { reviewKycSubmission } from '../src/lib/ops-client.ts';
-import { submitPaymentProof, updateBookingStatus } from '../src/lib/platform-client.ts';
-
-class MemoryStorage implements Storage {
-  private store = new Map<string, string>();
-
-  get length() {
-    return this.store.size;
-  }
-
-  clear() {
-    this.store.clear();
-  }
-
-  getItem(key: string) {
-    return this.store.has(key) ? this.store.get(key)! : null;
-  }
-
-  key(index: number) {
-    return Array.from(this.store.keys())[index] ?? null;
-  }
-
-  removeItem(key: string) {
-    this.store.delete(key);
-  }
-
-  setItem(key: string, value: string) {
-    this.store.set(key, value);
-  }
-}
+import { getListing, mapReferralStatus, saveListing, submitPaymentProof, updateBookingStatus } from '../src/lib/platform-client.ts';
 
 type FetchCall = {
   url: string;
@@ -59,14 +29,11 @@ function getHeaders(init?: RequestInit) {
   return new Headers(init?.headers);
 }
 
-let storage: MemoryStorage;
 let fetchCalls: FetchCall[];
 
 function installWindow() {
-  storage = new MemoryStorage();
   Object.defineProperty(globalThis, 'window', {
     value: {
-      localStorage: storage,
       location: {
         hostname: '127.0.0.1',
       },
@@ -120,18 +87,17 @@ test.beforeEach(() => {
   });
 });
 
-test.afterEach(() => {
-  clearEncoreSession();
+test.afterEach(async () => {
+  await clearEncoreSession();
   Reflect.deleteProperty(globalThis, 'window');
 });
 
-test('uses the local Encore API URL by default', () => {
+test('uses the same-origin Encore proxy by default', () => {
   assert.equal(getEncoreApiUrl(), DEFAULT_ENCORE_API_URL);
-  assert.equal(DEFAULT_ENCORE_API_URL, 'http://127.0.0.1:4000');
+  assert.equal(DEFAULT_ENCORE_API_URL, '/api/encore');
 });
 
-test('encoreRequest sends authenticated requests with the local default base URL', async () => {
-  setEncoreSessionToken('session-token');
+test('encoreRequest sends requests through the same-origin proxy', async () => {
   installFetch(() => createJsonResponse({ ok: true }));
 
   const response = await encoreRequest<{ ok: boolean }>(
@@ -145,24 +111,23 @@ test('encoreRequest sends authenticated requests with the local default base URL
 
   assert.deepEqual(response, { ok: true });
   assert.equal(fetchCalls[0]?.url, `${DEFAULT_ENCORE_API_URL}/secure/resource`);
-
-  const headers = getHeaders(fetchCalls[0]?.init);
-  assert.equal(headers.get('Authorization'), 'Bearer session-token');
-  assert.equal(headers.get('Content-Type'), 'application/json');
+  assert.equal(getHeaders(fetchCalls[0]?.init).get('Content-Type'), 'application/json');
+  assert.equal(fetchCalls[0]?.init?.credentials, 'same-origin');
+  assert.equal(getHeaders(fetchCalls[0]?.init).get('Authorization'), null);
 });
 
-test('encoreRequest rejects authenticated calls when the session token is missing', async () => {
-  await assert.rejects(
-    encoreRequest('/secure/resource', {}, { auth: true }),
-    /Missing Encore session token\./,
-  );
+test('clearEncoreSession clears the HttpOnly session via the logout route', async () => {
+  installFetch(() => new Response(null, { status: 204 }));
+
+  await clearEncoreSession();
+
+  assert.equal(fetchCalls[0]?.url, '/api/auth/logout');
+  assert.equal(fetchCalls[0]?.init?.method, 'POST');
 });
 
-test('getEncoreSessionProfile refreshes the token and maps the Encore user profile', async () => {
-  setEncoreSessionToken('stale-token');
+test('getEncoreSessionProfile maps the Encore user profile from the proxy response', async () => {
   installFetch(() =>
     createJsonResponse({
-      token: 'fresh-token',
       user: createEncoreUser({ role: 'host', hostPlan: 'professional' }),
     }),
   );
@@ -170,8 +135,6 @@ test('getEncoreSessionProfile refreshes the token and maps the Encore user profi
   const profile = await getEncoreSessionProfile();
 
   assert.equal(fetchCalls[0]?.url, `${DEFAULT_ENCORE_API_URL}/auth/session`);
-  assert.equal(getHeaders(fetchCalls[0]?.init).get('Authorization'), 'Bearer stale-token');
-  assert.equal(getEncoreSessionToken(), 'fresh-token');
   assert.equal(profile.uid, 'user-1');
   assert.equal(profile.role, 'host');
   assert.equal(profile.host_plan, 'professional');
@@ -179,8 +142,145 @@ test('getEncoreSessionProfile refreshes the token and maps the Encore user profi
   assert.equal(profile.paymentMethod, 'bank_transfer');
 });
 
+test('getListing and saveListing use the canonical Encore listing contract', async () => {
+  installFetch((url, init) => {
+    if (url.endsWith('/listings/listing-1')) {
+      return createJsonResponse({
+        listing: {
+          id: 'listing-1',
+          hostId: 'host-1',
+          title: 'Sea Point Stay',
+          description: 'Ocean-facing apartment',
+          location: 'Cape Town',
+          area: 'Sea Point',
+          province: 'Western Cape',
+          category: 'apartment',
+          type: 'apartment',
+          pricePerNight: 1800,
+          discountPercent: 10,
+          adults: 2,
+          children: 1,
+          bedrooms: 1,
+          bathrooms: 1,
+          amenities: ['wifi'],
+          facilities: ['parking'],
+          restaurantOffers: [],
+          images: ['https://cdn.example.com/listing.jpg'],
+          videoUrl: null,
+          isSelfCatering: true,
+          hasRestaurant: false,
+          isOccupied: false,
+          latitude: -33.9,
+          longitude: 18.4,
+          blockedDates: [],
+          status: 'active',
+          createdAt: '2026-03-01T10:00:00.000Z',
+          updatedAt: '2026-03-01T10:00:00.000Z',
+        },
+      });
+    }
+
+    if (url.endsWith('/host/listings')) {
+      return createJsonResponse({
+        listing: {
+          id: 'listing-2',
+          hostId: 'host-1',
+          title: 'Winelands Escape',
+          description: 'Quiet stay',
+          location: 'Stellenbosch',
+          area: 'Central',
+          province: 'Western Cape',
+          category: 'house',
+          type: 'house',
+          pricePerNight: 2200,
+          discountPercent: 5,
+          adults: 4,
+          children: 2,
+          bedrooms: 2,
+          bathrooms: 2,
+          amenities: ['wifi'],
+          facilities: ['pool'],
+          restaurantOffers: [],
+          images: [],
+          videoUrl: null,
+          isSelfCatering: true,
+          hasRestaurant: false,
+          isOccupied: false,
+          latitude: null,
+          longitude: null,
+          blockedDates: [],
+          status: 'pending',
+          createdAt: '2026-03-02T10:00:00.000Z',
+          updatedAt: '2026-03-02T10:00:00.000Z',
+        },
+      });
+    }
+
+    throw new Error(`Unexpected URL: ${url} ${init?.method || 'GET'}`);
+  });
+
+  const listing = await getListing('listing-1');
+  const savedListing = await saveListing({
+    title: 'Winelands Escape',
+    description: 'Quiet stay',
+    location: 'Stellenbosch',
+    area: 'Central',
+    province: 'Western Cape',
+    category: 'house',
+    type: 'house',
+    pricePerNight: 2200,
+    discount: 5,
+    adults: 4,
+    children: 2,
+    bedrooms: 2,
+    bathrooms: 2,
+    amenities: ['wifi'],
+    facilities: ['pool'],
+    restaurant_offers: [],
+    images: [],
+    video_url: null,
+    is_self_catering: true,
+    has_restaurant: false,
+    is_occupied: false,
+    coordinates: null,
+    blockedDates: [],
+    status: 'pending',
+  });
+
+  assert.equal(listing.hostUid, 'host-1');
+  assert.equal(fetchCalls[1]?.url, `${DEFAULT_ENCORE_API_URL}/host/listings`);
+  assert.equal(fetchCalls[1]?.init?.method, 'POST');
+  assert.deepEqual(JSON.parse(String(fetchCalls[1]?.init?.body)), {
+    title: 'Winelands Escape',
+    description: 'Quiet stay',
+    location: 'Stellenbosch',
+    area: 'Central',
+    province: 'Western Cape',
+    category: 'house',
+    type: 'house',
+    pricePerNight: 2200,
+    discountPercent: 5,
+    adults: 4,
+    children: 2,
+    bedrooms: 2,
+    bathrooms: 2,
+    amenities: ['wifi'],
+    facilities: ['pool'],
+    restaurantOffers: [],
+    images: [],
+    videoUrl: null,
+    isSelfCatering: true,
+    hasRestaurant: false,
+    isOccupied: false,
+    latitude: null,
+    longitude: null,
+    blockedDates: [],
+    status: 'pending',
+  });
+  assert.equal(savedListing.id, 'listing-2');
+});
+
 test('updateBookingStatus sends the booking status patch to the correct endpoint', async () => {
-  setEncoreSessionToken('host-token');
   installFetch(() =>
     createJsonResponse({
       booking: {
@@ -215,7 +315,6 @@ test('updateBookingStatus sends the booking status patch to the correct endpoint
 });
 
 test('submitPaymentProof posts the guest payment proof to the booking payment endpoint', async () => {
-  setEncoreSessionToken('guest-token');
   installFetch(() =>
     createJsonResponse({
       booking: {
@@ -260,8 +359,14 @@ test('submitPaymentProof posts the guest payment proof to the booking payment en
   assert.equal(booking.paymentProofUrl, 'https://cdn.example.com/payment-proof.jpg');
 });
 
-test('admin notification and settings helpers hit the ops endpoints with auth', async () => {
-  setEncoreSessionToken('admin-token');
+test('referral mapping preserves rejected rewards instead of corrupting them to pending', () => {
+  assert.equal(mapReferralStatus('pending'), 'pending');
+  assert.equal(mapReferralStatus('earned'), 'rewarded');
+  assert.equal(mapReferralStatus('paid'), 'confirmed');
+  assert.equal(mapReferralStatus('rejected'), 'rejected');
+});
+
+test('admin notification and settings helpers hit the ops endpoints via the proxy', async () => {
   installFetch((url) => {
     if (url.endsWith('/ops/admin/notifications')) {
       return createJsonResponse({
@@ -305,14 +410,13 @@ test('admin notification and settings helpers hit the ops endpoints with auth', 
 
   assert.equal(fetchCalls[0]?.url, `${DEFAULT_ENCORE_API_URL}/ops/admin/notifications`);
   assert.equal(fetchCalls[1]?.url, `${DEFAULT_ENCORE_API_URL}/ops/admin/settings`);
-  assert.equal(getHeaders(fetchCalls[0]?.init).get('Authorization'), 'Bearer admin-token');
-  assert.equal(getHeaders(fetchCalls[1]?.init).get('Authorization'), 'Bearer admin-token');
+  assert.equal(getHeaders(fetchCalls[0]?.init).get('Authorization'), null);
+  assert.equal(getHeaders(fetchCalls[1]?.init).get('Authorization'), null);
   assert.equal(notifications[0]?.type, 'warning');
   assert.equal(settings.platformName, 'Ideal Stay');
 });
 
 test('reviewKycSubmission posts structured review decisions instead of prompt text hacks', async () => {
-  setEncoreSessionToken('admin-token');
   installFetch(() =>
     createJsonResponse({
       submission: {
@@ -346,5 +450,4 @@ test('reviewKycSubmission posts structured review decisions instead of prompt te
   });
   assert.equal(submission.status, 'rejected');
   assert.equal(submission.rejectionReason, 'Document was cropped.');
-}
-);
+});

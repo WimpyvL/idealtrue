@@ -5,7 +5,6 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { MessageSquare, CheckCircle2, XCircle, Clock, CalendarDays, User } from 'lucide-react';
 import { format } from 'date-fns';
-import { useNotifications } from '../context/NotificationContext';
 import { updateBookingStatus } from '@/lib/platform-client';
 import { formatRand } from '@/lib/currency';
 
@@ -21,7 +20,6 @@ export default function HostEnquiries({
   onBookingUpdated: (booking: Booking) => void,
 }) {
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
-  const { socket } = useNotifications();
   
   const pendingBookings = bookings.filter(b => b.status === 'pending');
 
@@ -30,21 +28,6 @@ export default function HostEnquiries({
     try {
       const updatedBooking = await updateBookingStatus(booking.id, action);
       onBookingUpdated(updatedBooking);
-      
-      const listing = listings.find(l => l.id === booking.listingId);
-      
-      // Emit notification to guest
-      socket?.emit('booking:update', {
-        guestUid: booking.guestUid,
-        hostUid: booking.hostUid,
-        listingId: booking.listingId,
-        bookingId: booking.id,
-        status: action,
-        message: action === 'awaiting_guest_payment'
-          ? `Your booking for ${listing?.title || 'your stay'} is approved. Please complete payment using the host instructions on-platform.`
-          : `Your booking for ${listing?.title || 'your stay'} has been cancelled.`
-      });
-
     } catch (error) {
       console.error('Error updating booking:', error);
     } finally {

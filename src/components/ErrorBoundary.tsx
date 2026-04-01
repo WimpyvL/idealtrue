@@ -34,8 +34,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       let errorMessage = "Something went wrong. Please try refreshing the page.";
-      
-      // Check if it's a Firestore permission error (JSON string from handleFirestoreError)
+
       try {
         if (this.state.error?.message) {
           const parsed = JSON.parse(this.state.error.message);
@@ -43,8 +42,8 @@ export default class ErrorBoundary extends Component<Props, State> {
             errorMessage = "You don't have permission to access this data. Please ensure you are logged in with the correct account.";
           }
         }
-      } catch (e) {
-        // Not a JSON error, use default
+      } catch {
+        // Fall back to the default message for non-JSON errors.
       }
 
       return (

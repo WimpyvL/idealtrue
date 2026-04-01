@@ -7,7 +7,7 @@ import { Switch } from '../components/ui/switch';
 import { Building2, Plus, Edit, Trash2, Share2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ConfirmationDialog } from '../components/ui/confirmation-dialog';
-import { getClient } from '../lib/client';
+import { saveListing } from '../lib/platform-client';
 import { formatRand } from '@/lib/currency';
 
 type Props = {
@@ -58,7 +58,7 @@ export default function HostListings({ listings, onListingUpdated, onListingRemo
     const newStatus = listing.status === 'active' ? 'inactive' : 'active';
     setIsUpdating(listing.id);
     try {
-      await getClient.hospitality.saveListing(toSaveListingPayload(listing, newStatus));
+      await saveListing(toSaveListingPayload(listing, newStatus));
       onListingUpdated?.({ ...listing, status: newStatus });
     } catch (error) {
       console.error('Failed to update listing status', error);
@@ -74,7 +74,7 @@ export default function HostListings({ listings, onListingUpdated, onListingRemo
     try {
       const listing = listings.find((item) => item.id === listingToDelete);
       if (!listing) return;
-      await getClient.hospitality.saveListing(toSaveListingPayload(listing, 'archived'));
+      await saveListing(toSaveListingPayload(listing, 'archived'));
       onListingRemoved?.(listingToDelete);
       setListingToDelete(null);
     } catch (error) {

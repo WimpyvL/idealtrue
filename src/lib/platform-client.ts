@@ -82,10 +82,39 @@ interface EncoreReferralReward {
   id: string;
   referrerId: string;
   referredUserId: string;
-  trigger: 'signup' | 'booking';
+  trigger: 'signup' | 'booking' | 'subscription';
+  program?: 'guest' | 'host';
   amount: number;
   status: 'pending' | 'earned' | 'paid' | 'rejected';
   createdAt: string;
+}
+
+export interface SaveListingInput {
+  id?: string;
+  title: string;
+  description: string;
+  location: string;
+  area?: string | null;
+  province?: string | null;
+  category: string;
+  type: string;
+  pricePerNight: number;
+  discount: number;
+  adults: number;
+  children: number;
+  bedrooms: number;
+  bathrooms: number;
+  amenities: string[];
+  facilities: string[];
+  restaurant_offers: string[];
+  images: string[];
+  video_url?: string | null;
+  is_self_catering: boolean;
+  has_restaurant: boolean;
+  is_occupied: boolean;
+  coordinates?: { lat: number; lng: number } | null;
+  blockedDates?: string[];
+  status: Listing['status'];
 }
 
 function mapListing(listing: EncoreListing): Listing {
@@ -174,14 +203,66 @@ function mapReferral(reward: EncoreReferralReward): Referral {
     referredUid: reward.referredUserId,
     amount: reward.amount,
     type: reward.trigger,
-    status: reward.status === 'earned' ? 'rewarded' : reward.status === 'rejected' ? 'pending' : 'confirmed',
+    program: reward.program,
+    status: mapReferralStatus(reward.status),
     createdAt: reward.createdAt,
+  };
+}
+
+export function mapReferralStatus(status: EncoreReferralReward['status']): Referral['status'] {
+  switch (status) {
+    case 'pending':
+      return 'pending';
+    case 'earned':
+      return 'rewarded';
+    case 'paid':
+      return 'confirmed';
+    case 'rejected':
+      return 'rejected';
+    default:
+      return 'pending';
+  }
+}
+
+function toEncoreListingPayload(input: SaveListingInput) {
+  return {
+    id: input.id,
+    title: input.title,
+    description: input.description,
+    location: input.location,
+    area: input.area ?? null,
+    province: input.province ?? null,
+    category: input.category,
+    type: input.type,
+    pricePerNight: Number(input.pricePerNight),
+    discountPercent: Number(input.discount || 0),
+    adults: Number(input.adults || 1),
+    children: Number(input.children || 0),
+    bedrooms: Number(input.bedrooms || 1),
+    bathrooms: Number(input.bathrooms || 1),
+    amenities: input.amenities || [],
+    facilities: input.facilities || [],
+    restaurantOffers: input.restaurant_offers || [],
+    images: input.images || [],
+    videoUrl: input.video_url || null,
+    isSelfCatering: Boolean(input.is_self_catering),
+    hasRestaurant: Boolean(input.has_restaurant),
+    isOccupied: Boolean(input.is_occupied),
+    latitude: input.coordinates?.lat ?? null,
+    longitude: input.coordinates?.lng ?? null,
+    blockedDates: input.blockedDates || [],
+    status: input.status,
   };
 }
 
 export async function listPublicListings() {
   const response = await encoreRequest<{ listings: EncoreListing[] }>('/listings?status=active');
   return response.listings.map(mapListing);
+}
+
+export async function getListing(id: string) {
+  const response = await encoreRequest<{ listing: EncoreListing }>(`/listings/${id}`, {}, { auth: true });
+  return mapListing(response.listing);
 }
 
 export async function listHostListings(hostId: string) {
@@ -211,6 +292,19 @@ export async function updateListingBlockedDates(listingId: string, blockedDates:
     },
     { auth: true },
   );
+  return mapListing(response.listing);
+}
+
+export async function saveListing(input: SaveListingInput) {
+  const response = await encoreRequest<{ listing: EncoreListing }>(
+    '/host/listings',
+    {
+      method: input.id ? 'PUT' : 'POST',
+      body: JSON.stringify(toEncoreListingPayload(input)),
+    },
+    { auth: true },
+  );
+
   return mapListing(response.listing);
 }
 

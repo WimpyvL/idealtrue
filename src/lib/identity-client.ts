@@ -94,12 +94,12 @@ function mapEncoreUserToProfile(user: EncoreUser): UserProfile {
   };
 }
 
-async function storeSessionResponse(response: { token: string; user: EncoreUser }) {
+async function storeSessionResponse(response: { user: EncoreUser }) {
   return mapEncoreUserToProfile(response.user);
 }
 
 export async function signUpWithPassword(params: SignupParams) {
-  const response = await encoreRequest<{ token: string; user: EncoreUser }>(
+  const response = await encoreRequest<{ user: EncoreUser }>(
     '/auth/signup',
     {
       method: 'POST',
@@ -118,7 +118,7 @@ export async function signUpWithPassword(params: SignupParams) {
 }
 
 export async function signInWithPassword(params: LoginParams) {
-  const response = await encoreRequest<{ token: string; user: EncoreUser }>(
+  const response = await encoreRequest<{ user: EncoreUser }>(
     '/auth/login',
     {
       method: 'POST',

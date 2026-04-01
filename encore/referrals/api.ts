@@ -4,6 +4,7 @@ import { referralsDB } from "./db";
 import { identityDB } from "../identity/db";
 import { requireAuth, requireRole } from "../shared/auth";
 import { platformEvents } from "../analytics/events";
+import { notifyReferralRewardEarned } from "../ops/notifications";
 import type { ReferralProgram, ReferralRewardRecord, ReferralTier, UserRole } from "../shared/domain";
 
 interface RewardReferralParams {
@@ -198,6 +199,15 @@ export async function rewardSubscriptionReferralConversion(params: {
       payload: JSON.stringify({ referrerId: lockedReferrer.id, referredUserId: referredUser.id, amount: rewardAmount }),
     });
 
+    try {
+      await notifyReferralRewardEarned({
+        referrerId: lockedReferrer.id,
+        amount: rewardAmount,
+      });
+    } catch (error) {
+      console.error("Failed to create referral notification:", error);
+    }
+
     return {
       id: rewardId,
       referrerId: lockedReferrer.id,
@@ -256,6 +266,15 @@ export const rewardReferral = api<RewardReferralParams, { rewardId: string }>(
       occurredAt: now,
       payload: JSON.stringify({ referrerId: auth.userID, referredUserId, amount }),
     });
+
+    try {
+      await notifyReferralRewardEarned({
+        referrerId: auth.userID,
+        amount,
+      });
+    } catch (error) {
+      console.error("Failed to create referral notification:", error);
+    }
 
     return { rewardId };
   },

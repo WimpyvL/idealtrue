@@ -6,6 +6,8 @@ import { APIError } from "encore.dev/api";
 import { requireAuth } from "../shared/auth";
 import { platformEvents } from "../analytics/events";
 import { getBookingById } from "../booking/api";
+import { getListing } from "../catalog/api";
+import { notifyMessageReceived } from "../ops/notifications";
 import type { MessageRecord } from "../shared/domain";
 
 type MessageRow = {
@@ -95,6 +97,16 @@ export const sendMessage = api<SendMessageParams, { message: MessageRecord }>(
         receiverId: params.receiverId,
       }),
     });
+
+    try {
+      const { listing } = await getListing({ id: booking.listingId });
+      await notifyMessageReceived({
+        receiverId: params.receiverId,
+        listingTitle: listing.title,
+      });
+    } catch (error) {
+      console.error("Failed to create message notification:", error);
+    }
 
     return {
       message: {

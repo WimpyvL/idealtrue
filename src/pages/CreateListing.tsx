@@ -25,8 +25,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getClient } from "@/lib/client";
-import { getMyListingQuota } from "@/lib/platform-client";
+import { getListing, getMyListingQuota, saveListing } from "@/lib/platform-client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
@@ -136,7 +135,7 @@ export default function CreateListing() {
     if (!id || !user) return;
 
     try {
-      const { listing: data } = await getClient.hospitality.getListing(id) as { listing: Listing | null };
+      const data = await getListing(id);
 
       if (data) {
         setFormData({
@@ -270,16 +269,13 @@ export default function CreateListing() {
         images: formData.images,
         video_url: formData.video_url,
         is_occupied: formData.is_occupied,
-        hostUid: user.uid,
         status: 'pending' as const,
         category: parentCategory || "",
-        rating: 0,
-        reviews: 0,
         coordinates
       };
 
       const targetListingId = workingListingId || (isEditMode ? id : undefined);
-      await getClient.hospitality.saveListing({
+      await saveListing({
         id: targetListingId,
         ...propertyPayload
       });
@@ -345,19 +341,16 @@ export default function CreateListing() {
       images: formData.images,
       video_url: formData.video_url,
       is_occupied: formData.is_occupied,
-      hostUid: user.uid,
       status: 'pending' as const,
       category: parentCategory || "",
-      rating: 0,
-      reviews: 0,
       coordinates
     };
 
-    const result = await getClient.hospitality.saveListing({
+    const createdListing = await saveListing({
       ...propertyPayload,
-    }) as { listing?: { id?: string } };
+    });
 
-    const createdId = result?.listing?.id;
+    const createdId = createdListing?.id;
     if (!createdId) {
       throw new Error('Could not create the listing before media upload.');
     }

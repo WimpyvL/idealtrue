@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Listing, Booking, UserProfile } from '../types';
-import { useNotifications } from '../context/NotificationContext';
 import { 
   LayoutDashboard, 
   Calendar, 
@@ -38,7 +37,6 @@ export default function HostDashboard({
   onChat: (b: Booking) => void,
   onBookingUpdated: (booking: Booking) => void,
 }) {
-  const { socket } = useNotifications();
   const navigate = useNavigate();
   const [localBookings, setLocalBookings] = useState(bookings);
 
@@ -212,15 +210,6 @@ export default function HostDashboard({
                                 const updatedBooking = await updateBookingStatus(booking.id, 'awaiting_guest_payment');
                                 setLocalBookings((current) => current.map((item) => item.id === booking.id ? updatedBooking : item));
                                 onBookingUpdated(updatedBooking);
-                                
-                                socket?.emit('booking:update', {
-                                  hostUid: booking.hostUid,
-                                  guestUid: booking.guestUid,
-                                  listingId: booking.listingId,
-                                  bookingId: booking.id,
-                                  status: 'awaiting_guest_payment',
-                                  message: `Your booking for ${listing?.title || 'your stay'} has been approved. Please complete payment using the host instructions on-platform.`
-                                });
 
                                 toast.success('Booking approved and moved to payment.');
                               } catch (error) {
@@ -238,16 +227,7 @@ export default function HostDashboard({
                                 const updatedBooking = await updateBookingStatus(booking.id, 'cancelled');
                                 setLocalBookings((current) => current.map((item) => item.id === booking.id ? updatedBooking : item));
                                 onBookingUpdated(updatedBooking);
-                                
-                                socket?.emit('booking:update', {
-                                  hostUid: booking.hostUid,
-                                  guestUid: booking.guestUid,
-                                  listingId: booking.listingId,
-                                  bookingId: booking.id,
-                                  status: 'cancelled',
-                                  message: `Your booking for ${listing?.title || 'your stay'} has been cancelled.`
-                                });
-                                
+
                                 toast.info('Booking request declined.');
                               } catch (error) {
                                 console.error('Failed to decline booking:', error);
@@ -277,14 +257,6 @@ export default function HostDashboard({
                                 const updatedBooking = await updateBookingStatus(booking.id, 'confirmed');
                                 setLocalBookings((current) => current.map((item) => item.id === booking.id ? updatedBooking : item));
                                 onBookingUpdated(updatedBooking);
-                                socket?.emit('booking:confirmed', {
-                                  hostUid: booking.hostUid,
-                                  guestUid: booking.guestUid,
-                                  listingId: booking.listingId,
-                                  bookingId: booking.id,
-                                  status: 'confirmed',
-                                  message: `Payment confirmed for ${listing?.title || 'your stay'}.`,
-                                });
                                 toast.success('Payment marked as received.');
                               } catch (error) {
                                 console.error('Failed to confirm payment:', error);

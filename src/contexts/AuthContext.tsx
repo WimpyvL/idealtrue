@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { clearEncoreSession, hasEncoreSessionToken } from '@/lib/encore-client';
+import { clearEncoreSession } from '@/lib/encore-client';
 import { getEncoreSessionProfile, signInWithPassword, signUpWithPassword } from '@/lib/identity-client';
 import { UserProfile, UserRole } from '@/types';
 
@@ -31,7 +31,7 @@ interface AuthContextType {
   refreshProfile: () => Promise<void>;
   signIn: (params: LoginParams) => Promise<UserProfile>;
   signUp: (params: SignupParams) => Promise<UserProfile>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -45,7 +45,7 @@ const AuthContext = createContext<AuthContextType>({
   signUp: async () => {
     throw new Error('Auth context not ready.');
   },
-  logout: () => {},
+  logout: async () => {},
 });
 
 function toSessionUser(profile: UserProfile): AuthSessionUser {
@@ -62,25 +62,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const logout = () => {
-    clearEncoreSession();
+  const logout = async () => {
+    await clearEncoreSession();
     setUser(null);
     setProfile(null);
   };
 
   const refreshProfile = async () => {
-    if (!hasEncoreSessionToken()) {
-      logout();
-      return;
-    }
-
     try {
       const nextProfile = await getEncoreSessionProfile();
       setProfile(nextProfile);
       setUser(toSessionUser(nextProfile));
     } catch (error) {
       console.error('Error refreshing Encore profile:', error);
-      logout();
+      await logout();
     }
   };
 
@@ -109,15 +104,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     async function bootstrap() {
-      if (!hasEncoreSessionToken()) {
-        if (!cancelled) {
-          setUser(null);
-          setProfile(null);
-          setLoading(false);
-        }
-        return;
-      }
-
       try {
         const nextProfile = await getEncoreSessionProfile();
         if (cancelled) return;
@@ -126,7 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         console.error('Error restoring Encore session:', error);
         if (!cancelled) {
-          logout();
+          await logout();
         }
       } finally {
         if (!cancelled) {

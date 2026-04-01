@@ -69,8 +69,9 @@ import {
 } from '@/lib/admin-client';
 import { getKycSubmissionAssets, listKycSubmissions, reviewKycSubmission, type KycSubmission } from '@/lib/ops-client';
 import { setUserKycStatus } from '@/lib/identity-client';
-import { getClient } from '@/lib/client';
+import { saveListing } from '@/lib/platform-client';
 import { cn } from '@/lib/utils';
+import { formatUptime, HealthMetric, sortByDate, StatCard, toListingPayload } from '@/features/admin/dashboard-support';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -104,37 +105,6 @@ type DateSortTable =
   | 'subscriptions'
   | 'checkouts'
   | 'kyc';
-
-function toListingPayload(listing: Listing, status = listing.status) {
-  return {
-    id: listing.id,
-    title: listing.title,
-    description: listing.description,
-    location: listing.location,
-    area: listing.area,
-    province: listing.province,
-    category: listing.category,
-    type: listing.type,
-    pricePerNight: listing.pricePerNight,
-    discount: listing.discount,
-    amenities: listing.amenities,
-    facilities: listing.facilities,
-    other_facility: listing.other_facility,
-    restaurant_offers: listing.restaurant_offers,
-    images: listing.images,
-    video_url: listing.video_url,
-    adults: listing.adults,
-    children: listing.children,
-    bedrooms: listing.bedrooms,
-    bathrooms: listing.bathrooms,
-    is_self_catering: listing.is_self_catering,
-    has_restaurant: listing.has_restaurant,
-    is_occupied: listing.is_occupied,
-    coordinates: listing.coordinates || null,
-    blockedDates: listing.blockedDates || [],
-    status,
-  };
-}
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -195,14 +165,6 @@ export default function AdminDashboard() {
     }));
   };
 
-  const sortByDate = <T,>(items: T[], getDateValue: (item: T) => string | null | undefined, direction: DateSortDirection) => {
-    return [...items].sort((left, right) => {
-      const leftTime = getDateValue(left) ? new Date(getDateValue(left) as string).getTime() : 0;
-      const rightTime = getDateValue(right) ? new Date(getDateValue(right) as string).getTime() : 0;
-      return direction === 'desc' ? rightTime - leftTime : leftTime - rightTime;
-    });
-  };
-
   const renderDateSortHeader = (table: DateSortTable, label: string) => (
     <button
       type="button"
@@ -214,20 +176,6 @@ export default function AdminDashboard() {
       <span className="text-[9px]">{dateSorts[table] === 'desc' ? 'Newest' : 'Oldest'}</span>
     </button>
   );
-
-  const formatUptime = (uptimeSeconds: number) => {
-    const days = Math.floor(uptimeSeconds / 86400);
-    const hours = Math.floor((uptimeSeconds % 86400) / 3600);
-    const minutes = Math.floor((uptimeSeconds % 3600) / 60);
-
-    if (days > 0) {
-      return `${days}d ${hours}h`;
-    }
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    }
-    return `${minutes}m`;
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -319,7 +267,7 @@ export default function AdminDashboard() {
     try {
       const listing = allListings.find((item) => item.id === id);
       if (!listing) return;
-      await getClient.hospitality.saveListing(toListingPayload(listing, newStatus as Listing['status']));
+      await saveListing(toListingPayload(listing, newStatus as Listing['status']));
       setAllListings((current) => current.map((item) => item.id === id ? { ...item, status: newStatus as Listing['status'] } : item));
       setTopListings((current) => current.map((item) => item.id === id ? { ...item, status: newStatus as Listing['status'] } : item).filter((item) => item.status === 'active').slice(0, 5));
       setStats((current) => ({
@@ -360,7 +308,7 @@ export default function AdminDashboard() {
     try {
       const listing = allListings.find((item) => item.id === id);
       if (!listing) return;
-      await getClient.hospitality.saveListing(toListingPayload(listing, 'archived'));
+      await saveListing(toListingPayload(listing, 'archived'));
       setAllListings((current) => current.filter((item) => item.id !== id));
       setTopListings((current) => current.filter((item) => item.id !== id));
       setStats((current) => ({
@@ -476,7 +424,7 @@ export default function AdminDashboard() {
 
   const handleUpdateListing = async (listing: Listing) => {
     try {
-      await getClient.hospitality.saveListing(toListingPayload(listing));
+      await saveListing(toListingPayload(listing));
       setAllListings((current) => current.map((item) => item.id === listing.id ? listing : item));
       const notification = await createAdminNotification({
         title: 'Listing Updated',
@@ -2562,52 +2510,6 @@ export default function AdminDashboard() {
           </div>
         </div>
       </main>
-    </div>
-  );
-}
-
-// --- Sub-components ---
-
-function StatCard({ title, value, trend, isUp, icon: Icon, iconBg, iconColor }: any) {
-  return (
-    <Card className="p-6 space-y-4 hover:shadow-md transition-shadow">
-      <div className="flex justify-between items-start">
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-slate-500">{title}</p>
-          <h3 className="text-3xl font-bold text-slate-900">{value.toLocaleString()}</h3>
-        </div>
-        <div className={cn("p-2.5 rounded-xl", iconBg)}>
-          <Icon className={cn("w-5 h-5", iconColor)} />
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <div className={cn(
-          "flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-md",
-          isUp ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50"
-        )}>
-          {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-          {trend}
-        </div>
-        <span className="text-[10px] text-slate-400">vs last month</span>
-      </div>
-    </Card>
-  );
-}
-
-function HealthMetric({ label, value, max = 100, color }: any) {
-  const percentage = Math.min((value / max) * 100, 100);
-  return (
-    <div className="space-y-2">
-      <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider">
-        <span className="text-slate-400">{label}</span>
-        <span className="text-white">{value}{max === 100 ? '%' : 'ms'}</span>
-      </div>
-      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-        <div 
-          className={cn("h-full rounded-full transition-all duration-1000", color)} 
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
     </div>
   );
 }

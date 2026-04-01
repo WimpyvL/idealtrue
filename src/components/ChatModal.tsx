@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { useNotifications } from '@/context/NotificationContext';
 import { listMessages, sendMessage as sendPlatformMessage } from '@/lib/messaging-client';
 
 interface ChatModalProps {
@@ -16,7 +15,6 @@ interface ChatModalProps {
 }
 
 export default function ChatModal({ booking, listing, currentUserUid, onClose }: ChatModalProps) {
-  const { socket } = useNotifications();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -69,16 +67,6 @@ export default function ChatModal({ booking, listing, currentUserUid, onClose }:
         suggestionType,
       });
       setMessages((current) => [...current, savedMessage]);
-
-      if (!isSystem) {
-        socket?.emit('chat:message', {
-          bookingId: booking.id,
-          senderId: currentUserUid,
-          receiverId: otherPartyUid,
-          text,
-          senderName: isHost ? 'Host' : 'Guest'
-        });
-      }
 
       setNewMessage('');
     } catch (error) {
