@@ -108,6 +108,7 @@ const comparisonRows = [
 ];
 
 export default function PricingPage({ onBack }: { onBack?: () => void }) {
+    const navigate = useNavigate();
     const { user, profile, refreshProfile } = useAuth();
     const [loadingPlan, setLoadingPlan] = useState<PlanTier | null>(null);
     const [fetchingPlan, setFetchingPlan] = useState(true);
@@ -150,6 +151,7 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
                     await refreshProfile();
                     setCurrentPlan((profile?.host_plan as PlanTier) || currentPlan);
                     toast.success('Subscription payment confirmed. Your plan access is now live.');
+                    navigate('/host', { replace: true });
                     return;
                 }
 
@@ -175,7 +177,7 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
         return () => {
             cancelled = true;
         };
-    }, [billingStatus, checkoutId, currentPlan, profile?.host_plan, refreshProfile, user]);
+    }, [billingStatus, checkoutId, currentPlan, navigate, profile?.host_plan, refreshProfile, user]);
 
 
     const handleUpgrade = useCallback(async (planId: PlanTier) => {
