@@ -167,6 +167,19 @@ function useSameOriginUploadProxy() {
   return hostname !== 'localhost' && hostname !== '127.0.0.1';
 }
 
+function normalizeListingId(listingId?: string) {
+  if (!listingId) {
+    return undefined;
+  }
+
+  const normalized = listingId.trim();
+  if (!normalized || normalized === 'undefined' || normalized === 'null') {
+    return undefined;
+  }
+
+  return normalized;
+}
+
 async function uploadViaAppProxy(path: string, fileBody: Blob | File, authToken: string) {
   const response = await fetch(path, {
     method: 'POST',
@@ -186,6 +199,7 @@ async function uploadViaAppProxy(path: string, fileBody: Blob | File, authToken:
 }
 
 export async function uploadListingImage(params: { listingId?: string; file: File }) {
+  const listingId = normalizeListingId(params.listingId);
   const prepared = await prepareImageUpload(params.file, {
     maxDimension: 1800,
     maxBytes: Math.round(1.6 * 1024 * 1024),
@@ -198,7 +212,7 @@ export async function uploadListingImage(params: { listingId?: string; file: Fil
       throw new Error('Missing Encore session token.');
     }
     const query = new URLSearchParams({
-      listingId: params.listingId ?? '',
+      listingId: listingId ?? '',
       filename: prepared.filename,
       contentType: prepared.contentType,
     });
@@ -215,7 +229,7 @@ export async function uploadListingImage(params: { listingId?: string; file: Fil
     {
       method: 'POST',
       body: JSON.stringify({
-        listingId: params.listingId,
+        ...(listingId ? { listingId } : {}),
         filename: prepared.filename,
         contentType: prepared.contentType,
         dataBase64: await blobToBase64(prepared.blob),
@@ -228,13 +242,14 @@ export async function uploadListingImage(params: { listingId?: string; file: Fil
 }
 
 export async function uploadListingMedia(params: { listingId?: string; file: File }) {
+  const listingId = normalizeListingId(params.listingId);
   if (useSameOriginUploadProxy()) {
     const token = localStorage.getItem(TOKEN_STORAGE_KEY);
     if (!token) {
       throw new Error('Missing Encore session token.');
     }
     const query = new URLSearchParams({
-      listingId: params.listingId ?? '',
+      listingId: listingId ?? '',
       filename: params.file.name,
       contentType: params.file.type || 'application/octet-stream',
     });
@@ -247,7 +262,7 @@ export async function uploadListingMedia(params: { listingId?: string; file: Fil
   }
 
   const query = new URLSearchParams({
-    listingId: params.listingId ?? '',
+    listingId: listingId ?? '',
     filename: params.file.name,
     contentType: params.file.type || 'application/octet-stream',
   });

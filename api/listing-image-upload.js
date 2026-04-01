@@ -10,6 +10,19 @@ function getEncoreApiUrl() {
   return (process.env.ENCORE_API_URL || process.env.VITE_ENCORE_API_URL || DEFAULT_ENCORE_API_URL).replace(/\/+$/, "");
 }
 
+function normalizeListingId(listingId) {
+  if (!listingId) {
+    return "";
+  }
+
+  const normalized = String(listingId).trim();
+  if (!normalized || normalized === "undefined" || normalized === "null") {
+    return "";
+  }
+
+  return normalized;
+}
+
 async function readBuffer(req) {
   const chunks = [];
   for await (const chunk of req) {
@@ -31,7 +44,7 @@ export default async function handler(req, res) {
   }
 
   const requestUrl = new URL(req.url, "http://vercel.local");
-  const listingId = requestUrl.searchParams.get("listingId") || "";
+  const listingId = normalizeListingId(requestUrl.searchParams.get("listingId"));
   const filename = requestUrl.searchParams.get("filename") || "listing-image.jpg";
   const contentType = requestUrl.searchParams.get("contentType") || req.headers["content-type"] || "image/jpeg";
 
