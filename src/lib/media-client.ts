@@ -6,6 +6,12 @@ export interface SerializedImageAsset {
   dataBase64: string;
 }
 
+interface PreparedImageUpload {
+  filename: string;
+  contentType: 'image/jpeg';
+  blob: Blob;
+}
+
 async function blobToBase64(blob: Blob) {
   const buffer = await blob.arrayBuffer();
   let binary = '';
@@ -117,6 +123,27 @@ export async function serializeImageFile(
   };
 }
 
+async function prepareImageUpload(
+  file: File,
+  {
+    maxDimension = 1600,
+    maxBytes = 450 * 1024,
+    fallbackName = 'image-upload',
+  }: {
+    maxDimension?: number;
+    maxBytes?: number;
+    fallbackName?: string;
+  } = {},
+): Promise<PreparedImageUpload> {
+  const compressed = await compressImageFile(file, { maxDimension, maxBytes });
+  const safeFilename = file.name.replace(/\.[^.]+$/, '') || fallbackName;
+  return {
+    filename: `${safeFilename}.jpg`,
+    contentType: 'image/jpeg',
+    blob: compressed,
+  };
+}
+
 async function uploadToSignedUrl(uploadUrl: string, file: File) {
   const response = await fetch(uploadUrl, {
     method: 'PUT',
@@ -141,20 +168,46 @@ function useSameOriginUploadProxy() {
 }
 
 export async function uploadListingImage(params: { listingId?: string; file: File }) {
-  const serialized = await serializeImageFile(params.file, {
+  const prepared = await prepareImageUpload(params.file, {
     maxDimension: 1800,
     maxBytes: Math.round(1.6 * 1024 * 1024),
     fallbackName: 'listing-photo',
   });
+
+  if (useSameOriginUploadProxy()) {
+    const query = new URLSearchParams({
+      listingId: params.listingId ?? '',
+      filename: prepared.filename,
+      contentType: prepared.contentType,
+    });
+
+    const response = await encoreFetch(`/api/listing-image-upload?${query.toString()}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': prepared.contentType,
+        'X-Upload-Filename': prepared.filename,
+      },
+      body: prepared.blob,
+    }, { auth: true });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(body || `Image upload failed with status ${response.status}`);
+    }
+
+    const payload = await response.json() as { objectKey: string; publicUrl: string };
+    return payload.publicUrl;
+  }
+
   const response = await encoreRequest<{ objectKey: string; publicUrl: string }>(
     '/host/listings/media/images',
     {
       method: 'POST',
       body: JSON.stringify({
         listingId: params.listingId,
-        filename: serialized.filename,
-        contentType: serialized.contentType,
-        dataBase64: serialized.dataBase64,
+        filename: prepared.filename,
+        contentType: prepared.contentType,
+        dataBase64: await blobToBase64(prepared.blob),
       }),
     },
     { auth: true },
