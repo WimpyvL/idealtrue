@@ -4,9 +4,10 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 export const yocoSecretKey = secret<"YOCO_SECRET_KEY">("YOCO_SECRET_KEY");
 export const yocoWebhookSecret = secret<"YOCO_WEBHOOK_SECRET">("YOCO_WEBHOOK_SECRET");
+export const idealStayAppUrl = secret<"IDEAL_STAY_APP_URL">("IDEAL_STAY_APP_URL");
 
 const YOCO_API_BASE = process.env.YOCO_API_BASE || "https://payments.yoco.com/api";
-const DEFAULT_APP_URL = process.env.IDEAL_STAY_APP_URL || "http://127.0.0.1:5173";
+const DEFAULT_APP_URL = "https://ideal-stay.vercel.app";
 
 export interface YocoCheckoutRequest {
   amount: number;
@@ -36,7 +37,7 @@ export interface YocoWebhookEvent {
 }
 
 export function getAppUrl() {
-  return DEFAULT_APP_URL.replace(/\/+$/, "");
+  return (idealStayAppUrl() || DEFAULT_APP_URL).replace(/\/+$/, "");
 }
 
 export async function createYocoCheckout(input: YocoCheckoutRequest): Promise<YocoCheckoutResponse> {
