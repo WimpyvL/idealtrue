@@ -173,6 +173,6 @@ export async function createListingReview(params: {
 }
 
 export async function listReferralRewards(): Promise<Referral[]> {
-  const response = await encoreRequest<{ rewards: EncoreReferralReward[] }>('/referrals/my-rewards', {}, { auth: true });
+  const response = await encoreRequest<{ rewards: EncoreReferralReward[] }>('/referrals/rewards', {}, { auth: true });
   return response.rewards.map(mapEncoreReferralReward);
 }

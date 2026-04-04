@@ -125,7 +125,7 @@ test('guest booking request, host approval, and guest notification smoke flow', 
       return;
     }
 
-    if (path === '/referrals/my-rewards' && method === 'GET') {
+    if (path === '/referrals/rewards' && method === 'GET') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rewards: [] }) });
       return;
     }
