@@ -14,3 +14,7 @@ encore/**/*.js.map
 **/.git/
 
 .vercel
+encore.gen.go
+encore.gen.cue
+/.encore
+/encore.gen
