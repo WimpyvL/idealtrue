@@ -28,7 +28,7 @@ interface AuthContextType {
   user: AuthSessionUser | null;
   profile: UserProfile | null;
   loading: boolean;
-  refreshProfile: () => Promise<void>;
+  refreshProfile: () => Promise<UserProfile | null>;
   signIn: (params: LoginParams) => Promise<UserProfile>;
   signUp: (params: SignupParams) => Promise<UserProfile>;
   logout: () => Promise<void>;
@@ -38,7 +38,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
   loading: true,
-  refreshProfile: async () => {},
+  refreshProfile: async () => null,
   signIn: async () => {
     throw new Error('Auth context not ready.');
   },
@@ -73,9 +73,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const nextProfile = await getEncoreSessionProfile();
       setProfile(nextProfile);
       setUser(toSessionUser(nextProfile));
+      return nextProfile;
     } catch (error) {
       console.error('Error refreshing Encore profile:', error);
       await logout();
+      return null;
     }
   };
 

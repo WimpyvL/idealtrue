@@ -139,32 +139,41 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
         }
 
         let cancelled = false;
+        const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
         async function resolveCheckout() {
             try {
-                const result = await getCheckoutStatus(checkoutId);
-                if (cancelled) {
-                    return;
-                }
+                for (let attempt = 0; attempt < 8; attempt += 1) {
+                    const result = await getCheckoutStatus(checkoutId);
+                    if (cancelled) {
+                        return;
+                    }
 
-                if (result.status === 'paid') {
-                    await refreshProfile();
-                    setCurrentPlan((profile?.hostPlan as PlanTier) || currentPlan);
-                    toast.success('Subscription payment confirmed. Your plan access is now live.');
-                    navigate('/host', { replace: true });
-                    return;
-                }
+                    if (result.status === 'paid') {
+                        const nextProfile = await refreshProfile();
+                        if (cancelled) {
+                            return;
+                        }
+                        setCurrentPlan((nextProfile?.hostPlan as PlanTier) || currentPlan);
+                        toast.success('Subscription payment confirmed. Your plan access is now live.');
+                        navigate('/host', { replace: true });
+                        return;
+                    }
 
-                if (billingStatus === 'cancelled' || result.status === 'cancelled') {
-                    toast.message('Checkout cancelled. No subscription changes were applied.');
-                    return;
-                }
+                    if (billingStatus === 'cancelled' || result.status === 'cancelled') {
+                        toast.message('Checkout cancelled. No subscription changes were applied.');
+                        return;
+                    }
 
-                if (billingStatus === 'failed' || result.status === 'failed') {
-                    toast.error('Payment failed. Nothing was upgraded.');
-                    return;
-                }
+                    if (billingStatus === 'failed' || result.status === 'failed') {
+                        toast.error('Payment failed. Nothing was upgraded.');
+                        return;
+                    }
 
+                    if (attempt < 7) {
+                        await wait(2000);
+                    }
+                }
                 toast.message('Payment is still being confirmed. Give the webhook a moment and refresh if needed.');
             } catch (error) {
                 if (!cancelled) {
@@ -177,7 +186,7 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
         return () => {
             cancelled = true;
         };
-    }, [billingStatus, checkoutId, currentPlan, navigate, profile?.hostPlan, refreshProfile, user]);
+    }, [billingStatus, checkoutId, currentPlan, navigate, refreshProfile, user]);
 
 
     const handleUpgrade = useCallback(async (planId: PlanTier) => {
