@@ -2,6 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { randomUUID } from "node:crypto";
 import { identityDB } from "./db";
 import { issueToken } from "./auth";
+import { isDevLoginEnabled } from "./dev-login";
 import { sendAuthEmail } from "./email";
 import { hashPassword, verifyPassword } from "./passwords";
 import { createRawAuthToken, hashAuthToken } from "./tokens";
@@ -229,13 +230,6 @@ function resolveSelfServiceRole(existingRole: UserRole, isAdmin: boolean, reques
   }
 
   throw APIError.permissionDenied("Self-service role updates can only switch between guest and host.");
-}
-
-function isDevLoginEnabled() {
-  if (process.env.NODE_ENV === "production") {
-    return false;
-  }
-  return process.env.IDEAL_STAY_DISABLE_DEV_LOGIN !== "true";
 }
 
 function mapUser(row: UserRow): UserProfile {
