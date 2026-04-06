@@ -6,6 +6,7 @@ import { X, Video, Plus, Upload, Loader2, Film } from 'lucide-react';
 import { uploadListingMedia } from '@/lib/media-client';
 
 const ALLOWED_VIDEO_TYPES = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
+export const DEFAULT_VIDEO_UPLOAD_MAX_MB = 250;
 
 interface VideoUploadProps {
   value: string | null;
@@ -15,7 +16,13 @@ interface VideoUploadProps {
   maxSizeMB?: number;
 }
 
-export default function VideoUpload({ value, onChange, listingId, ensureListingId, maxSizeMB = 50 }: VideoUploadProps) {
+export default function VideoUpload({
+  value,
+  onChange,
+  listingId,
+  ensureListingId,
+  maxSizeMB = DEFAULT_VIDEO_UPLOAD_MAX_MB,
+}: VideoUploadProps) {
   const [url, setUrl] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);

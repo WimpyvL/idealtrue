@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import ImageUpload from "@/components/ui/image-upload";
-import VideoUpload from "@/components/ui/video-upload";
+import VideoUpload, { DEFAULT_VIDEO_UPLOAD_MAX_MB } from "@/components/ui/video-upload";
 import {
   Home,
   Check,
@@ -845,7 +845,7 @@ export default function CreateListing() {
                       onChange={(url) => updateData("videoUrl", url)}
                       listingId={workingListingId}
                       ensureListingId={ensureListingId}
-                      maxSizeMB={100}
+                      maxSizeMB={DEFAULT_VIDEO_UPLOAD_MAX_MB}
                     />
                   </div>
                 </div>

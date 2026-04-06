@@ -553,7 +553,8 @@ export const requestListingMediaUpload = api<UploadUrlParams, { objectKey: strin
     await assertCanUploadMedia(auth, normalizedListingId);
     const objectKey = buildListingMediaObjectKey({ auth, listingId: normalizedListingId, filename });
     const signed = await listingMediaBucket.signedUploadUrl(objectKey, {
-      ttl: 60 * 15,
+      // Large video uploads on slower uplinks routinely exceed 15 minutes.
+      ttl: 60 * 60,
     });
 
     return {

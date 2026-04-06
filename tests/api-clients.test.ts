@@ -394,6 +394,36 @@ test('uploadListingMedia uses a signed upload URL instead of proxying the video 
   assert.equal(fetchCalls[1]?.init?.body, file);
 });
 
+test('uploadListingMedia surfaces bucket CORS failures clearly for direct browser uploads', async () => {
+  installFetch((url, init) => {
+    if (url.endsWith('/host/listings/media/upload-url')) {
+      return createJsonResponse({
+        objectKey: 'listing-1/demo-video.mp4',
+        uploadUrl:
+          'https://storage.googleapis.com/example-bucket/listing-1/demo-video.mp4?signature=abc',
+        publicUrl: 'https://cdn.example.com/listing-1/demo-video.mp4',
+      });
+    }
+
+    if (url.startsWith('https://storage.googleapis.com/')) {
+      throw new TypeError('Failed to fetch');
+    }
+
+    throw new Error(`Unexpected URL: ${url} ${init?.method || 'GET'}`);
+  });
+
+  const file = new File([new Uint8Array([1, 2, 3, 4])], 'demo-video.mp4', { type: 'video/mp4' });
+
+  await assert.rejects(
+    () =>
+      uploadListingMedia({
+        listingId: 'listing-1',
+        file,
+      }),
+    /missing browser CORS/i,
+  );
+});
+
 test('referral mapping preserves rejected rewards instead of corrupting them to pending', () => {
   assert.equal(mapReferralStatus('pending'), 'pending');
   assert.equal(mapReferralStatus('earned'), 'rewarded');

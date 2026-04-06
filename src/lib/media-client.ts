@@ -145,13 +145,25 @@ async function prepareImageUpload(
 }
 
 async function uploadToSignedUrl(uploadUrl: string, file: File) {
-  const response = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': file.type || 'application/octet-stream',
-    },
-    body: file,
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+      },
+      body: file,
+    });
+  } catch (error) {
+    if (error instanceof TypeError && uploadUrl.includes('storage.googleapis.com')) {
+      throw new Error(
+        'Direct storage upload failed before the file reached the bucket. The listing media bucket is missing browser CORS for this frontend origin.',
+      );
+    }
+
+    throw error;
+  }
 
   if (!response.ok) {
     throw new Error(`Upload failed with status ${response.status}`);
