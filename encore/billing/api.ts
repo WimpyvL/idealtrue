@@ -7,6 +7,11 @@ import { classifyYocoWebhookOutcome } from "./webhook-classification";
 import { toMinorUnits } from "./pricing";
 import { catalogDB } from "../catalog/db";
 import { identityDB } from "../identity/db";
+import {
+  notifyCheckoutStatusChanged,
+  notifyContentCreditsPurchased,
+  notifySubscriptionActivated,
+} from "../ops/notifications";
 import { requireAuth, requireRole } from "../shared/auth";
 import { HOST_PLANS, HostPlan, SubscriptionPlan } from "../shared/domain";
 import { platformEvents } from "../analytics/events";
@@ -549,22 +554,59 @@ async function fulfilSuccessfulCheckout(session: CheckoutSessionRow, providerPay
 
   if (session.checkout_type === "subscription") {
     await activatePlanFromCheckout(session);
+    if (session.host_plan && session.billing_interval) {
+      try {
+        await notifySubscriptionActivated({
+          userId: session.user_id,
+          plan: session.host_plan,
+          billingInterval: session.billing_interval,
+        });
+      } catch (error) {
+        console.error("Failed to notify subscription activation:", error);
+      }
+    }
   } else {
     await creditWalletFromCheckout(session);
+    if (session.credit_quantity) {
+      try {
+        await notifyContentCreditsPurchased({
+          userId: session.user_id,
+          credits: session.credit_quantity,
+        });
+      } catch (error) {
+        console.error("Failed to notify content credit purchase:", error);
+      }
+    }
   }
 
   await markCheckoutPaid(session, providerPaymentId);
 }
 
-async function markCheckoutStatus(sessionId: string, status: Exclude<CheckoutStatus, "paid">) {
+async function markCheckoutStatus(session: CheckoutSessionRow, status: "failed" | "cancelled") {
+  if (session.status !== "pending") {
+    return;
+  }
+
   const now = new Date().toISOString();
   await billingDB.exec`
     UPDATE billing_checkout_sessions
     SET status = ${status},
         updated_at = ${now}
-    WHERE id = ${sessionId}
+    WHERE id = ${session.id}
       AND status = ${"pending"}
   `;
+
+  try {
+    await notifyCheckoutStatusChanged({
+      userId: session.user_id,
+      checkoutType: session.checkout_type,
+      status,
+      hostPlan: session.host_plan,
+      creditQuantity: session.credit_quantity,
+    });
+  } catch (error) {
+    console.error("Failed to notify checkout status change:", error);
+  }
 }
 
 async function readRawBody(req: IncomingMessage) {
@@ -1005,9 +1047,9 @@ export const yocoWebhook = api.raw(
       if (outcome === "paid") {
         await fulfilSuccessfulCheckout(session, providerPaymentId);
       } else if (outcome === "failed") {
-        await markCheckoutStatus(session.id, "failed");
+        await markCheckoutStatus(session, "failed");
       } else if (outcome === "cancelled") {
-        await markCheckoutStatus(session.id, "cancelled");
+        await markCheckoutStatus(session, "cancelled");
       }
 
       await billingDB.exec`

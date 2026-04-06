@@ -60,13 +60,14 @@ export function buildPaymentProofSubmittedNotification(params: {
 export function buildMessageReceivedNotification(params: {
   receiverId: string;
   listingTitle: string;
+  actionPath: string;
 }): NotificationInput {
   return {
     title: "New message",
     message: `You have a new message about ${params.listingTitle}.`,
     type: "info",
     target: params.receiverId,
-    actionPath: null,
+    actionPath: params.actionPath,
   };
 }
 
@@ -80,5 +81,97 @@ export function buildReferralRewardEarnedNotification(params: {
     type: "success",
     target: params.referrerId,
     actionPath: "/referral",
+  };
+}
+
+export function buildKycReviewedNotification(params: {
+  userId: string;
+  status: "verified" | "rejected";
+  rejectionReason?: string | null;
+}): NotificationInput {
+  return {
+    title: params.status === "verified" ? "KYC approved" : "KYC needs attention",
+    message:
+      params.status === "verified"
+        ? "Your identity verification has been approved."
+        : params.rejectionReason?.trim()
+          ? `Your identity verification was rejected: ${params.rejectionReason.trim()}`
+          : "Your identity verification was rejected. Review your documents and try again.",
+    type: params.status === "verified" ? "success" : "warning",
+    target: params.userId,
+    actionPath: "/account",
+  };
+}
+
+export function buildListingReviewedNotification(params: {
+  hostId: string;
+  listingTitle: string;
+  status: "active" | "rejected";
+  rejectionReason?: string | null;
+}): NotificationInput {
+  return {
+    title: params.status === "active" ? "Listing approved" : "Listing rejected",
+    message:
+      params.status === "active"
+        ? `${params.listingTitle} is now live.`
+        : params.rejectionReason?.trim()
+          ? `${params.listingTitle} was rejected: ${params.rejectionReason.trim()}`
+          : `${params.listingTitle} was rejected during admin review.`,
+    type: params.status === "active" ? "success" : "warning",
+    target: params.hostId,
+    actionPath: "/host/listings",
+  };
+}
+
+export function buildSubscriptionActivatedNotification(params: {
+  userId: string;
+  plan: string;
+  billingInterval: "monthly" | "annual";
+}): NotificationInput {
+  const intervalLabel = params.billingInterval === "annual" ? "annual" : "monthly";
+
+  return {
+    title: "Subscription activated",
+    message: `Your ${params.plan} ${intervalLabel} plan is now active.`,
+    type: "success",
+    target: params.userId,
+    actionPath: "/pricing",
+  };
+}
+
+export function buildContentCreditsPurchasedNotification(params: {
+  userId: string;
+  credits: number;
+}): NotificationInput {
+  return {
+    title: "Content credits added",
+    message: `${params.credits} content credits were added to your balance.`,
+    type: "success",
+    target: params.userId,
+    actionPath: "/host/social",
+  };
+}
+
+export function buildCheckoutStatusChangedNotification(params: {
+  userId: string;
+  checkoutType: "subscription" | "content_credits";
+  status: "failed" | "cancelled";
+  hostPlan?: string | null;
+  creditQuantity?: number | null;
+}): NotificationInput {
+  const targetThing =
+    params.checkoutType === "subscription"
+      ? `${params.hostPlan ?? "selected"} plan subscription`
+      : `${params.creditQuantity ?? "selected"} content credit purchase`;
+
+  return {
+    title: params.status === "failed" ? "Payment failed" : "Payment cancelled",
+    message:
+      params.status === "failed"
+        ? `Your ${targetThing} payment did not complete. Try again when you're ready.`
+        : `Your ${targetThing} checkout was cancelled before payment completed.`,
+    type: params.status === "failed" ? "error" : "warning",
+    target: params.userId,
+    actionPath: params.checkoutType === "subscription" ? "/pricing" : "/host/social",
   };
 }

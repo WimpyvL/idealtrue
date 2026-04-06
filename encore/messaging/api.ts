@@ -103,6 +103,7 @@ export const sendMessage = api<SendMessageParams, { message: MessageRecord }>(
       await notifyMessageReceived({
         receiverId: params.receiverId,
         listingTitle: listing.title,
+        actionPath: params.receiverId === booking.hostId ? "/host/inbox" : "/guest",
       });
     } catch (error) {
       console.error("Failed to create message notification:", error);

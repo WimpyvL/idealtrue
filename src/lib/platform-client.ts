@@ -78,6 +78,16 @@ export async function saveListing(input: SaveListingInput) {
   return mapEncoreListing(response.listing);
 }
 
+export async function deleteListing(id: string) {
+  await encoreRequest<{ deleted: true }>(
+    `/host/listings/${id}`,
+    {
+      method: 'DELETE',
+    },
+    { auth: true },
+  );
+}
+
 export async function listMyBookings() {
   const response = await encoreRequest<{ bookings: EncoreBooking[] }>('/bookings/me', {}, { auth: true });
   return response.bookings.map(mapEncoreBooking);

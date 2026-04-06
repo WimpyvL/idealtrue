@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import type { AuthSessionUser } from '@/contexts/AuthContext';
 import type { Notification } from '@/types';
 import {
+  dismissNotification as persistDismissNotification,
   listMyNotifications,
   markAllNotificationsRead as persistMarkAllNotificationsRead,
   markNotificationRead as persistMarkNotificationRead,
@@ -12,6 +13,7 @@ interface NotificationContextType {
   notifications: Notification[];
   unreadCount: number;
   isNotificationRead: (notificationId: string) => boolean;
+  dismissNotification: (notificationId: string) => Promise<void>;
   markNotificationRead: (notificationId: string) => Promise<void>;
   markAllNotificationsRead: () => Promise<void>;
 }
@@ -20,6 +22,7 @@ const NotificationContext = createContext<NotificationContextType>({
   notifications: [],
   unreadCount: 0,
   isNotificationRead: () => false,
+  dismissNotification: async () => {},
   markNotificationRead: async () => {},
   markAllNotificationsRead: async () => {},
 });
@@ -55,6 +58,25 @@ function mergeNotifications(existing: Notification[], incoming: Notification[]) 
   );
 }
 
+function notifyForNotification(notification: Notification) {
+  const message = notification.message;
+
+  switch (notification.type) {
+    case 'success':
+      toast.success(message);
+      break;
+    case 'warning':
+      toast.warning(message);
+      break;
+    case 'error':
+      toast.error(message);
+      break;
+    default:
+      toast.info(message);
+      break;
+  }
+}
+
 export const NotificationProvider = ({ children, user }: { children: React.ReactNode; user: AuthSessionUser | null }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
@@ -81,7 +103,7 @@ export const NotificationProvider = ({ children, user }: { children: React.React
           const existingIds = new Set(current.map((notification) => notification.id));
           for (const notification of fetchedNotifications) {
             if (!existingIds.has(notification.id)) {
-              toast.info(notification.message);
+              notifyForNotification(notification);
             }
           }
 
@@ -132,6 +154,20 @@ export const NotificationProvider = ({ children, user }: { children: React.React
     }
   };
 
+  const dismissNotification = async (notificationId: string) => {
+    const existing = notifications.find((notification) => notification.id === notificationId) ?? null;
+    setNotifications((current) => current.filter((notification) => notification.id !== notificationId));
+
+    try {
+      await persistDismissNotification(notificationId);
+    } catch (error) {
+      console.error('Failed to dismiss notification:', error);
+      if (existing) {
+        setNotifications((current) => mergeNotifications(current, [existing]));
+      }
+    }
+  };
+
   const markAllNotificationsRead = async () => {
     const optimisticReadAt = new Date().toISOString();
     setNotifications((current) =>
@@ -157,6 +193,7 @@ export const NotificationProvider = ({ children, user }: { children: React.React
         notifications,
         unreadCount,
         isNotificationRead,
+        dismissNotification,
         markNotificationRead,
         markAllNotificationsRead,
       }}

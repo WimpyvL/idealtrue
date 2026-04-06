@@ -7,8 +7,10 @@ import { Switch } from '../components/ui/switch';
 import { Building2, Plus, Edit, Trash2, Share2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ConfirmationDialog } from '../components/ui/confirmation-dialog';
-import { saveListing } from '../lib/platform-client';
+import { deleteListing, saveListing } from '../lib/platform-client';
 import { formatRand } from '@/lib/currency';
+import { getErrorMessage } from '@/lib/errors';
+import { useToast } from '@/components/ui/use-toast';
 
 type Props = {
   listings: Listing[];
@@ -49,6 +51,7 @@ function toSaveListingPayload(listing: Listing, status: Listing['status']) {
 
 export default function HostListings({ listings, onListingUpdated, onListingRemoved }: Props) {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [listingToDelete, setListingToDelete] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
@@ -74,13 +77,17 @@ export default function HostListings({ listings, onListingUpdated, onListingRemo
     
     setIsDeleting(listingToDelete);
     try {
-      const listing = listings.find((item) => item.id === listingToDelete);
-      if (!listing) return;
-      await saveListing(toSaveListingPayload(listing, 'archived'));
+      await deleteListing(listingToDelete);
       onListingRemoved?.(listingToDelete);
+      toast({ title: 'Listing Deleted', description: 'Listing has been permanently removed from the server.' });
       setListingToDelete(null);
     } catch (error) {
-      console.error('Failed to archive listing', error);
+      console.error('Failed to delete listing', error);
+      toast({
+        title: 'Listing delete failed',
+        description: getErrorMessage(error),
+        variant: 'destructive',
+      });
     } finally {
       setIsDeleting(null);
     }
@@ -186,7 +193,7 @@ export default function HostListings({ listings, onListingUpdated, onListingRemo
         onClose={() => setListingToDelete(null)}
         onConfirm={handleDeleteConfirm}
         title="Delete Listing"
-        description="Are you sure you want to delete this listing? This action cannot be undone and all associated data will be removed."
+        description="Are you sure you want to permanently delete this listing? This cannot be undone. Listings with booking history cannot be deleted."
         confirmText="Delete Listing"
         isLoading={!!isDeleting}
       />

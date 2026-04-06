@@ -9,9 +9,10 @@ import {
 } from '../src/lib/encore-client.ts';
 import { getEncoreSessionProfile } from '../src/lib/identity-client.ts';
 import { uploadListingMedia } from '../src/lib/media-client.ts';
-import { getAdminPlatformSettings, listAdminNotifications } from '../src/lib/admin-client.ts';
+import { deleteAdminUser, getAdminPlatformSettings, listAdminNotifications } from '../src/lib/admin-client.ts';
+import { dismissNotification } from '../src/lib/notification-client.ts';
 import { reviewKycSubmission } from '../src/lib/ops-client.ts';
-import { getListing, mapReferralStatus, saveListing, submitPaymentProof, updateBookingStatus } from '../src/lib/platform-client.ts';
+import { deleteListing, getListing, mapReferralStatus, saveListing, submitPaymentProof, updateBookingStatus } from '../src/lib/platform-client.ts';
 
 type FetchCall = {
   url: string;
@@ -288,6 +289,18 @@ test('getListing and saveListing use the canonical Encore listing contract', asy
   assert.equal(savedListing.rejectionReason, 'Photos were too blurry and the description was incomplete.');
 });
 
+test('deleteListing issues a real DELETE request to the listing endpoint', async () => {
+  installFetch((url, init) => {
+    assert.equal(url, `${DEFAULT_ENCORE_API_URL}/host/listings/listing-9`);
+    assert.equal(init?.method, 'DELETE');
+    return createJsonResponse({ deleted: true });
+  });
+
+  await deleteListing('listing-9');
+
+  assert.equal(fetchCalls.length, 1);
+});
+
 test('updateBookingStatus sends the booking status patch to the correct endpoint', async () => {
   installFetch(() =>
     createJsonResponse({
@@ -486,6 +499,31 @@ test('admin notification and settings helpers hit the ops endpoints via the prox
   assert.equal(getHeaders(fetchCalls[1]?.init).get('Authorization'), null);
   assert.equal(notifications[0]?.type, 'warning');
   assert.equal(settings.platformName, 'Ideal Stay');
+});
+
+test('deleteAdminUser issues a real DELETE request to the admin user endpoint', async () => {
+  installFetch((url, init) => {
+    assert.equal(url, `${DEFAULT_ENCORE_API_URL}/admin/users/user-77`);
+    assert.equal(init?.method, 'DELETE');
+    return createJsonResponse({ deleted: true });
+  });
+
+  await deleteAdminUser('user-77');
+
+  assert.equal(fetchCalls.length, 1);
+});
+
+test('dismissNotification issues a real DELETE request to the per-user notification endpoint', async () => {
+  installFetch((url, init) => {
+    assert.equal(url, `${DEFAULT_ENCORE_API_URL}/ops/my-notifications/notif-9`);
+    assert.equal(init?.method, 'DELETE');
+    return createJsonResponse({ ok: true, dismissedAt: '2026-04-06T10:15:00.000Z' });
+  });
+
+  const response = await dismissNotification('notif-9');
+
+  assert.deepEqual(response, { ok: true, dismissedAt: '2026-04-06T10:15:00.000Z' });
+  assert.equal(fetchCalls.length, 1);
 });
 
 test('reviewKycSubmission posts structured review decisions instead of prompt text hacks', async () => {

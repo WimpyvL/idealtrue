@@ -7,6 +7,7 @@ import { bookingDB } from "../booking/db";
 import { catalogDB } from "../catalog/db";
 import { identityDB } from "../identity/db";
 import { messagingDB } from "../messaging/db";
+import { notifyKycReviewed } from "./notifications";
 import { opsDB } from "./db";
 import { referralsDB } from "../referrals/db";
 import { reviewsDB } from "../reviews/db";
@@ -203,6 +204,37 @@ function mapPlatformSettings(row: PlatformSettingsRow): PlatformSettingsRecord {
     maintenanceMode: row.maintenance_mode,
     updatedAt: row.updated_at,
   };
+}
+
+function buildNotificationAudience(auth: { userID: string; role: string }) {
+  const audience = ["all", auth.userID];
+
+  if (auth.role === "host") {
+    audience.push("hosts");
+  }
+  if (auth.role === "guest") {
+    audience.push("guests");
+  }
+  if (auth.role === "admin" || auth.role === "support") {
+    audience.push("admins");
+  }
+
+  return audience;
+}
+
+async function assertNotificationAccessible(notificationId: string, auth: { userID: string; role: string }) {
+  const audience = buildNotificationAudience(auth);
+  const notification = await opsDB.queryRow<{ id: string }>`
+    SELECT id
+    FROM notifications
+    WHERE id = ${notificationId}
+      AND target = ANY(${audience})
+    LIMIT 1
+  `;
+
+  if (!notification) {
+    throw APIError.notFound("Notification not found.");
+  }
 }
 
 function sanitizeKycFilename(filename: string) {
@@ -441,6 +473,15 @@ export const reviewKycSubmission = api<{
           reviewer_id = ${auth.userID}
       WHERE user_id = ${params.userId}
     `;
+    try {
+      await notifyKycReviewed({
+        userId: params.userId,
+        status: params.status,
+        rejectionReason: params.status === "rejected" ? params.rejectionReason ?? "Rejected during review." : null,
+      });
+    } catch (error) {
+      console.error("Failed to notify KYC review outcome:", error);
+    }
     return {
       submission: {
         ...mapKycSubmission(existing),
@@ -532,17 +573,7 @@ export const listMyNotifications = api<void, { notifications: NotificationRecord
   { expose: true, method: "GET", path: "/ops/my-notifications", auth: true },
   async () => {
     const auth = requireAuth();
-    const audience = ["all", auth.userID];
-
-    if (auth.role === "host") {
-      audience.push("hosts");
-    }
-    if (auth.role === "guest") {
-      audience.push("guests");
-    }
-    if (auth.role === "admin") {
-      audience.push("admins");
-    }
+    const audience = buildNotificationAudience(auth);
 
     const notifications = await opsDB.queryAll<NotificationRow>`
       SELECT
@@ -558,7 +589,11 @@ export const listMyNotifications = api<void, { notifications: NotificationRecord
       LEFT JOIN notification_reads
         ON notification_reads.notification_id = notifications.id
        AND notification_reads.user_id = ${auth.userID}
+      LEFT JOIN notification_dismissals
+        ON notification_dismissals.notification_id = notifications.id
+       AND notification_dismissals.user_id = ${auth.userID}
       WHERE notifications.target = ANY(${audience})
+        AND notification_dismissals.notification_id IS NULL
       ORDER BY created_at DESC
     `;
 
@@ -570,6 +605,7 @@ export const markNotificationRead = api<{ notificationId: string }, { ok: true; 
   { expose: true, method: "POST", path: "/ops/my-notifications/read", auth: true },
   async ({ notificationId }) => {
     const auth = requireAuth();
+    await assertNotificationAccessible(notificationId, auth);
     const readAt = new Date().toISOString();
 
     await opsDB.exec`
@@ -587,17 +623,7 @@ export const markAllNotificationsRead = api<void, { ok: true; readAt: string }>(
   { expose: true, method: "POST", path: "/ops/my-notifications/read-all", auth: true },
   async () => {
     const auth = requireAuth();
-    const audience = ["all", auth.userID];
-
-    if (auth.role === "host") {
-      audience.push("hosts");
-    }
-    if (auth.role === "guest") {
-      audience.push("guests");
-    }
-    if (auth.role === "admin") {
-      audience.push("admins");
-    }
+    const audience = buildNotificationAudience(auth);
 
     const readAt = new Date().toISOString();
 
@@ -605,12 +631,34 @@ export const markAllNotificationsRead = api<void, { ok: true; readAt: string }>(
       INSERT INTO notification_reads (notification_id, user_id, read_at)
       SELECT notifications.id, ${auth.userID}, ${readAt}
       FROM notifications
+      LEFT JOIN notification_dismissals
+        ON notification_dismissals.notification_id = notifications.id
+       AND notification_dismissals.user_id = ${auth.userID}
       WHERE notifications.target = ANY(${audience})
+        AND notification_dismissals.notification_id IS NULL
       ON CONFLICT (notification_id, user_id)
       DO UPDATE SET read_at = EXCLUDED.read_at
     `;
 
     return { ok: true, readAt };
+  },
+);
+
+export const dismissNotification = api<{ notificationId: string }, { ok: true; dismissedAt: string }>(
+  { expose: true, method: "DELETE", path: "/ops/my-notifications/:notificationId", auth: true },
+  async ({ notificationId }) => {
+    const auth = requireAuth();
+    await assertNotificationAccessible(notificationId, auth);
+    const dismissedAt = new Date().toISOString();
+
+    await opsDB.exec`
+      INSERT INTO notification_dismissals (notification_id, user_id, dismissed_at)
+      VALUES (${notificationId}, ${auth.userID}, ${dismissedAt})
+      ON CONFLICT (notification_id, user_id)
+      DO UPDATE SET dismissed_at = EXCLUDED.dismissed_at
+    `;
+
+    return { ok: true, dismissedAt };
   },
 );
 

@@ -6,8 +6,12 @@ import { catalogDB } from "./db";
 import { listingMediaBucket } from "./storage";
 import { computeHostListingQuota, type HostListingQuota } from "./quota";
 import { requireRole, type AuthData } from "../shared/auth";
+import { billingDB } from "../billing/db";
+import { bookingDB } from "../booking/db";
 import { identityDB } from "../identity/db";
+import { notifyListingReviewed } from "../ops/notifications";
 import { platformEvents } from "../analytics/events";
+import { reviewsDB } from "../reviews/db";
 import type { ListingRecord, ListingStatus } from "../shared/domain";
 
 type ListingRow = {
@@ -248,6 +252,63 @@ function canReadUnpublishedListing(auth: AuthData | null, listingHostId: string)
   return false;
 }
 
+function getListingMediaObjectKey(publicUrl: string) {
+  const trimmed = `${publicUrl || ""}`.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const directPrefix = listingMediaBucket.publicUrl("");
+    if (directPrefix && trimmed.startsWith(directPrefix)) {
+      return decodeURIComponent(trimmed.slice(directPrefix.length)).replace(/^\/+/, "") || null;
+    }
+
+    const parsed = new URL(trimmed);
+    const path = decodeURIComponent(parsed.pathname).replace(/^\/+/, "");
+    if (!path) {
+      return null;
+    }
+
+    const bucketPrefix = "listing-media-public/";
+    if (path.startsWith(bucketPrefix)) {
+      return path.slice(bucketPrefix.length) || null;
+    }
+
+    return path;
+  } catch {
+    return null;
+  }
+}
+
+async function removeListingMediaAssets(listing: ListingRow) {
+  const objectKeys = new Set<string>();
+
+  for (const imageUrl of listing.images ?? []) {
+    const objectKey = getListingMediaObjectKey(imageUrl);
+    if (objectKey) {
+      objectKeys.add(objectKey);
+    }
+  }
+
+  if (listing.video_url) {
+    const videoKey = getListingMediaObjectKey(listing.video_url);
+    if (videoKey) {
+      objectKeys.add(videoKey);
+    }
+  }
+
+  await Promise.all(
+    [...objectKeys].map(async (objectKey) => {
+      try {
+        await listingMediaBucket.remove(objectKey);
+      } catch (error) {
+        console.warn(`Failed to remove listing media object ${objectKey}:`, error);
+      }
+    }),
+  );
+}
+
 interface UpdateAvailabilityParams {
   listingId: string;
   blockedDates: string[];
@@ -466,6 +527,23 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
         payload: JSON.stringify({ hostId: auth.userID, status: nextStatus }),
       });
 
+      if (
+        auth.role === "admin" &&
+        (nextStatus === "active" || nextStatus === "rejected") &&
+        (existing.status !== nextStatus || existing.rejection_reason !== nextRejectionReason)
+      ) {
+        try {
+          await notifyListingReviewed({
+            hostId: existing.host_id,
+            listingTitle: params.title,
+            status: nextStatus,
+            rejectionReason: nextRejectionReason,
+          });
+        } catch (error) {
+          console.error("Failed to notify host about listing review:", error);
+        }
+      }
+
       return {
         listing: {
           ...mapListing(existing),
@@ -523,6 +601,57 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
         updatedAt: now,
       },
     };
+  },
+);
+
+export const deleteListing = api<{ id: string }, { deleted: true }>(
+  { expose: true, method: "DELETE", path: "/host/listings/:id", auth: true },
+  async ({ id }) => {
+    const auth = requireRole("host", "admin");
+    const existing = await catalogDB.queryRow<ListingRow>`
+      SELECT * FROM listings WHERE id = ${id}
+    `;
+    if (!existing) throw APIError.notFound("Listing not found.");
+    if (existing.host_id !== auth.userID && auth.role !== "admin") {
+      throw APIError.permissionDenied("You cannot delete another host's listing.");
+    }
+
+    const bookingCount = await bookingDB.queryRow<{ count: number }>`
+      SELECT COUNT(*)::int AS count
+      FROM bookings
+      WHERE listing_id = ${id}
+    `;
+    if ((bookingCount?.count ?? 0) > 0) {
+      throw APIError.failedPrecondition("This listing has booking history and cannot be permanently deleted.");
+    }
+
+    await Promise.all([
+      billingDB.exec`
+        DELETE FROM content_drafts
+        WHERE listing_id = ${id}
+      `,
+      reviewsDB.exec`
+        DELETE FROM reviews
+        WHERE listing_id = ${id}
+      `,
+    ]);
+
+    await catalogDB.exec`
+      DELETE FROM listings
+      WHERE id = ${id}
+    `;
+
+    await removeListingMediaAssets(existing);
+
+    await platformEvents.publish({
+      type: "listing.deleted",
+      aggregateId: id,
+      actorId: auth.userID,
+      occurredAt: new Date().toISOString(),
+      payload: JSON.stringify({ hostId: existing.host_id }),
+    });
+
+    return { deleted: true };
   },
 );
 

@@ -28,9 +28,10 @@ import {
 } from '@/lib/admin-client';
 import { getKycSubmissionAssets, reviewKycSubmission, type KycSubmission } from '@/lib/ops-client';
 import { setUserKycStatus } from '@/lib/identity-client';
-import { saveListing } from '@/lib/platform-client';
+import { deleteListing, saveListing } from '@/lib/platform-client';
 import { cn } from '@/lib/utils';
 import { toListingPayload } from '@/features/admin/dashboard-support';
+import { getErrorMessage } from '@/lib/errors';
 import {
   EnquiriesSection,
   FinancialsSection,
@@ -130,31 +131,40 @@ export default function AdminDashboard() {
       await deleteAdminUser(userId);
       setAllUsers((current) => current.filter((user) => user.id !== userId));
       setStats((current) => ({ ...current, totalUsers: current.totalUsers - 1 }));
-      toast({ title: 'User Deleted', description: 'User has been removed from the system.' });
+      toast({ title: 'User Deleted', description: 'User has been permanently removed from the system.' });
       setConfirmDelete(null);
     } catch (error) {
       console.error('Error deleting user:', error);
-      toast({ title: 'User delete failed', description: 'Could not remove the user.', variant: 'destructive' });
+      toast({
+        title: 'User delete failed',
+        description: getErrorMessage(error),
+        variant: 'destructive',
+      });
     }
   };
 
   const handleDeleteListing = async (listingId: string) => {
     try {
-      const listing = allListings.find((item) => item.id === listingId);
-      if (!listing) return;
-
-      await saveListing(toListingPayload(listing, 'archived'));
+      const listingToDelete = allListings.find((item) => item.id === listingId) ?? null;
+      await deleteListing(listingId);
       setAllListings((current) => current.filter((item) => item.id !== listingId));
       setTopListings((current) => current.filter((item) => item.id !== listingId));
       setStats((current) => ({
         ...current,
-        activeListings: allListings.filter((item) => item.id !== listingId && item.status === 'active').length,
+        activeListings:
+          listingToDelete?.status === 'active' && current.activeListings > 0
+            ? current.activeListings - 1
+            : current.activeListings,
       }));
-      toast({ title: 'Listing Deleted', description: 'Listing has been removed.' });
+      toast({ title: 'Listing Deleted', description: 'Listing has been permanently removed.' });
       setConfirmDelete(null);
     } catch (error) {
       console.error('Error deleting listing:', error);
-      toast({ title: 'Listing delete failed', description: 'Could not archive the listing.', variant: 'destructive' });
+      toast({
+        title: 'Listing delete failed',
+        description: getErrorMessage(error),
+        variant: 'destructive',
+      });
     }
   };
 
@@ -701,7 +711,13 @@ export default function AdminDashboard() {
       <Dialog open={!!confirmDelete} onOpenChange={() => setConfirmDelete(null)}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader><DialogTitle>Confirm Deletion</DialogTitle></DialogHeader>
-          <div className="py-4"><p className="text-sm text-slate-500">Are you sure you want to delete this {confirmDelete?.type}? This action cannot be undone.</p></div>
+          <div className="py-4">
+            <p className="text-sm text-slate-500">
+              {confirmDelete?.type === 'user'
+                ? 'Are you sure you want to permanently delete this user? This only works when the account has no listings, bookings, billing history, reviews, or referral records.'
+                : `Are you sure you want to delete this ${confirmDelete?.type}? This action cannot be undone.`}
+            </p>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmDelete(null)}>Cancel</Button>
             <Button variant="destructive" onClick={() => {

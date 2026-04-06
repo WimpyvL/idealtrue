@@ -9,6 +9,13 @@ import { createRawAuthToken, hashAuthToken } from "./tokens";
 import { requireAuth, requireRole } from "../shared/auth";
 import { profileMediaBucket } from "./storage";
 import { platformEvents } from "../analytics/events";
+import { billingDB } from "../billing/db";
+import { bookingDB } from "../booking/db";
+import { catalogDB } from "../catalog/db";
+import { opsDB } from "../ops/db";
+import { kycDocumentsBucket } from "../ops/storage";
+import { referralsDB } from "../referrals/db";
+import { reviewsDB } from "../reviews/db";
 import type { HostPlan, KycStatus, ReferralTier, UserProfile, UserRole } from "../shared/domain";
 
 interface SignupParams {
@@ -135,6 +142,25 @@ type AuthTokenRow = {
   created_at: string;
 };
 
+type DeleteDependencyCounts = {
+  listings: number;
+  bookingsAsGuest: number;
+  bookingsAsHost: number;
+  reviewsAsGuest: number;
+  reviewsAsHost: number;
+  referralRewardsAsReferrer: number;
+  referralRewardsAsReferred: number;
+  referredAccounts: number;
+  subscriptions: number;
+  billingCheckouts: number;
+  contentCreditLedgerEntries: number;
+};
+
+type UserKycMediaRow = {
+  id_image_key: string;
+  selfie_image_key: string;
+};
+
 const USER_SELECT = `
   SELECT
     id,
@@ -258,6 +284,121 @@ function mapUser(row: UserRow): UserProfile {
 
 function makeReferralCode(email: string) {
   return email.split("@")[0].replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase() || "IDEAL";
+}
+
+function getBucketObjectKey(publicUrl: string | null | undefined, publicPrefix: string) {
+  const trimmed = `${publicUrl || ""}`.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    if (trimmed.startsWith(publicPrefix)) {
+      return decodeURIComponent(trimmed.slice(publicPrefix.length)).replace(/^\/+/, "") || null;
+    }
+
+    const parsed = new URL(trimmed);
+    return decodeURIComponent(parsed.pathname).replace(/^\/+/, "") || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getUserDeleteDependencyCounts(userId: string): Promise<DeleteDependencyCounts> {
+  const [
+    listings,
+    bookingsAsGuest,
+    bookingsAsHost,
+    reviewsAsGuest,
+    reviewsAsHost,
+    referralRewardsAsReferrer,
+    referralRewardsAsReferred,
+    referredAccounts,
+    subscriptions,
+    billingCheckouts,
+    contentCreditLedgerEntries,
+  ] = await Promise.all([
+    catalogDB.queryRow<{ count: number }>`SELECT COUNT(*)::int AS count FROM listings WHERE host_id = ${userId}`,
+    bookingDB.queryRow<{ count: number }>`SELECT COUNT(*)::int AS count FROM bookings WHERE guest_id = ${userId}`,
+    bookingDB.queryRow<{ count: number }>`SELECT COUNT(*)::int AS count FROM bookings WHERE host_id = ${userId}`,
+    reviewsDB.queryRow<{ count: number }>`SELECT COUNT(*)::int AS count FROM reviews WHERE guest_id = ${userId}`,
+    reviewsDB.queryRow<{ count: number }>`SELECT COUNT(*)::int AS count FROM reviews WHERE host_id = ${userId}`,
+    referralsDB.queryRow<{ count: number }>`SELECT COUNT(*)::int AS count FROM referral_rewards WHERE referrer_id = ${userId}`,
+    referralsDB.queryRow<{ count: number }>`SELECT COUNT(*)::int AS count FROM referral_rewards WHERE referred_user_id = ${userId}`,
+    identityDB.queryRow<{ count: number }>`
+      SELECT COUNT(*)::int AS count
+      FROM users
+      WHERE referred_by_code = (
+        SELECT referral_code FROM users WHERE id = ${userId}
+      )
+    `,
+    billingDB.queryRow<{ count: number }>`SELECT COUNT(*)::int AS count FROM subscriptions WHERE user_id = ${userId}`,
+    billingDB.queryRow<{ count: number }>`SELECT COUNT(*)::int AS count FROM billing_checkout_sessions WHERE user_id = ${userId}`,
+    billingDB.queryRow<{ count: number }>`SELECT COUNT(*)::int AS count FROM content_credit_ledger WHERE user_id = ${userId}`,
+  ]);
+
+  return {
+    listings: listings?.count ?? 0,
+    bookingsAsGuest: bookingsAsGuest?.count ?? 0,
+    bookingsAsHost: bookingsAsHost?.count ?? 0,
+    reviewsAsGuest: reviewsAsGuest?.count ?? 0,
+    reviewsAsHost: reviewsAsHost?.count ?? 0,
+    referralRewardsAsReferrer: referralRewardsAsReferrer?.count ?? 0,
+    referralRewardsAsReferred: referralRewardsAsReferred?.count ?? 0,
+    referredAccounts: referredAccounts?.count ?? 0,
+    subscriptions: subscriptions?.count ?? 0,
+    billingCheckouts: billingCheckouts?.count ?? 0,
+    contentCreditLedgerEntries: contentCreditLedgerEntries?.count ?? 0,
+  };
+}
+
+function getUserDeleteBlockers(counts: DeleteDependencyCounts) {
+  const blockers: string[] = [];
+
+  if (counts.listings > 0) blockers.push(`${counts.listings} listing${counts.listings === 1 ? "" : "s"}`);
+  if (counts.bookingsAsGuest > 0) blockers.push(`${counts.bookingsAsGuest} guest booking${counts.bookingsAsGuest === 1 ? "" : "s"}`);
+  if (counts.bookingsAsHost > 0) blockers.push(`${counts.bookingsAsHost} host booking${counts.bookingsAsHost === 1 ? "" : "s"}`);
+  if (counts.reviewsAsGuest > 0) blockers.push(`${counts.reviewsAsGuest} guest review${counts.reviewsAsGuest === 1 ? "" : "s"}`);
+  if (counts.reviewsAsHost > 0) blockers.push(`${counts.reviewsAsHost} host review${counts.reviewsAsHost === 1 ? "" : "s"}`);
+  if (counts.referralRewardsAsReferrer > 0) blockers.push(`${counts.referralRewardsAsReferrer} referral reward${counts.referralRewardsAsReferrer === 1 ? "" : "s"} earned`);
+  if (counts.referralRewardsAsReferred > 0) blockers.push(`${counts.referralRewardsAsReferred} referral conversion record${counts.referralRewardsAsReferred === 1 ? "" : "s"}`);
+  if (counts.referredAccounts > 0) blockers.push(`${counts.referredAccounts} referred account${counts.referredAccounts === 1 ? "" : "s"}`);
+  if (counts.subscriptions > 0) blockers.push(`${counts.subscriptions} subscription record${counts.subscriptions === 1 ? "" : "s"}`);
+  if (counts.billingCheckouts > 0) blockers.push(`${counts.billingCheckouts} billing checkout${counts.billingCheckouts === 1 ? "" : "s"}`);
+  if (counts.contentCreditLedgerEntries > 0) blockers.push(`${counts.contentCreditLedgerEntries} content credit ledger entr${counts.contentCreditLedgerEntries === 1 ? "y" : "ies"}`);
+
+  return blockers;
+}
+
+async function removeUserMedia(existing: UserRow, kycSubmission: UserKycMediaRow | null) {
+  const removals: Promise<unknown>[] = [];
+
+  const profilePhotoKey = getBucketObjectKey(existing.photo_url, profileMediaBucket.publicUrl(""));
+  if (profilePhotoKey) {
+    removals.push(
+      profileMediaBucket.remove(profilePhotoKey).catch((error) => {
+        console.warn(`Failed to remove profile photo ${profilePhotoKey}:`, error);
+      }),
+    );
+  }
+
+  if (kycSubmission?.id_image_key) {
+    removals.push(
+      kycDocumentsBucket.remove(kycSubmission.id_image_key).catch((error) => {
+        console.warn(`Failed to remove KYC ID document ${kycSubmission.id_image_key}:`, error);
+      }),
+    );
+  }
+
+  if (kycSubmission?.selfie_image_key) {
+    removals.push(
+      kycDocumentsBucket.remove(kycSubmission.selfie_image_key).catch((error) => {
+        console.warn(`Failed to remove KYC selfie ${kycSubmission.selfie_image_key}:`, error);
+      }),
+    );
+  }
+
+  await Promise.all(removals);
 }
 
 function issueSession(user: UserProfile): SessionResponse {
@@ -795,10 +936,56 @@ export const adminUpdateUser = api<AdminUpdateUserParams, { user: UserProfile }>
 export const adminDeleteUser = api<{ userId: string }, { deleted: true }>(
   { expose: true, method: "DELETE", path: "/admin/users/:userId", auth: true },
   async ({ userId }) => {
-    requireRole("admin", "support");
+    const auth = requireRole("admin", "support");
+    if (auth.userID === userId) {
+      throw APIError.failedPrecondition("You cannot delete your own account while you are signed in.");
+    }
+
+    const existing = await identityDB.rawQueryRow<UserRow>(
+      `${USER_SELECT} WHERE id = $1`,
+      userId,
+    );
+    if (!existing) {
+      throw APIError.notFound("User not found.");
+    }
+
+    const dependencyCounts = await getUserDeleteDependencyCounts(userId);
+    const blockers = getUserDeleteBlockers(dependencyCounts);
+    if (blockers.length > 0) {
+      throw APIError.failedPrecondition(
+        `This user cannot be permanently deleted because the account still has ${blockers.join(", ")}.`,
+      );
+    }
+
+    const kycSubmission = await opsDB.queryRow<UserKycMediaRow>`
+      SELECT id_image_key, selfie_image_key
+      FROM kyc_submissions
+      WHERE user_id = ${userId}
+    `;
+
+    await Promise.all([
+      identityDB.exec`DELETE FROM auth_tokens WHERE user_id = ${userId}`,
+      billingDB.exec`DELETE FROM content_drafts WHERE user_id = ${userId}`,
+      billingDB.exec`DELETE FROM content_credit_wallets WHERE user_id = ${userId}`,
+      opsDB.exec`DELETE FROM notification_reads WHERE user_id = ${userId}`,
+      opsDB.exec`DELETE FROM notifications WHERE target = ${userId}`,
+      opsDB.exec`DELETE FROM kyc_submissions WHERE user_id = ${userId}`,
+    ]);
+
     await identityDB.exec`
       DELETE FROM users WHERE id = ${userId}
     `;
+
+    await removeUserMedia(existing, kycSubmission);
+
+    await platformEvents.publish({
+      type: "user.deleted",
+      aggregateId: userId,
+      actorId: auth.userID,
+      occurredAt: new Date().toISOString(),
+      payload: JSON.stringify({ email: existing.email, role: existing.role }),
+    });
+
     return { deleted: true };
   },
 );

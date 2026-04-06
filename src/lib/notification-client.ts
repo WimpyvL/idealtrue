@@ -39,3 +39,13 @@ export async function markAllNotificationsRead() {
     { auth: true },
   );
 }
+
+export async function dismissNotification(notificationId: string) {
+  return encoreRequest<{ ok: true; dismissedAt: string }>(
+    `/ops/my-notifications/${encodeURIComponent(notificationId)}`,
+    {
+      method: 'DELETE',
+    },
+    { auth: true },
+  );
+}

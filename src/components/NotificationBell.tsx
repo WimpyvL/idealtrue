@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, CheckCheck, Info, MessageSquare, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { Bell, CheckCheck, Info, MessageSquare, ShieldCheck, TriangleAlert, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatDistanceToNow } from 'date-fns';
@@ -26,6 +26,10 @@ function resolveNotificationPath(notification: Notification, role: string | unde
     return notification.actionPath;
   }
 
+  if (notification.title === 'New message') {
+    return role === 'host' ? '/host/inbox' : '/guest';
+  }
+
   if (notification.target !== 'all' && notification.target !== 'hosts' && notification.target !== 'guests' && notification.target !== 'admins') {
     return '/account';
   }
@@ -49,7 +53,7 @@ export default function NotificationBell() {
   const navigate = useNavigate();
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { profile } = useAuth();
-  const { notifications, unreadCount, isNotificationRead, markNotificationRead, markAllNotificationsRead } = useNotifications();
+  const { notifications, unreadCount, isNotificationRead, dismissNotification, markNotificationRead, markAllNotificationsRead } = useNotifications();
   const [isOpen, setIsOpen] = useState(false);
 
   const sortedNotifications = useMemo(
@@ -129,44 +133,56 @@ export default function NotificationBell() {
                     const isUnread = !isNotificationRead(notification.id);
 
                     return (
-                      <button
+                      <div
                         key={notification.id}
-                        type="button"
-                        onClick={() => handleNotificationClick(notification)}
                         className={cn(
-                          'w-full text-left p-4 hover:bg-surface-container-low transition-colors',
+                          'flex items-start gap-2 p-2 transition-colors',
                           isUnread ? 'bg-primary/5' : 'bg-transparent',
                         )}
                       >
-                        <div className="flex gap-3">
-                          <div className="mt-1 shrink-0">
-                            {getNotificationIcon(notification.type)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="text-sm font-semibold text-on-surface leading-tight">
-                                  {notification.title}
-                                </p>
-                                <p className="text-sm text-on-surface-variant mt-1 leading-snug">
-                                  {notification.message}
-                                </p>
+                        <button
+                          type="button"
+                          onClick={() => handleNotificationClick(notification)}
+                          className="flex-1 rounded-xl p-2 text-left hover:bg-surface-container-low"
+                        >
+                          <div className="flex gap-3">
+                            <div className="mt-1 shrink-0">
+                              {getNotificationIcon(notification.type)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-on-surface leading-tight">
+                                    {notification.title}
+                                  </p>
+                                  <p className="text-sm text-on-surface-variant mt-1 leading-snug">
+                                    {notification.message}
+                                  </p>
+                                </div>
+                                {isUnread && <span className="mt-1 w-2 h-2 rounded-full bg-primary shrink-0" />}
                               </div>
-                              {isUnread && <span className="mt-1 w-2 h-2 rounded-full bg-primary shrink-0" />}
-                            </div>
-                            <div className="flex items-center justify-between gap-3 mt-2">
-                              <p className="text-[11px] text-outline-variant font-medium">
-                                {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
-                              </p>
-                              {resolveNotificationPath(notification, profile?.role) && (
-                                <span className="text-[10px] uppercase tracking-wider font-bold text-primary">
-                                  Open
-                                </span>
-                              )}
+                              <div className="flex items-center justify-between gap-3 mt-2">
+                                <p className="text-[11px] text-outline-variant font-medium">
+                                  {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
+                                </p>
+                                {resolveNotificationPath(notification, profile?.role) && (
+                                  <span className="text-[10px] uppercase tracking-wider font-bold text-primary">
+                                    Open
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </button>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void dismissNotification(notification.id)}
+                          className="mt-2 rounded-full p-1.5 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+                          aria-label={`Dismiss notification ${notification.title}`}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
                     );
                   })}
                 </div>
