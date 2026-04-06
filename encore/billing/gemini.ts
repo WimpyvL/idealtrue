@@ -2,6 +2,12 @@ import { APIError } from "encore.dev/api";
 
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_GEMINI_TEXT_MODEL = "gemini-2.5-flash";
+const DEFAULT_SAFETY_SETTINGS = [
+  { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+  { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+  { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+  { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+] as const;
 
 type SocialPlatform = "instagram" | "facebook" | "twitter" | "linkedin";
 type SocialTone = "professional" | "friendly" | "adventurous" | "luxurious" | "urgent";
@@ -58,9 +64,11 @@ function buildDraftPrompt(listing: ListingSnapshot, platform: SocialPlatform, to
   const highlights = [...listing.amenities.slice(0, 4), ...listing.facilities.slice(0, 2)].filter(Boolean);
 
   return [
-    "You write social media content for hospitality listings on Ideal Stay.",
+    "Write one platform-ready hospitality marketing draft for Ideal Stay.",
     "Return markdown only.",
     "Do not invent amenities, location details, or price changes.",
+    "Stay strictly grounded in the supplied listing facts.",
+    "Do not use hype that sounds fake, spammy, or generic.",
     "Make the output immediately usable in a host content editor.",
     "Use this structure:",
     `### ${platform === "twitter" ? "X" : platform.charAt(0).toUpperCase() + platform.slice(1)} draft`,
@@ -83,6 +91,15 @@ function buildDraftPrompt(listing: ListingSnapshot, platform: SocialPlatform, to
   ].join("\n");
 }
 
+function buildDraftSystemInstruction() {
+  return [
+    "You are Ideal Stay's content engine for property marketing.",
+    "Your job is to produce relevant, commercially strong copy for real accommodation listings.",
+    "Never invent amenities, views, distances, policies, prices, or awards.",
+    "Keep the copy credible, polished, and platform-specific.",
+  ].join("\n");
+}
+
 export async function generateListingDraftWithGemini(
   listing: ListingSnapshot,
   platform: SocialPlatform,
@@ -99,13 +116,21 @@ export async function generateListingDraftWithGemini(
       "x-goog-api-key": apiKey,
     },
     body: JSON.stringify({
+      systemInstruction: {
+        parts: [{ text: buildDraftSystemInstruction() }],
+      },
       contents: [
         {
           role: "user",
           parts: [{ text: buildDraftPrompt(listing, platform, tone) }],
         },
       ],
+      safetySettings: DEFAULT_SAFETY_SETTINGS,
       generationConfig: {
+        responseMimeType: "text/plain",
+        temperature: 0.45,
+        topP: 0.9,
+        maxOutputTokens: 700,
         thinkingConfig: {
           thinkingLevel: "low",
         },

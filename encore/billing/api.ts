@@ -156,6 +156,10 @@ type StoredWebhookEventRow = {
 
 type QueryExecutor = Pick<typeof billingDB, "queryRow" | "queryAll" | "exec">;
 
+const CONTENT_DRAFT_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const CONTENT_DRAFT_RATE_LIMIT_MAX = 5;
+const contentDraftRateLimitStore = new Map<string, number[]>();
+
 const CONTENT_LIMITS: Record<HostPlan, { includedDraftsPerMonth: number; canSchedule: boolean; contentStudioEnabled: boolean }> = {
   standard: { includedDraftsPerMonth: 20, canSchedule: false, contentStudioEnabled: true },
   professional: { includedDraftsPerMonth: 60, canSchedule: true, contentStudioEnabled: true },
@@ -234,6 +238,18 @@ function mapDraft(row: DraftRow): ContentDraftRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function enforceContentDraftBurstLimit(userId: string, now = Date.now()) {
+  const history = contentDraftRateLimitStore.get(userId) ?? [];
+  const active = history.filter((timestamp) => now - timestamp < CONTENT_DRAFT_RATE_LIMIT_WINDOW_MS);
+
+  if (active.length >= CONTENT_DRAFT_RATE_LIMIT_MAX) {
+    throw APIError.resourceExhausted("Too many content draft generations. Wait a few minutes and try again.");
+  }
+
+  active.push(now);
+  contentDraftRateLimitStore.set(userId, active);
 }
 
 async function getCurrentUserPlan(userId: string) {
@@ -813,6 +829,7 @@ export const generateContentDraft = api<GenerateContentDraftParams, { draft: Con
   { expose: true, method: "POST", path: "/billing/content/drafts/generate", auth: true },
   async ({ listingId, platform, tone }) => {
     const auth = requireRole("host", "admin");
+    enforceContentDraftBurstLimit(auth.userID);
     const draftId = randomUUID();
     const listing = await getOwnedListingSnapshot(listingId, auth.userID);
     const previewEntitlements = await getContentEntitlementsForUser(auth.userID);

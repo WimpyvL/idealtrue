@@ -1,3 +1,4 @@
+import { AiRequestError, enforceAiRateLimit, resolveAiActor } from "../../lib/server/ai-rails.js";
 import { generateListingSocialCreative } from "../../lib/server/social-image.js";
 
 export default async function handler(req, res) {
@@ -9,6 +10,13 @@ export default async function handler(req, res) {
   }
 
   try {
+    const actor = await resolveAiActor({
+      headers: req.headers,
+      cookieHeader: req.headers.cookie,
+      env: process.env,
+      requireAuth: true,
+    });
+    enforceAiRateLimit("socialImage", actor);
     const { listingId, sourceImageUrl, platform, tone, brief } = req.body || {};
     const creative = await generateListingSocialCreative({
       listingId,
@@ -25,7 +33,10 @@ export default async function handler(req, res) {
     res.end(JSON.stringify(creative));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Social image request failed.";
-    res.statusCode = /signed in|own listings|belong to this listing/i.test(message) ? 403 : 400;
+    res.statusCode = error instanceof AiRequestError ? error.statusCode : /signed in|own listings|belong to this listing/i.test(message) ? 403 : 400;
+    if (error instanceof AiRequestError && error.retryAfterSec) {
+      res.setHeader("Retry-After", String(error.retryAfterSec));
+    }
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({ error: message }));
   }

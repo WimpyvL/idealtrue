@@ -2,6 +2,7 @@ import express from "express";
 import { createServer } from "http";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import { AiRequestError, enforceAiRateLimit, resolveAiActor } from "./lib/server/ai-rails.js";
 import { generateTripPlannerReply } from "./lib/server/trip-planner.js";
 import { generateReviewSummary } from "./lib/server/review-summary.js";
 import { generateListingSocialCreative } from "./lib/server/social-image.js";
@@ -127,10 +128,19 @@ async function startServer() {
 
   app.post("/api/ai/trip-planner", aiJsonParser, async (req, res) => {
     try {
+      const actor = await resolveAiActor({
+        headers: req.headers,
+        cookieHeader: req.headers.cookie,
+        env: process.env,
+      });
+      enforceAiRateLimit("tripPlanner", actor);
       const reply = await generateTripPlannerReply(req.body?.messages, process.env);
       res.json({ reply });
     } catch (error) {
-      res.status(400).json({
+      if (error instanceof AiRequestError && error.retryAfterSec) {
+        res.setHeader("Retry-After", String(error.retryAfterSec));
+      }
+      res.status(error instanceof AiRequestError ? error.statusCode : 400).json({
         error: error instanceof Error ? error.message : "Trip planner request failed.",
       });
     }
@@ -138,10 +148,19 @@ async function startServer() {
 
   app.post("/api/ai/review-summary", aiJsonParser, async (req, res) => {
     try {
+      const actor = await resolveAiActor({
+        headers: req.headers,
+        cookieHeader: req.headers.cookie,
+        env: process.env,
+      });
+      enforceAiRateLimit("reviewSummary", actor);
       const summary = await generateReviewSummary(req.body?.reviews, process.env);
       res.json({ summary });
     } catch (error) {
-      res.status(400).json({
+      if (error instanceof AiRequestError && error.retryAfterSec) {
+        res.setHeader("Retry-After", String(error.retryAfterSec));
+      }
+      res.status(error instanceof AiRequestError ? error.statusCode : 400).json({
         error: error instanceof Error ? error.message : "Review summary request failed.",
       });
     }
@@ -149,6 +168,13 @@ async function startServer() {
 
   app.post("/api/ai/social-image", aiJsonParser, async (req, res) => {
     try {
+      const actor = await resolveAiActor({
+        headers: req.headers,
+        cookieHeader: req.headers.cookie,
+        env: process.env,
+        requireAuth: true,
+      });
+      enforceAiRateLimit("socialImage", actor);
       const creative = await generateListingSocialCreative({
         listingId: req.body?.listingId,
         sourceImageUrl: req.body?.sourceImageUrl,
@@ -161,7 +187,10 @@ async function startServer() {
       res.json(creative);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Social image request failed.";
-      res.status(/signed in|own listings|belong to this listing/i.test(message) ? 403 : 400).json({
+      if (error instanceof AiRequestError && error.retryAfterSec) {
+        res.setHeader("Retry-After", String(error.retryAfterSec));
+      }
+      res.status(error instanceof AiRequestError ? error.statusCode : /signed in|own listings|belong to this listing/i.test(message) ? 403 : 400).json({
         error: message,
       });
     }
