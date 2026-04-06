@@ -175,3 +175,33 @@ export function buildCheckoutStatusChangedNotification(params: {
     actionPath: params.checkoutType === "subscription" ? "/pricing" : "/host/social",
   };
 }
+
+export function buildAccountStatusChangedNotification(params: {
+  userId: string;
+  status: "active" | "suspended" | "deactivated";
+  reason?: string | null;
+}): NotificationInput {
+  if (params.status === "active") {
+    return {
+      title: "Account reactivated",
+      message: "Your account access has been restored.",
+      type: "success",
+      target: params.userId,
+      actionPath: "/account",
+    };
+  }
+
+  const baseMessage =
+    params.status === "suspended"
+      ? "Your account has been suspended."
+      : "Your account has been deactivated.";
+  const detail = params.reason?.trim();
+
+  return {
+    title: params.status === "suspended" ? "Account suspended" : "Account deactivated",
+    message: detail ? `${baseMessage} ${detail}` : `${baseMessage} Contact support if you need help.`,
+    type: params.status === "suspended" ? "warning" : "error",
+    target: params.userId,
+    actionPath: "/account",
+  };
+}

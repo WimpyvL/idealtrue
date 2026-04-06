@@ -2,6 +2,7 @@ export type UserRole = "guest" | "host" | "admin" | "support";
 export type HostPlan = "standard" | "professional" | "premium";
 export type KycStatus = "none" | "pending" | "verified" | "rejected";
 export type ReferralTier = "bronze" | "silver" | "gold";
+export type AccountStatus = "active" | "suspended" | "deactivated";
 export type ListingStatus = "draft" | "pending" | "active" | "inactive" | "rejected" | "archived";
 export type BookingStatus =
   | "pending"
@@ -25,6 +26,10 @@ export interface UserProfile {
   isAdmin: boolean;
   hostPlan: HostPlan;
   kycStatus: KycStatus;
+  accountStatus: AccountStatus;
+  accountStatusReason?: string | null;
+  accountStatusChangedAt?: string | null;
+  accountStatusChangedBy?: string | null;
   balance: number;
   referralCount: number;
   tier: ReferralTier;
@@ -181,6 +186,13 @@ export type DomainEvent =
       actorId: string;
       occurredAt: string;
       payload: { plan: HostPlan };
+    }
+  | {
+      type: "user.account_status_changed";
+      aggregateId: string;
+      actorId: string;
+      occurredAt: string;
+      payload: { status: AccountStatus; reason?: string | null };
     }
   | {
       type: "referral.reward_earned";

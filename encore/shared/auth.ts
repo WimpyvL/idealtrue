@@ -1,6 +1,6 @@
 import { APIError } from "encore.dev/api";
 import { getAuthData } from "encore.dev/internal/codegen/auth";
-import type { HostPlan, KycStatus, UserRole } from "./domain";
+import type { AccountStatus, HostPlan, KycStatus, UserRole } from "./domain";
 
 export interface AuthData {
   userID: string;
@@ -9,6 +9,7 @@ export interface AuthData {
   role: UserRole;
   hostPlan: HostPlan;
   kycStatus: KycStatus;
+  accountStatus: AccountStatus;
 }
 
 export function requireAuth() {

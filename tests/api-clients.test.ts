@@ -9,7 +9,7 @@ import {
 } from '../src/lib/encore-client.ts';
 import { getEncoreSessionProfile } from '../src/lib/identity-client.ts';
 import { uploadListingMedia } from '../src/lib/media-client.ts';
-import { deleteAdminUser, getAdminPlatformSettings, listAdminNotifications } from '../src/lib/admin-client.ts';
+import { deleteAdminUser, getAdminPlatformSettings, listAdminNotifications, setAdminUserAccountStatus } from '../src/lib/admin-client.ts';
 import { dismissNotification } from '../src/lib/notification-client.ts';
 import { reviewKycSubmission } from '../src/lib/ops-client.ts';
 import { deleteListing, getListing, mapReferralStatus, saveListing, submitPaymentProof, updateBookingStatus } from '../src/lib/platform-client.ts';
@@ -68,6 +68,10 @@ function createEncoreUser(overrides: Partial<Record<string, unknown>> = {}) {
     role: 'guest',
     hostPlan: 'standard',
     kycStatus: 'verified',
+    accountStatus: 'active',
+    accountStatusReason: null,
+    accountStatusChangedAt: null,
+    accountStatusChangedBy: null,
     balance: 1250,
     referralCount: 4,
     tier: 'silver',
@@ -511,6 +515,46 @@ test('deleteAdminUser issues a real DELETE request to the admin user endpoint', 
   await deleteAdminUser('user-77');
 
   assert.equal(fetchCalls.length, 1);
+});
+
+test('setAdminUserAccountStatus posts structured suspension changes to the admin endpoint', async () => {
+  installFetch((url, init) => {
+    assert.equal(url, `${DEFAULT_ENCORE_API_URL}/admin/users/account-status`);
+    assert.equal(init?.method, 'POST');
+    return createJsonResponse({
+      user: createEncoreUser({
+        id: 'user-77',
+        accountStatus: 'suspended',
+        accountStatusReason: 'Chargeback investigation still open.',
+        accountStatusChangedAt: '2026-04-06T11:00:00.000Z',
+        accountStatusChangedBy: 'admin-1',
+      }),
+      notification: {
+        id: 'notif-77',
+        title: 'Account suspended',
+        message: 'Your account has been suspended. Chargeback investigation still open.',
+        type: 'warning',
+        target: 'user-77',
+        actionPath: '/account',
+        createdAt: '2026-04-06T11:00:00.000Z',
+      },
+    });
+  });
+
+  const response = await setAdminUserAccountStatus({
+    userId: 'user-77',
+    accountStatus: 'suspended',
+    reason: 'Chargeback investigation still open.',
+  });
+
+  assert.deepEqual(JSON.parse(String(fetchCalls[0]?.init?.body)), {
+    userId: 'user-77',
+    accountStatus: 'suspended',
+    reason: 'Chargeback investigation still open.',
+  });
+  assert.equal(response.user.accountStatus, 'suspended');
+  assert.equal(response.user.accountStatusReason, 'Chargeback investigation still open.');
+  assert.equal(response.notification?.title, 'Account suspended');
 });
 
 test('dismissNotification issues a real DELETE request to the per-user notification endpoint', async () => {

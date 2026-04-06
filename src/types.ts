@@ -2,6 +2,7 @@ export type UserRole = 'host' | 'guest' | 'admin' | 'support';
 export type ReferralTier = 'bronze' | 'silver' | 'gold';
 export type KycStatus = 'none' | 'pending' | 'verified' | 'rejected';
 export type HostPlan = 'standard' | 'professional' | 'premium';
+export type AccountStatus = 'active' | 'suspended' | 'deactivated';
 
 export interface UserProfile {
   id: string;
@@ -13,6 +14,10 @@ export interface UserProfile {
   isAdmin?: boolean;
   referralCode: string;
   referredByCode?: string | null;
+  accountStatus: AccountStatus;
+  accountStatusReason?: string | null;
+  accountStatusChangedAt?: string | null;
+  accountStatusChangedBy?: string | null;
   balance: number;
   referralCount: number;
   tier: ReferralTier;

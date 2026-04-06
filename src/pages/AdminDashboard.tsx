@@ -24,6 +24,7 @@ import {
   deleteAdminReferralReward,
   deleteAdminReview,
   deleteAdminUser,
+  setAdminUserAccountStatus,
   updateAdminUser,
 } from '@/lib/admin-client';
 import { getKycSubmissionAssets, reviewKycSubmission, type KycSubmission } from '@/lib/ops-client';
@@ -75,6 +76,11 @@ type ConfirmDelete = {
   id: string;
 };
 
+type AccountStatusAction = {
+  user: UserProfile;
+  nextStatus: UserProfile['accountStatus'];
+};
+
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -92,6 +98,9 @@ export default function AdminDashboard() {
   const [listingRejectionReason, setListingRejectionReason] = useState('Photos or listing details were incomplete.');
   const [isRejectingListing, setIsRejectingListing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<ConfirmDelete | null>(null);
+  const [accountStatusAction, setAccountStatusAction] = useState<AccountStatusAction | null>(null);
+  const [accountStatusReason, setAccountStatusReason] = useState('');
+  const [isUpdatingAccountStatus, setIsUpdatingAccountStatus] = useState(false);
 
   const {
     stats,
@@ -140,6 +149,53 @@ export default function AdminDashboard() {
         description: getErrorMessage(error),
         variant: 'destructive',
       });
+    }
+  };
+
+  const openAccountStatusDialog = (user: UserProfile, nextStatus: UserProfile['accountStatus']) => {
+    setAccountStatusAction({ user, nextStatus });
+    setAccountStatusReason(
+      nextStatus === 'active'
+        ? ''
+        : user.accountStatusReason || (nextStatus === 'suspended' ? 'Policy or compliance review is still open.' : 'This account has been deactivated by an administrator.'),
+    );
+  };
+
+  const handleUpdateAccountStatus = async () => {
+    if (!accountStatusAction) return;
+
+    setIsUpdatingAccountStatus(true);
+    try {
+      const result = await setAdminUserAccountStatus({
+        userId: accountStatusAction.user.id,
+        accountStatus: accountStatusAction.nextStatus,
+        reason: accountStatusAction.nextStatus === 'active' ? null : accountStatusReason,
+      });
+
+      setAllUsers((current) =>
+        current.map((user) => (user.id === result.user.id ? result.user : user)),
+      );
+      if (result.notification) {
+        setAllNotifications((current) => [result.notification, ...current]);
+      }
+      toast({
+        title: accountStatusAction.nextStatus === 'active' ? 'Account Reactivated' : 'Account Updated',
+        description:
+          accountStatusAction.nextStatus === 'active'
+            ? 'The user can access the platform again.'
+            : `The account is now ${accountStatusAction.nextStatus}.`,
+      });
+      setAccountStatusAction(null);
+      setAccountStatusReason('');
+    } catch (error) {
+      console.error('Error updating account status:', error);
+      toast({
+        title: 'Account status update failed',
+        description: getErrorMessage(error),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUpdatingAccountStatus(false);
     }
   };
 
@@ -433,7 +489,7 @@ export default function AdminDashboard() {
       case 'kyc':
         return <KycSection allUsers={allUsers} handleApproveKYC={handleApproveKYC} handleReviewKYC={handleReviewKYC} kycSubmissions={kycSubmissions} openRejectKycDialog={openRejectKycDialog} />;
       case 'users':
-        return <UsersSection allUsers={allUsers} handleReviewKYC={handleReviewKYC} handleUpdateUserRole={handleUpdateUserRole} kycSubmissions={kycSubmissions} navigate={navigate} setConfirmDelete={setConfirmDelete} setEditingUser={setEditingUser} />;
+        return <UsersSection allUsers={allUsers} handleReviewKYC={handleReviewKYC} handleUpdateUserRole={handleUpdateUserRole} kycSubmissions={kycSubmissions} navigate={navigate} openAccountStatusDialog={openAccountStatusDialog} setConfirmDelete={setConfirmDelete} setEditingUser={setEditingUser} />;
       case 'enquiries':
         return <EnquiriesSection allBookings={allBookings} allListings={allListings} allUsers={allUsers} />;
       case 'listings':
@@ -664,6 +720,53 @@ export default function AdminDashboard() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingUser(null)}>Cancel</Button>
             <Button onClick={() => handleUpdateUser(editingUser!)}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!accountStatusAction} onOpenChange={() => !isUpdatingAccountStatus && setAccountStatusAction(null)}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>
+              {accountStatusAction?.nextStatus === 'active'
+                ? 'Reactivate Account'
+                : accountStatusAction?.nextStatus === 'suspended'
+                  ? 'Suspend Account'
+                  : 'Deactivate Account'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-on-surface-variant">
+              {accountStatusAction?.nextStatus === 'active'
+                ? `Restore access for ${accountStatusAction.user.displayName}.`
+                : `Tell ${accountStatusAction?.user.displayName} exactly why access is being removed.`}
+            </p>
+            {accountStatusAction?.nextStatus === 'active' ? null : (
+              <Textarea
+                value={accountStatusReason}
+                onChange={(event) => setAccountStatusReason(event.target.value)}
+                placeholder="Explain the policy, fraud, abuse, or compliance reason."
+                className="min-h-[140px]"
+              />
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAccountStatusAction(null)} disabled={isUpdatingAccountStatus}>
+              Cancel
+            </Button>
+            <Button
+              variant={accountStatusAction?.nextStatus === 'active' ? 'default' : 'destructive'}
+              onClick={handleUpdateAccountStatus}
+              disabled={isUpdatingAccountStatus}
+            >
+              {isUpdatingAccountStatus
+                ? 'Saving...'
+                : accountStatusAction?.nextStatus === 'active'
+                  ? 'Reactivate'
+                  : accountStatusAction?.nextStatus === 'suspended'
+                    ? 'Suspend'
+                    : 'Deactivate'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

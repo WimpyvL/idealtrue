@@ -321,6 +321,7 @@ export function UsersSection({
   handleUpdateUserRole,
   kycSubmissions,
   navigate,
+  openAccountStatusDialog,
   setConfirmDelete,
   setEditingUser,
 }: {
@@ -329,6 +330,7 @@ export function UsersSection({
   handleUpdateUserRole: (userId: string, role: UserProfile['role']) => Promise<void> | void;
   kycSubmissions: KycSubmission[];
   navigate: (value: string) => void;
+  openAccountStatusDialog: (user: UserProfile, nextStatus: UserProfile['accountStatus']) => void;
   setConfirmDelete: (value: ConfirmDelete | null) => void;
   setEditingUser: (user: UserProfile | null) => void;
 }) {
@@ -363,6 +365,7 @@ export function UsersSection({
               <tr className="border-b border-slate-100 bg-[#f8fafc]">
                 <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">User</th>
                 <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Role</th>
+                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Account</th>
                 <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">KYC Status</th>
                 <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Stats</th>
                 <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">
@@ -391,6 +394,25 @@ export function UsersSection({
                     </select>
                   </td>
                   <td className="px-6 py-4">
+                    <div className="space-y-1">
+                      <Badge
+                        variant={
+                          user.accountStatus === 'active'
+                            ? 'success'
+                            : user.accountStatus === 'suspended'
+                              ? 'warning'
+                              : 'danger'
+                        }
+                        className="text-[10px] uppercase"
+                      >
+                        {user.accountStatus}
+                      </Badge>
+                      {user.accountStatusReason ? (
+                        <p className="max-w-[220px] text-[11px] leading-4 text-slate-500">{user.accountStatusReason}</p>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
                     <Badge variant={user.kycStatus === 'verified' ? 'success' : user.kycStatus === 'pending' ? 'warning' : user.kycStatus === 'rejected' ? 'danger' : 'neutral'} className="text-[10px] uppercase">
                       {user.kycStatus}
                     </Badge>
@@ -404,18 +426,34 @@ export function UsersSection({
                   <td className="px-6 py-4">
                     <p className="text-xs text-slate-500">{new Date(user.createdAt).toLocaleDateString()}</p>
                   </td>
-                  <td className="flex items-center justify-end gap-2 px-6 py-4 text-right">
-                    {user.kycStatus === 'pending' ? (
-                      <Button variant="outline" size="sm" className="h-8 text-xs text-green-600 hover:bg-green-50" onClick={() => {
-                        const submission = kycSubmissions.find((item) => item.userId === user.id);
-                        if (submission) handleReviewKYC(submission);
-                      }}>
-                        Review KYC
-                      </Button>
-                    ) : null}
-                    <Button variant="ghost" size="sm" className="text-xs text-blue-500" onClick={() => setEditingUser(user)}>Edit</Button>
-                    <Button variant="ghost" size="sm" className="text-xs text-red-500" onClick={() => setConfirmDelete({ type: 'user', id: user.id })}>Delete</Button>
-                    <Button variant="ghost" size="sm" className="text-xs" onClick={() => navigate(`/account?id=${user.id}`)}>View Profile</Button>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {user.kycStatus === 'pending' ? (
+                        <Button variant="outline" size="sm" className="h-8 text-xs text-green-600 hover:bg-green-50" onClick={() => {
+                          const submission = kycSubmissions.find((item) => item.userId === user.id);
+                          if (submission) handleReviewKYC(submission);
+                        }}>
+                          Review KYC
+                        </Button>
+                      ) : null}
+                      {user.accountStatus === 'active' ? (
+                        <>
+                          <Button variant="outline" size="sm" className="h-8 text-xs text-amber-700 hover:bg-amber-50" onClick={() => openAccountStatusDialog(user, 'suspended')}>
+                            Suspend
+                          </Button>
+                          <Button variant="outline" size="sm" className="h-8 text-xs text-red-600 hover:bg-red-50" onClick={() => openAccountStatusDialog(user, 'deactivated')}>
+                            Deactivate
+                          </Button>
+                        </>
+                      ) : (
+                        <Button variant="outline" size="sm" className="h-8 text-xs text-green-700 hover:bg-green-50" onClick={() => openAccountStatusDialog(user, 'active')}>
+                          Reactivate
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" className="text-xs text-blue-500" onClick={() => setEditingUser(user)}>Edit</Button>
+                      <Button variant="ghost" size="sm" className="text-xs text-red-500" onClick={() => setConfirmDelete({ type: 'user', id: user.id })}>Delete</Button>
+                      <Button variant="ghost" size="sm" className="text-xs" onClick={() => navigate(`/account?id=${user.id}`)}>View Profile</Button>
+                    </div>
                   </td>
                 </tr>
               ))}

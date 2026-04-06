@@ -1,4 +1,5 @@
 import type {
+  AccountStatus,
   Booking,
   HostPlan,
   KycStatus,
@@ -23,6 +24,10 @@ export interface EncoreUser {
   isAdmin: boolean;
   hostPlan: HostPlan;
   kycStatus: KycStatus;
+  accountStatus: AccountStatus;
+  accountStatusReason?: string | null;
+  accountStatusChangedAt?: string | null;
+  accountStatusChangedBy?: string | null;
   balance: number;
   referralCount: number;
   tier: ReferralTier;
@@ -211,6 +216,10 @@ export function mapEncoreUserToProfile(user: EncoreUser): UserProfile {
     isAdmin: user.isAdmin,
     referralCode: user.referralCode || '',
     referredByCode: user.referredByCode || null,
+    accountStatus: user.accountStatus,
+    accountStatusReason: user.accountStatusReason || null,
+    accountStatusChangedAt: user.accountStatusChangedAt || null,
+    accountStatusChangedBy: user.accountStatusChangedBy || null,
     balance: user.balance,
     referralCount: user.referralCount,
     tier: user.tier,

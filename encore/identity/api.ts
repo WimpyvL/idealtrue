@@ -13,10 +13,12 @@ import { billingDB } from "../billing/db";
 import { bookingDB } from "../booking/db";
 import { catalogDB } from "../catalog/db";
 import { opsDB } from "../ops/db";
+import { notifyAccountStatusChanged, type StoredNotification } from "../ops/notifications";
 import { kycDocumentsBucket } from "../ops/storage";
 import { referralsDB } from "../referrals/db";
 import { reviewsDB } from "../reviews/db";
-import type { HostPlan, KycStatus, ReferralTier, UserProfile, UserRole } from "../shared/domain";
+import type { AccountStatus, HostPlan, KycStatus, ReferralTier, UserProfile, UserRole } from "../shared/domain";
+import { buildAccountStatusBlockMessage, normalizeAccountStatusReason } from "./account-status";
 
 interface SignupParams {
   email: string;
@@ -103,6 +105,12 @@ interface AdminUpdateUserParams {
   tier?: ReferralTier;
 }
 
+interface AdminSetAccountStatusParams {
+  userId: string;
+  accountStatus: AccountStatus;
+  reason?: string | null;
+}
+
 interface AdminSetPasswordParams {
   userId: string;
   password: string;
@@ -119,6 +127,10 @@ type UserRow = {
   is_admin: boolean;
   host_plan: HostPlan;
   kyc_status: KycStatus;
+  account_status: AccountStatus;
+  account_status_reason: string | null;
+  account_status_changed_at: string | null;
+  account_status_changed_by: string | null;
   balance: number;
   referral_count: number;
   tier: ReferralTier;
@@ -173,6 +185,10 @@ const USER_SELECT = `
     is_admin,
     host_plan,
     kyc_status,
+    account_status,
+    account_status_reason,
+    account_status_changed_at,
+    account_status_changed_by,
     balance,
     referral_count,
     tier,
@@ -269,6 +285,10 @@ function mapUser(row: UserRow): UserProfile {
     isAdmin: row.is_admin,
     hostPlan: row.host_plan,
     kycStatus: row.kyc_status,
+    accountStatus: row.account_status,
+    accountStatusReason: row.account_status_reason,
+    accountStatusChangedAt: row.account_status_changed_at,
+    accountStatusChangedBy: row.account_status_changed_by,
     balance: row.balance,
     referralCount: row.referral_count,
     tier: row.tier,
@@ -280,6 +300,16 @@ function mapUser(row: UserRow): UserProfile {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function assertAccountCanAccessSession(user: Pick<UserRow, "account_status" | "account_status_reason">) {
+  if (user.account_status === "active") {
+    return;
+  }
+
+  throw APIError.permissionDenied(
+    buildAccountStatusBlockMessage(user.account_status, user.account_status_reason),
+  );
 }
 
 function makeReferralCode(email: string) {
@@ -410,6 +440,7 @@ function issueSession(user: UserProfile): SessionResponse {
       role: user.role,
       hostPlan: user.hostPlan,
       kycStatus: user.kycStatus,
+      accountStatus: user.accountStatus,
     }),
     user,
   };
@@ -491,10 +522,10 @@ export const signup = api<SignupParams, SessionResponse>(
 
     await identityDB.exec`
       INSERT INTO users (
-        id, email, email_verified, display_name, password_hash, photo_url, role, is_admin, host_plan, kyc_status, balance, referral_count, tier, referral_code, referred_by_code, last_login_at, created_at, updated_at
+        id, email, email_verified, display_name, password_hash, photo_url, role, is_admin, host_plan, kyc_status, account_status, balance, referral_count, tier, referral_code, referred_by_code, last_login_at, created_at, updated_at
       )
       VALUES (
-        ${id}, ${email}, ${false}, ${params.displayName}, ${passwordHash}, ${params.photoUrl ?? null}, ${role}, ${false}, ${"standard"}, ${"none"}, ${0}, ${0}, ${"bronze"}, ${referralCode}, ${params.referredByCode ?? null}, ${now}, ${now}, ${now}
+        ${id}, ${email}, ${false}, ${params.displayName}, ${passwordHash}, ${params.photoUrl ?? null}, ${role}, ${false}, ${"standard"}, ${"none"}, ${"active"}, ${0}, ${0}, ${"bronze"}, ${referralCode}, ${params.referredByCode ?? null}, ${now}, ${now}, ${now}
       )
     `;
 
@@ -508,6 +539,10 @@ export const signup = api<SignupParams, SessionResponse>(
       isAdmin: false,
       hostPlan: "standard",
       kycStatus: "none",
+      accountStatus: "active",
+      accountStatusReason: null,
+      accountStatusChangedAt: null,
+      accountStatusChangedBy: null,
       balance: 0,
       referralCount: 0,
       tier: "bronze",
@@ -553,6 +588,7 @@ export const login = api<LoginParams, SessionResponse>(
     if (!matches) {
       throw APIError.unauthenticated("Invalid email or password.");
     }
+    assertAccountCanAccessSession(existing);
 
     const now = new Date().toISOString();
     await identityDB.exec`
@@ -590,6 +626,7 @@ export const devLogin = api<DevLoginParams, DevLoginResponse>(
     let user: UserProfile;
 
     if (existing) {
+      assertAccountCanAccessSession(existing);
       await identityDB.exec`
         UPDATE users
         SET display_name = ${params.displayName},
@@ -597,6 +634,10 @@ export const devLogin = api<DevLoginParams, DevLoginResponse>(
             role = ${role},
             is_admin = CASE WHEN ${role} = ${"admin"} THEN true ELSE is_admin END,
             email_verified = ${true},
+            account_status = ${"active"},
+            account_status_reason = NULL,
+            account_status_changed_at = NULL,
+            account_status_changed_by = NULL,
             referred_by_code = COALESCE(${params.referredByCode ?? null}, referred_by_code),
             payment_method = ${existing.payment_method},
             payment_instructions = ${existing.payment_instructions},
@@ -612,6 +653,10 @@ export const devLogin = api<DevLoginParams, DevLoginResponse>(
         role,
         is_admin: role === "admin" ? true : existing.is_admin,
         email_verified: true,
+        account_status: "active",
+        account_status_reason: null,
+        account_status_changed_at: null,
+        account_status_changed_by: null,
         referred_by_code: params.referredByCode ?? existing.referred_by_code,
         updated_at: now,
       });
@@ -620,10 +665,10 @@ export const devLogin = api<DevLoginParams, DevLoginResponse>(
       const referralCode = `${makeReferralCode(email)}${Math.floor(Math.random() * 900 + 100)}`;
       await identityDB.exec`
         INSERT INTO users (
-          id, email, email_verified, display_name, photo_url, role, is_admin, host_plan, kyc_status, balance, referral_count, tier, referral_code, referred_by_code, created_at, updated_at
+          id, email, email_verified, display_name, photo_url, role, is_admin, host_plan, kyc_status, account_status, balance, referral_count, tier, referral_code, referred_by_code, created_at, updated_at
         )
         VALUES (
-        ${id}, ${email}, ${true}, ${params.displayName}, ${params.photoUrl ?? null}, ${role}, ${false}, ${"standard"}, ${"none"}, ${0}, ${0}, ${"bronze"}, ${referralCode}, ${params.referredByCode ?? null}, ${now}, ${now}
+        ${id}, ${email}, ${true}, ${params.displayName}, ${params.photoUrl ?? null}, ${role}, ${false}, ${"standard"}, ${"none"}, ${"active"}, ${0}, ${0}, ${"bronze"}, ${referralCode}, ${params.referredByCode ?? null}, ${now}, ${now}
         )
       `;
       user = {
@@ -636,6 +681,10 @@ export const devLogin = api<DevLoginParams, DevLoginResponse>(
         isAdmin: false,
         hostPlan: "standard",
         kycStatus: "none",
+        accountStatus: "active",
+        accountStatusReason: null,
+        accountStatusChangedAt: null,
+        accountStatusChangedBy: null,
         balance: 0,
         referralCount: 0,
         tier: "bronze",
@@ -929,6 +978,71 @@ export const adminUpdateUser = api<AdminUpdateUserParams, { user: UserProfile }>
         tier: nextTier,
         updated_at: now,
       }),
+    };
+  },
+);
+
+export const adminSetAccountStatus = api<
+  AdminSetAccountStatusParams,
+  { user: UserProfile; notification: StoredNotification | null }
+>(
+  { expose: true, method: "POST", path: "/admin/users/account-status", auth: true },
+  async ({ userId, accountStatus, reason }) => {
+    const auth = requireRole("admin", "support");
+    if (auth.userID === userId && accountStatus !== "active") {
+      throw APIError.failedPrecondition("You cannot suspend or deactivate your own signed-in account.");
+    }
+
+    const existing = await identityDB.rawQueryRow<UserRow>(
+      `${USER_SELECT} WHERE id = $1`,
+      userId,
+    );
+    if (!existing) {
+      throw APIError.notFound("User not found.");
+    }
+
+    const nextReason = normalizeAccountStatusReason(accountStatus, reason);
+    if (accountStatus !== "active" && !nextReason) {
+      throw APIError.invalidArgument("A clear reason is required when suspending or deactivating an account.");
+    }
+
+    const now = new Date().toISOString();
+    await identityDB.exec`
+      UPDATE users
+      SET account_status = ${accountStatus},
+          account_status_reason = ${nextReason},
+          account_status_changed_at = ${accountStatus === "active" ? null : now},
+          account_status_changed_by = ${accountStatus === "active" ? null : auth.userID},
+          updated_at = ${now}
+      WHERE id = ${userId}
+    `;
+
+    const updatedUser = mapUser({
+      ...existing,
+      account_status: accountStatus,
+      account_status_reason: nextReason,
+      account_status_changed_at: accountStatus === "active" ? null : now,
+      account_status_changed_by: accountStatus === "active" ? null : auth.userID,
+      updated_at: now,
+    });
+
+    const notification = await notifyAccountStatusChanged({
+      userId,
+      status: accountStatus,
+      reason: nextReason,
+    });
+
+    await platformEvents.publish({
+      type: "user.account_status_changed",
+      aggregateId: userId,
+      actorId: auth.userID,
+      occurredAt: now,
+      payload: JSON.stringify({ status: accountStatus, reason: nextReason }),
+    });
+
+    return {
+      user: updatedUser,
+      notification,
     };
   },
 );

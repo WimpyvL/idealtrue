@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { opsDB } from "./db";
 import {
+  buildAccountStatusChangedNotification,
   buildBookingRequestedNotification,
   buildBookingStatusChangedNotification,
   buildCheckoutStatusChangedNotification,
@@ -139,4 +140,12 @@ export async function notifyCheckoutStatusChanged(params: {
   creditQuantity?: number | null;
 }) {
   return createNotification(buildCheckoutStatusChangedNotification(params));
+}
+
+export async function notifyAccountStatusChanged(params: {
+  userId: string;
+  status: "active" | "suspended" | "deactivated";
+  reason?: string | null;
+}) {
+  return createNotification(buildAccountStatusChangedNotification(params));
 }

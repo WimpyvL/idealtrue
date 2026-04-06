@@ -3,6 +3,9 @@ import { APIError, Gateway, Header } from "encore.dev/api";
 import { authHandler } from "encore.dev/auth";
 import { secret } from "encore.dev/config";
 import type { AuthData } from "../shared/auth";
+import type { AccountStatus, HostPlan, KycStatus, UserRole } from "../shared/domain";
+import { identityDB } from "./db";
+import { buildAccountStatusBlockMessage } from "./account-status";
 
 interface TokenPayload extends AuthData {
   exp: number;
@@ -10,6 +13,17 @@ interface TokenPayload extends AuthData {
 
 interface GatewayAuthParams {
   authorization: Header<"Authorization">;
+}
+
+interface GatewayUserRow {
+  id: string;
+  email: string;
+  display_name: string;
+  role: UserRole;
+  host_plan: HostPlan;
+  kyc_status: KycStatus;
+  account_status: AccountStatus;
+  account_status_reason: string | null;
 }
 
 const authTokenSecret = secret("AUTH_TOKEN_SECRET");
@@ -72,6 +86,7 @@ export function parseToken(token: string): AuthData | null {
     role: payload.role,
     hostPlan: payload.hostPlan,
     kycStatus: payload.kycStatus,
+    accountStatus: payload.accountStatus ?? "active",
   };
 }
 
@@ -88,7 +103,37 @@ export const gatewayAuth = authHandler<GatewayAuthParams, AuthData>(
       throw APIError.unauthenticated("Invalid or expired bearer token.");
     }
 
-    return auth;
+    const user = await identityDB.queryRow<GatewayUserRow>`
+      SELECT
+        id,
+        email,
+        display_name,
+        role,
+        host_plan,
+        kyc_status,
+        account_status,
+        account_status_reason
+      FROM users
+      WHERE id = ${auth.userID}
+    `;
+    if (!user) {
+      throw APIError.unauthenticated("User session could not be resolved.");
+    }
+    if (user.account_status !== "active") {
+      throw APIError.permissionDenied(
+        buildAccountStatusBlockMessage(user.account_status, user.account_status_reason),
+      );
+    }
+
+    return {
+      userID: user.id,
+      email: user.email,
+      displayName: user.display_name,
+      role: user.role,
+      hostPlan: user.host_plan,
+      kycStatus: user.kyc_status,
+      accountStatus: user.account_status,
+    };
   },
 );
 

@@ -1,5 +1,5 @@
 import { encoreRequest } from './encore-client';
-import type { Booking, Listing, Notification, PlatformSettings, Referral, Review, Subscription, UserProfile } from '@/types';
+import type { AccountStatus, Booking, Listing, Notification, PlatformSettings, Referral, Review, Subscription, UserProfile } from '@/types';
 import {
   mapEncoreBooking,
   mapEncoreListing,
@@ -132,6 +132,26 @@ export async function deleteAdminUser(userId: string) {
     { method: 'DELETE' },
     { auth: true },
   );
+}
+
+export async function setAdminUserAccountStatus(params: {
+  userId: string;
+  accountStatus: AccountStatus;
+  reason?: string | null;
+}) {
+  const response = await encoreRequest<{ user: EncoreUser; notification?: EncoreNotification | null }>(
+    '/admin/users/account-status',
+    {
+      method: 'POST',
+      body: JSON.stringify(params),
+    },
+    { auth: true },
+  );
+
+  return {
+    user: mapEncoreUserToProfile(response.user),
+    notification: response.notification ? mapEncoreNotification(response.notification) : null,
+  };
 }
 
 export async function listAdminListings(): Promise<Listing[]> {
