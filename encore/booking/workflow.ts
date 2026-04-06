@@ -1,7 +1,5 @@
 import type { BookingStatus } from "../shared/domain";
 
-export const CLEANING_FEE = 45;
-
 export function normalizeDateOnly(value: string) {
   return value.slice(0, 10);
 }
@@ -12,8 +10,7 @@ export function computeBookingTotalPrice(pricePerNight: number, checkIn: Date, c
   if (nights <= 0) {
     throw new RangeError("Checkout must be after check-in.");
   }
-  const subtotal = pricePerNight * nights;
-  return subtotal + CLEANING_FEE;
+  return pricePerNight * nights;
 }
 
 export function bookingOverlapsBlockedDates(checkIn: Date, checkOut: Date, blockedDates: string[] | undefined) {

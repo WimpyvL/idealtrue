@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
-import { buildTripPlannerResponse } from '@/services/trip-planner';
+import { generateTripPlannerReply } from '@/lib/ai-client';
 
 export default function HolidayPlanner() {
   const [messages, setMessages] = useState<{ role: 'user' | 'ai', content: string }[]>([]);
@@ -34,11 +34,17 @@ export default function HolidayPlanner() {
     setLoading(true);
 
     try {
-      const response = buildTripPlannerResponse(userMessage);
+      const response = await generateTripPlannerReply([
+        ...messages.map((message) => ({
+          role: message.role === 'ai' ? 'assistant' as const : 'user' as const,
+          content: message.content,
+        })),
+        { role: 'user' as const, content: userMessage },
+      ]);
       setMessages(prev => [...prev, { role: 'ai', content: response }]);
     } catch (error: any) {
       console.error(error);
-      setMessages(prev => [...prev, { role: 'ai', content: "Something broke while building the trip brief. Try a clearer destination and trip length." }]);
+      setMessages(prev => [...prev, { role: 'ai', content: "Something broke while talking to the planner. Try again with a clearer destination or trip shape." }]);
     } finally {
       setLoading(false);
     }

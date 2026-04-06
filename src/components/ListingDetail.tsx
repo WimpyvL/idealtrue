@@ -75,6 +75,7 @@ export default function ListingDetail({
       setReviewSummary(summary || '');
     } catch (err) {
       console.error(err);
+      toast.error('Could not summarize the reviews right now.');
     } finally {
       setIsSummarizing(false);
     }
@@ -96,9 +97,8 @@ export default function ListingDetail({
     ? differenceInDays(dateRange.to, dateRange.from) 
     : 0;
   
-  const cleaningFee = 45;
   const subtotal = listing.pricePerNight * nights;
-  const totalPrice = subtotal + (nights > 0 ? cleaningFee : 0);
+  const totalPrice = subtotal;
   const galleryImages = listing.images.length > 0
     ? listing.images
     : [`https://picsum.photos/seed/${listing.id}/1200/900`];
@@ -392,10 +392,6 @@ export default function ListingDetail({
                   <div className="flex justify-between text-on-surface-variant">
                     <span className="underline">{formatRand(listing.pricePerNight)} x {nights} night{nights !== 1 ? 's' : ''}</span>
                     <span>{formatRand(subtotal)}</span>
-                  </div>
-                  <div className="flex justify-between text-on-surface-variant">
-                    <span className="underline">Cleaning fee</span>
-                    <span>{formatRand(cleaningFee)}</span>
                   </div>
                   <div className="flex justify-between font-bold text-lg pt-3 border-t border-outline-variant">
                     <span>Estimated Total</span>

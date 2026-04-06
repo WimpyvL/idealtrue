@@ -3,20 +3,19 @@ import test from 'node:test';
 
 import {
   bookingOverlapsBlockedDates,
-  CLEANING_FEE,
   computeBookingTotalPrice,
   getBookingStatusTransitionError,
   getPaymentProofSubmissionError,
 } from '../encore/booking/workflow.ts';
 
-test('computeBookingTotalPrice includes the cleaning fee for valid stays', () => {
+test('computeBookingTotalPrice uses nightly pricing only for valid stays', () => {
   const total = computeBookingTotalPrice(
     1500,
     new Date('2026-04-10T00:00:00.000Z'),
     new Date('2026-04-13T00:00:00.000Z'),
   );
 
-  assert.equal(total, 1500 * 3 + CLEANING_FEE);
+  assert.equal(total, 1500 * 3);
 });
 
 test('bookingOverlapsBlockedDates catches blocked nights inside the requested stay', () => {

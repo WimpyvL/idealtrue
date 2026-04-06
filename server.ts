@@ -2,6 +2,9 @@ import express from "express";
 import { createServer } from "http";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import { generateTripPlannerReply } from "./lib/server/trip-planner.js";
+import { generateReviewSummary } from "./lib/server/review-summary.js";
+import { generateListingSocialCreative } from "./lib/server/social-image.js";
 import {
   copyRequestHeaders,
   getRequestId,
@@ -109,6 +112,7 @@ async function startServer() {
   const app = express();
   const httpServer = createServer(app);
   const port = 3000;
+  const aiJsonParser = express.json({ limit: "2mb" });
 
   app.post("/api/auth/logout", (req, res) => {
     const secure = isSecureRequest(req.headers) || process.env.NODE_ENV === "production";
@@ -119,6 +123,48 @@ async function startServer() {
 
   app.use("/api/encore", (req, res) => {
     void proxyEncoreRequest(req, res);
+  });
+
+  app.post("/api/ai/trip-planner", aiJsonParser, async (req, res) => {
+    try {
+      const reply = await generateTripPlannerReply(req.body?.messages, process.env);
+      res.json({ reply });
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : "Trip planner request failed.",
+      });
+    }
+  });
+
+  app.post("/api/ai/review-summary", aiJsonParser, async (req, res) => {
+    try {
+      const summary = await generateReviewSummary(req.body?.reviews, process.env);
+      res.json({ summary });
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : "Review summary request failed.",
+      });
+    }
+  });
+
+  app.post("/api/ai/social-image", aiJsonParser, async (req, res) => {
+    try {
+      const creative = await generateListingSocialCreative({
+        listingId: req.body?.listingId,
+        sourceImageUrl: req.body?.sourceImageUrl,
+        platform: req.body?.platform,
+        tone: req.body?.tone,
+        brief: req.body?.brief,
+        cookieHeader: req.headers.cookie,
+        env: process.env,
+      });
+      res.json(creative);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Social image request failed.";
+      res.status(/signed in|own listings|belong to this listing/i.test(message) ? 403 : 400).json({
+        error: message,
+      });
+    }
   });
 
   app.get("/api/health", (_req, res) => {

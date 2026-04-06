@@ -2,6 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { billingDB } from "./db";
+import { generateListingDraftWithGemini, type ListingSnapshot } from "./gemini";
 import { classifyYocoWebhookOutcome } from "./webhook-classification";
 import { toMinorUnits } from "./pricing";
 import { catalogDB } from "../catalog/db";
@@ -26,17 +27,6 @@ interface SubscriptionCheckoutParams {
 
 interface PurchaseCreditsParams {
   credits: number;
-}
-
-interface ListingSnapshot {
-  id: string;
-  title: string;
-  description: string;
-  location: string;
-  pricePerNight: number;
-  amenities: string[];
-  facilities: string[];
-  type: string;
 }
 
 interface GenerateContentDraftParams {
@@ -171,79 +161,6 @@ const CONTENT_LIMITS: Record<HostPlan, { includedDraftsPerMonth: number; canSche
   professional: { includedDraftsPerMonth: 60, canSchedule: true, contentStudioEnabled: true },
   premium: { includedDraftsPerMonth: 120, canSchedule: true, contentStudioEnabled: true },
 };
-
-const PLATFORM_LABELS: Record<SocialPlatform, string> = {
-  instagram: "Instagram",
-  facebook: "Facebook",
-  twitter: "X",
-  linkedin: "LinkedIn",
-};
-
-const TONE_GUIDANCE: Record<SocialTone, { opener: string; voice: string; cta: string }> = {
-  professional: {
-    opener: "Well-positioned stays convert when the offer is clear.",
-    voice: "Keep the copy polished, confident, and commercially useful.",
-    cta: "Send an enquiry to confirm your preferred dates.",
-  },
-  friendly: {
-    opener: "This stay feels easy to say yes to.",
-    voice: "Keep the copy warm, inviting, and conversational.",
-    cta: "Message the host and lock in your dates.",
-  },
-  adventurous: {
-    opener: "This is the kind of stay that turns a trip into a story.",
-    voice: "Keep the copy energetic, vivid, and experience-led.",
-    cta: "Plan the getaway and enquire while dates are still open.",
-  },
-  luxurious: {
-    opener: "Some properties should be framed as a premium escape, not just a booking.",
-    voice: "Keep the copy elevated, refined, and detail-rich.",
-    cta: "Enquire now to secure a premium stay window.",
-  },
-  urgent: {
-    opener: "Strong availability signals should create momentum.",
-    voice: "Keep the copy direct, time-sensitive, and conversion-focused.",
-    cta: "Reach out today before the best dates disappear.",
-  },
-};
-
-function buildHashtags(listing: ListingSnapshot, platform: SocialPlatform) {
-  const tags = [
-    "#IdealStay",
-    "#SouthAfricaTravel",
-    `#${listing.location.replace(/\s+/g, "")}`,
-    listing.type ? `#${listing.type.replace(/\s+/g, "")}` : "",
-    platform === "linkedin" ? "#HospitalityMarketing" : "#TravelInspo",
-  ];
-
-  return Array.from(new Set(tags.filter(Boolean))).slice(0, 5).join(" ");
-}
-
-function buildDraftContent(listing: ListingSnapshot, platform: SocialPlatform, tone: SocialTone) {
-  const toneConfig = TONE_GUIDANCE[tone];
-  const platformLabel = PLATFORM_LABELS[platform];
-  const highlights = [...listing.amenities.slice(0, 3), ...listing.facilities.slice(0, 2)].filter(Boolean);
-  const highlightLine = highlights.length > 0
-    ? `Highlights: ${highlights.join(", ")}.`
-    : "Highlights: Comfortable positioning, clear location value, and a host-ready setup.";
-
-  return [
-    `### ${platformLabel} draft`,
-    "",
-    `${toneConfig.opener}`,
-    "",
-    `**${listing.title}** in **${listing.location}**`,
-    "",
-    `${listing.description}`,
-    "",
-    `${highlightLine} Rate from R${listing.pricePerNight} per night.`,
-    `${toneConfig.voice}`,
-    "",
-    `${toneConfig.cta}`,
-    "",
-    buildHashtags(listing, platform),
-  ].join("\n");
-}
 
 function getCreditPrice(credits: number) {
   if (![10, 25, 50].includes(credits)) {
@@ -898,6 +815,15 @@ export const generateContentDraft = api<GenerateContentDraftParams, { draft: Con
     const auth = requireRole("host", "admin");
     const draftId = randomUUID();
     const listing = await getOwnedListingSnapshot(listingId, auth.userID);
+    const previewEntitlements = await getContentEntitlementsForUser(auth.userID);
+    if (!previewEntitlements.contentStudioEnabled) {
+      throw APIError.permissionDenied("Your current plan does not include the content studio.");
+    }
+    if (previewEntitlements.remainingIncludedDrafts < 1 && previewEntitlements.creditBalance < 1) {
+      throw APIError.permissionDenied("You have used your included content drafts. Buy more credits or upgrade your plan.");
+    }
+
+    const content = await generateListingDraftWithGemini(listing, platform, tone);
     const tx = await billingDB.begin();
 
     try {
@@ -905,7 +831,6 @@ export const generateContentDraft = api<GenerateContentDraftParams, { draft: Con
       await debitOneContentUse(tx, auth.userID, entitlements, draftId);
 
       const now = new Date().toISOString();
-      const content = buildDraftContent(listing, platform, tone);
 
       await tx.exec`
         INSERT INTO content_drafts (

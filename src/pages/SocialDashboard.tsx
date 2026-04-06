@@ -4,6 +4,7 @@ import {
   CalendarDays,
   CheckCircle2,
   Copy,
+  Download,
   Facebook,
   Image as ImageIcon,
   Instagram,
@@ -31,6 +32,7 @@ import {
   listContentDrafts,
   updateContentDraft,
 } from '../lib/billing-client';
+import { generateListingSocialCreative, type GeneratedSocialCreative } from '../lib/ai-client';
 
 const CREDIT_PACKS = [10, 25, 50];
 
@@ -51,6 +53,10 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
   const [editorContent, setEditorContent] = useState('');
   const [scheduleAt, setScheduleAt] = useState('');
   const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [creativeSourceUrl, setCreativeSourceUrl] = useState<string | null>(null);
+  const [creativeBrief, setCreativeBrief] = useState('');
+  const [isGeneratingCreative, setIsGeneratingCreative] = useState(false);
+  const [generatedCreative, setGeneratedCreative] = useState<GeneratedSocialCreative | null>(null);
   const billingStatus = searchParams.get('billing_status');
   const checkoutId = searchParams.get('checkout_id');
 
@@ -67,6 +73,12 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
       }
     }
   }, [listingIdFromUrl, listings]);
+
+  useEffect(() => {
+    const nextSource = selectedListing?.images?.[0] ?? null;
+    setCreativeSourceUrl(nextSource);
+    setGeneratedCreative(null);
+  }, [selectedListing]);
 
   useEffect(() => {
     let cancelled = false;
@@ -217,6 +229,37 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
     navigator.clipboard.writeText(editorContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleGenerateCreative = async () => {
+    if (!selectedListing || !creativeSourceUrl) return;
+
+    setIsGeneratingCreative(true);
+    try {
+      const creative = await generateListingSocialCreative({
+        listingId: selectedListing.id,
+        sourceImageUrl: creativeSourceUrl,
+        platform: platform ?? 'instagram',
+        tone,
+        brief: creativeBrief,
+      });
+      setGeneratedCreative(creative);
+      toast.success('Social creative generated.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not generate the social creative.');
+    } finally {
+      setIsGeneratingCreative(false);
+    }
+  };
+
+  const handleDownloadCreative = () => {
+    if (!generatedCreative) return;
+
+    const link = document.createElement('a');
+    const extension = generatedCreative.mimeType.includes('png') ? 'png' : 'jpg';
+    link.href = generatedCreative.dataUrl;
+    link.download = `ideal-stay-social-${selectedListing?.id || 'creative'}.${extension}`;
+    link.click();
   };
 
   if (!profile || profile.role !== 'host') {
@@ -370,6 +413,110 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
           </Button>
         </Card>
       </div>
+
+      <Card className="p-6 space-y-5">
+        <div className="flex items-center gap-2">
+          <ImageIcon className="w-5 h-5" />
+          <h2 className="text-2xl font-bold">Social image studio</h2>
+        </div>
+
+        {!selectedListing ? (
+          <div className="rounded-2xl border border-dashed border-outline-variant p-8 text-center text-on-surface-variant">
+            Pick a listing first. Then we can turn one of its photos into a polished social asset.
+          </div>
+        ) : selectedListing.images.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-outline-variant p-8 text-center text-on-surface-variant">
+            This listing has no images yet. Upload listing photos first, then generate social creatives from them.
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold">Source photo</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {selectedListing.images.map((imageUrl) => (
+                      <button
+                        key={imageUrl}
+                        type="button"
+                        onClick={() => {
+                          setCreativeSourceUrl(imageUrl);
+                          setGeneratedCreative(null);
+                        }}
+                        className={`overflow-hidden rounded-2xl border transition-all ${creativeSourceUrl === imageUrl ? 'border-primary ring-2 ring-primary/20' : 'border-outline-variant'}`}
+                      >
+                        <img src={imageUrl} alt="" className="aspect-square w-full object-cover" referrerPolicy="no-referrer" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold">Creative brief</p>
+                  <Input
+                    value={creativeBrief}
+                    onChange={(event) => setCreativeBrief(event.target.value)}
+                    placeholder="Optional: rooftop sunset, premium launch look, weekend promo angle..."
+                  />
+                  <p className="text-xs text-on-surface-variant">
+                    Tone and platform above also steer the visual direction.
+                  </p>
+                </div>
+
+                <Button
+                  className="w-full"
+                  disabled={!creativeSourceUrl || !contentEnabled || isGeneratingCreative}
+                  onClick={handleGenerateCreative}
+                >
+                  {isGeneratingCreative ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Designing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Generate Social Creative
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-on-surface-variant">Original</p>
+                  <div className="overflow-hidden rounded-3xl border border-outline-variant bg-surface-container-lowest">
+                    {creativeSourceUrl && (
+                      <img src={creativeSourceUrl} alt="" className="aspect-[4/5] w-full object-cover" referrerPolicy="no-referrer" />
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-on-surface-variant">Generated creative</p>
+                    {generatedCreative && (
+                      <Button variant="outline" size="sm" onClick={handleDownloadCreative}>
+                        <Download className="w-4 h-4 mr-2" />
+                        Download
+                      </Button>
+                    )}
+                  </div>
+                  <div className="overflow-hidden rounded-3xl border border-outline-variant bg-surface-container-lowest">
+                    {generatedCreative ? (
+                      <img src={generatedCreative.dataUrl} alt="Generated social creative" className="aspect-[4/5] w-full object-cover" />
+                    ) : (
+                      <div className="flex aspect-[4/5] items-center justify-center px-6 text-center text-sm text-on-surface-variant">
+                        Generate a social creative to preview the Gemini-designed version here.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
         <Card className="p-6 space-y-4">
