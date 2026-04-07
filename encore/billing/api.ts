@@ -2,7 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { billingDB } from "./db";
-import { generateListingDraftWithGemini, type ListingSnapshot } from "./gemini";
+import { generateListingDraftWithFallback, type ListingSnapshot } from "./gemini";
 import { classifyYocoWebhookOutcome } from "./webhook-classification";
 import { toMinorUnits } from "./pricing";
 import { catalogDB } from "../catalog/db";
@@ -882,7 +882,7 @@ export const generateContentDraft = api<GenerateContentDraftParams, { draft: Con
       throw APIError.permissionDenied("You have used your included content drafts. Buy more credits or upgrade your plan.");
     }
 
-    const content = await generateListingDraftWithGemini(listing, platform, tone);
+    const content = await generateListingDraftWithFallback(listing, platform, tone);
     const tx = await billingDB.begin();
 
     try {
