@@ -1,10 +1,9 @@
 import { encoreRequest } from './encore-client';
 import type { Listing } from '@/types';
+import type { SocialPlatform, SocialTemplateId, SocialTone } from './social-content';
 
 export type HostPlan = 'standard' | 'professional' | 'premium';
 export type BillingInterval = 'monthly' | 'annual';
-export type SocialPlatform = 'instagram' | 'facebook' | 'twitter' | 'linkedin';
-export type SocialTone = 'professional' | 'friendly' | 'adventurous' | 'luxurious' | 'urgent';
 
 export interface ContentEntitlements {
   plan: HostPlan;
@@ -24,6 +23,8 @@ export interface ContentDraft {
   listingLocation: string;
   platform: SocialPlatform;
   tone: SocialTone;
+  templateId: SocialTemplateId;
+  templateName: string;
   status: 'draft' | 'scheduled' | 'published';
   content: string;
   scheduledFor?: string | null;
@@ -63,7 +64,17 @@ export async function createContentCreditsCheckout(credits: number) {
   );
 }
 
-export async function generateContentDraft(listing: Listing, platform: SocialPlatform, tone: SocialTone) {
+export async function generateContentDraft(
+  listing: Listing,
+  platform: SocialPlatform,
+  tone: SocialTone,
+  templateId: SocialTemplateId,
+  options?: {
+    includePrice?: boolean;
+    includeSpecialOffer?: boolean;
+    customHeadline?: string;
+  },
+) {
   const response = await encoreRequest<{ draft: ContentDraft; entitlements: ContentEntitlements }>(
     '/billing/content/drafts/generate',
     {
@@ -72,6 +83,10 @@ export async function generateContentDraft(listing: Listing, platform: SocialPla
         listingId: listing.id,
         platform,
         tone,
+        templateId,
+        includePrice: options?.includePrice ?? true,
+        includeSpecialOffer: options?.includeSpecialOffer ?? false,
+        customHeadline: options?.customHeadline ?? '',
       }),
     },
     { auth: true },

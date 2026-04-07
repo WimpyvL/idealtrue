@@ -1,14 +1,32 @@
 import type { Review } from '@/types';
+import type { SocialPlatform, SocialTemplateId, SocialTone } from './social-content';
 
 export type AiChatMessage = {
   role: 'user' | 'assistant';
   content: string;
 };
 
+export type GeneratedSocialCreativeAsset = {
+  id: string;
+  label: string;
+  width: number;
+  height: number;
+  mimeType: string;
+  fileName: string;
+  dataBase64: string;
+  dataUrl: string;
+};
+
 export type GeneratedSocialCreative = {
+  templateId: SocialTemplateId;
+  templateName: string;
+  headline: string;
+  caption: string;
+  bookingUrl: string;
   mimeType: string;
   dataBase64: string;
   dataUrl: string;
+  assets: GeneratedSocialCreativeAsset[];
 };
 
 async function requestAi<T>(path: string, payload: unknown): Promise<T> {
@@ -52,13 +70,41 @@ export async function summarizeReviews(reviews: Review[]) {
 export async function generateListingSocialCreative(params: {
   listingId: string;
   sourceImageUrl: string;
-  platform: 'instagram' | 'facebook' | 'twitter' | 'linkedin';
-  tone: 'professional' | 'friendly' | 'adventurous' | 'luxurious' | 'urgent';
+  platform: SocialPlatform;
+  tone: SocialTone;
+  templateId: SocialTemplateId;
+  includePrice?: boolean;
+  includeSpecialOffer?: boolean;
+  customHeadline?: string;
   brief?: string;
 }): Promise<GeneratedSocialCreative> {
-  const response = await requestAi<{ mimeType: string; dataBase64: string }>('/api/ai/social-image', params);
+  const response = await requestAi<{
+    templateId: SocialTemplateId;
+    templateName: string;
+    headline: string;
+    caption: string;
+    bookingUrl: string;
+    mimeType: string;
+    dataBase64: string;
+    assets: Array<{
+      id: string;
+      label: string;
+      width: number;
+      height: number;
+      mimeType: string;
+      fileName: string;
+      dataBase64: string;
+    }>;
+  }>('/api/ai/social-image', params);
+
+  const assets = response.assets.map((asset) => ({
+    ...asset,
+    dataUrl: `data:${asset.mimeType};base64,${asset.dataBase64}`,
+  }));
+
   return {
     ...response,
     dataUrl: `data:${response.mimeType};base64,${response.dataBase64}`,
+    assets,
   };
 }

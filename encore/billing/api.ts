@@ -2,7 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { billingDB } from "./db";
-import { generateListingDraftWithFallback, type ListingSnapshot } from "./gemini";
+import { generateListingDraftWithFallback } from "./gemini";
 import { classifyYocoWebhookOutcome } from "./webhook-classification";
 import { toMinorUnits } from "./pricing";
 import { catalogDB } from "../catalog/db";
@@ -17,10 +17,16 @@ import { HOST_PLANS, HostPlan, SubscriptionPlan } from "../shared/domain";
 import { platformEvents } from "../analytics/events";
 import { createYocoCheckout, getAppUrl, verifyYocoWebhookSignature, type YocoWebhookEvent } from "./yoco";
 import { rewardSubscriptionReferralConversion } from "../referrals/api";
+import {
+  getSocialTemplateDefinition,
+  type ListingSnapshot,
+  normalizeDraftOptions,
+  type SocialPlatform,
+  type SocialTemplateId,
+  type SocialTone,
+} from "./social-templates";
 
 type BillingInterval = "monthly" | "annual";
-type SocialPlatform = "instagram" | "facebook" | "twitter" | "linkedin";
-type SocialTone = "professional" | "friendly" | "adventurous" | "luxurious" | "urgent";
 type ContentDraftStatus = "draft" | "scheduled" | "published";
 type CheckoutType = "subscription" | "content_credits";
 type CheckoutStatus = "pending" | "paid" | "failed" | "cancelled";
@@ -38,6 +44,10 @@ interface GenerateContentDraftParams {
   listingId: string;
   platform: SocialPlatform;
   tone: SocialTone;
+  templateId: SocialTemplateId;
+  includePrice?: boolean;
+  includeSpecialOffer?: boolean;
+  customHeadline?: string;
 }
 
 interface UpdateContentDraftParams {
@@ -65,6 +75,8 @@ interface ContentDraftRecord {
   listingLocation: string;
   platform: SocialPlatform;
   tone: SocialTone;
+  templateId: SocialTemplateId;
+  templateName: string;
   status: ContentDraftStatus;
   content: string;
   scheduledFor?: string | null;
@@ -106,6 +118,8 @@ type DraftRow = {
   listing_location: string;
   platform: SocialPlatform;
   tone: SocialTone;
+  template_id: SocialTemplateId;
+  template_name: string;
   status: ContentDraftStatus;
   content: string;
   scheduled_for: string | null;
@@ -120,7 +134,14 @@ type CatalogListingRow = {
   title: string;
   description: string;
   location: string;
+  area: string | null;
+  province: string | null;
   price_per_night: number;
+  discount_percent: number;
+  adults: number;
+  children: number;
+  bedrooms: number;
+  bathrooms: number;
   amenities: string[];
   facilities: string[];
   type: string;
@@ -203,7 +224,23 @@ function buildBillingUrls(kind: CheckoutType, id: string) {
 
 async function getOwnedListingSnapshot(listingId: string, userId: string): Promise<ListingSnapshot> {
   const listing = await catalogDB.queryRow<CatalogListingRow>`
-    SELECT id, host_id, title, description, location, price_per_night, amenities, facilities, type
+    SELECT
+      id,
+      host_id,
+      title,
+      description,
+      location,
+      area,
+      province,
+      price_per_night,
+      discount_percent,
+      adults,
+      children,
+      bedrooms,
+      bathrooms,
+      amenities,
+      facilities,
+      type
     FROM listings
     WHERE id = ${listingId}
   `;
@@ -220,10 +257,18 @@ async function getOwnedListingSnapshot(listingId: string, userId: string): Promi
     title: listing.title,
     description: listing.description,
     location: listing.location,
+    area: listing.area ?? "",
+    province: listing.province ?? "",
     pricePerNight: listing.price_per_night,
+    discountPercent: listing.discount_percent,
+    adults: listing.adults,
+    children: listing.children,
+    bedrooms: listing.bedrooms,
+    bathrooms: Number(listing.bathrooms),
     amenities: listing.amenities ?? [],
     facilities: listing.facilities ?? [],
     type: listing.type,
+    bookingUrl: `${getAppUrl()}/?listingId=${encodeURIComponent(listing.id)}`,
   };
 }
 
@@ -236,6 +281,8 @@ function mapDraft(row: DraftRow): ContentDraftRecord {
     listingLocation: row.listing_location,
     platform: row.platform,
     tone: row.tone,
+    templateId: row.template_id,
+    templateName: row.template_name,
     status: row.status,
     content: row.content,
     scheduledFor: row.scheduled_for,
@@ -869,11 +916,13 @@ export const getCheckoutStatus = api<{ checkoutId: string }, { status: CheckoutS
 
 export const generateContentDraft = api<GenerateContentDraftParams, { draft: ContentDraftRecord; entitlements: ContentEntitlements }>(
   { expose: true, method: "POST", path: "/billing/content/drafts/generate", auth: true },
-  async ({ listingId, platform, tone }) => {
+  async ({ listingId, platform, tone, templateId, includePrice, includeSpecialOffer, customHeadline }) => {
     const auth = requireRole("host", "admin");
     enforceContentDraftBurstLimit(auth.userID);
     const draftId = randomUUID();
     const listing = await getOwnedListingSnapshot(listingId, auth.userID);
+    const draftOptions = normalizeDraftOptions({ includePrice, includeSpecialOffer, customHeadline });
+    const template = getSocialTemplateDefinition(templateId);
     const previewEntitlements = await getContentEntitlementsForUser(auth.userID);
     if (!previewEntitlements.contentStudioEnabled) {
       throw APIError.permissionDenied("Your current plan does not include the content studio.");
@@ -882,7 +931,7 @@ export const generateContentDraft = api<GenerateContentDraftParams, { draft: Con
       throw APIError.permissionDenied("You have used your included content drafts. Buy more credits or upgrade your plan.");
     }
 
-    const content = await generateListingDraftWithFallback(listing, platform, tone);
+    const content = await generateListingDraftWithFallback(listing, platform, tone, templateId, draftOptions);
     const tx = await billingDB.begin();
 
     try {
@@ -893,10 +942,10 @@ export const generateContentDraft = api<GenerateContentDraftParams, { draft: Con
 
       await tx.exec`
         INSERT INTO content_drafts (
-          id, user_id, listing_id, listing_title, listing_location, platform, tone, status, content, created_at, updated_at
+          id, user_id, listing_id, listing_title, listing_location, platform, tone, template_id, template_name, status, content, created_at, updated_at
         )
         VALUES (
-          ${draftId}, ${auth.userID}, ${listing.id}, ${listing.title}, ${listing.location}, ${platform}, ${tone}, ${"draft"}, ${content}, ${now}, ${now}
+          ${draftId}, ${auth.userID}, ${listing.id}, ${listing.title}, ${listing.location}, ${platform}, ${tone}, ${template.id}, ${template.name}, ${"draft"}, ${content}, ${now}, ${now}
         )
       `;
 
@@ -913,6 +962,8 @@ export const generateContentDraft = api<GenerateContentDraftParams, { draft: Con
           listingLocation: listing.location,
           platform,
           tone,
+          templateId: template.id,
+          templateName: template.name,
           status: "draft",
           content,
           scheduledFor: null,

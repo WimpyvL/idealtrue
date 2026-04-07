@@ -49,10 +49,16 @@ test("validateSocialCreativeInput accepts supported payloads and trims the brief
     sourceImageUrl: "https://cdn.example.com/image.jpg",
     platform: "instagram",
     tone: "luxurious",
+    templateId: "featured_stay",
+    includePrice: true,
+    includeSpecialOffer: false,
+    customHeadline: "  Stay at Villa del Sol  ",
     brief: "  Premium launch creative  ",
   });
 
   assert.equal(payload.listingId, "listing-123");
+  assert.equal(payload.templateId, "featured_stay");
+  assert.equal(payload.customHeadline, "Stay at Villa del Sol");
   assert.equal(payload.brief, "Premium launch creative");
 });
 

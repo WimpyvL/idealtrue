@@ -17,12 +17,26 @@ export default async function handler(req, res) {
       requireAuth: true,
     });
     enforceAiRateLimit("socialImage", actor);
-    const { listingId, sourceImageUrl, platform, tone, brief } = req.body || {};
+    const {
+      listingId,
+      sourceImageUrl,
+      platform,
+      tone,
+      templateId,
+      includePrice,
+      includeSpecialOffer,
+      customHeadline,
+      brief,
+    } = req.body || {};
     const creative = await generateListingSocialCreative({
       listingId,
       sourceImageUrl,
       platform,
       tone,
+      templateId,
+      includePrice,
+      includeSpecialOffer,
+      customHeadline,
       brief,
       cookieHeader: req.headers.cookie,
       env: process.env,

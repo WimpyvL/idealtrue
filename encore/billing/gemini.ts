@@ -1,4 +1,12 @@
 import { APIError } from "encore.dev/api";
+import {
+  buildDraftPrompt,
+  ContentDraftOptions,
+  ListingSnapshot,
+  SocialPlatform,
+  SocialTemplateId,
+  SocialTone,
+} from "./social-templates";
 
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_GEMINI_TEXT_MODEL = "gemini-2.5-flash";
@@ -10,20 +18,6 @@ const DEFAULT_SAFETY_SETTINGS = [
   { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
   { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
 ] as const;
-
-type SocialPlatform = "instagram" | "facebook" | "twitter" | "linkedin";
-type SocialTone = "professional" | "friendly" | "adventurous" | "luxurious" | "urgent";
-
-export interface ListingSnapshot {
-  id: string;
-  title: string;
-  description: string;
-  location: string;
-  pricePerNight: number;
-  amenities: string[];
-  facilities: string[];
-  type: string;
-}
 
 function getGeminiApiKey(env = process.env) {
   const apiKey = `${env.GEMINI_API_KEY || ""}`.trim();
@@ -103,43 +97,13 @@ function isRetryableStatus(status: number) {
   return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
 }
 
-function buildDraftPrompt(listing: ListingSnapshot, platform: SocialPlatform, tone: SocialTone) {
-  const highlights = [...listing.amenities.slice(0, 4), ...listing.facilities.slice(0, 2)].filter(Boolean);
-
-  return [
-    "Write one platform-ready hospitality marketing draft for Ideal Stay.",
-    "Return markdown only.",
-    "Do not invent amenities, location details, or price changes.",
-    "Stay strictly grounded in the supplied listing facts.",
-    "Do not use hype that sounds fake, spammy, or generic.",
-    "Make the output immediately usable in a host content editor.",
-    "Use this structure:",
-    `### ${platform === "twitter" ? "X" : platform.charAt(0).toUpperCase() + platform.slice(1)} draft`,
-    "",
-    "One strong opener paragraph.",
-    "",
-    "A polished core body.",
-    "",
-    "A direct CTA line.",
-    "",
-    "A final hashtag line with 4 to 6 hashtags.",
-    "",
-    `Tone: ${tone}`,
-    `Listing title: ${listing.title}`,
-    `Location: ${listing.location}`,
-    `Nightly rate: R${listing.pricePerNight}`,
-    `Property type: ${listing.type}`,
-    `Amenities/facilities: ${highlights.join(", ") || "Use only the description and location."}`,
-    `Description: ${listing.description}`,
-  ].join("\n");
-}
-
 function buildDraftSystemInstruction() {
   return [
     "You are Ideal Stay's content engine for property marketing.",
     "Your job is to produce relevant, commercially strong copy for real accommodation listings.",
     "Never invent amenities, views, distances, policies, prices, or awards.",
     "Keep the copy credible, polished, and platform-specific.",
+    "Follow the requested template rigorously instead of free-styling.",
   ].join("\n");
 }
 
@@ -147,6 +111,8 @@ async function generateListingDraftWithGemini(
   listing: ListingSnapshot,
   platform: SocialPlatform,
   tone: SocialTone,
+  templateId: SocialTemplateId,
+  options: ContentDraftOptions,
   env = process.env,
 ) {
   const apiKey = getGeminiApiKey(env);
@@ -167,7 +133,7 @@ async function generateListingDraftWithGemini(
         contents: [
           {
             role: "user",
-            parts: [{ text: buildDraftPrompt(listing, platform, tone) }],
+            parts: [{ text: buildDraftPrompt(listing, platform, tone, templateId, options) }],
           },
         ],
         safetySettings: DEFAULT_SAFETY_SETTINGS,
@@ -207,6 +173,8 @@ async function generateListingDraftWithDeepSeek(
   listing: ListingSnapshot,
   platform: SocialPlatform,
   tone: SocialTone,
+  templateId: SocialTemplateId,
+  options: ContentDraftOptions,
   env = process.env,
 ) {
   const apiKey = getDeepSeekApiKey(env);
@@ -229,7 +197,7 @@ async function generateListingDraftWithDeepSeek(
         max_tokens: 700,
         messages: [
           { role: "system", content: buildDraftSystemInstruction() },
-          { role: "user", content: buildDraftPrompt(listing, platform, tone) },
+          { role: "user", content: buildDraftPrompt(listing, platform, tone, templateId, options) },
         ],
       }),
     });
@@ -258,10 +226,12 @@ export async function generateListingDraftWithFallback(
   listing: ListingSnapshot,
   platform: SocialPlatform,
   tone: SocialTone,
+  templateId: SocialTemplateId,
+  options: ContentDraftOptions,
   env = process.env,
 ) {
   try {
-    return await generateListingDraftWithGemini(listing, platform, tone, env);
+    return await generateListingDraftWithGemini(listing, platform, tone, templateId, options, env);
   } catch (error) {
     if (
       !hasDeepSeekConfig(env) ||
@@ -272,6 +242,6 @@ export async function generateListingDraftWithFallback(
 
     const message = error instanceof Error ? error.message : "Unknown Gemini failure.";
     console.warn("Gemini content draft generation failed, falling back to DeepSeek.", message);
-    return generateListingDraftWithDeepSeek(listing, platform, tone, env);
+    return generateListingDraftWithDeepSeek(listing, platform, tone, templateId, options, env);
   }
 }

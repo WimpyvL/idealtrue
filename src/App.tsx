@@ -1,4 +1,4 @@
-import { lazy, useMemo } from 'react';
+import { lazy, useEffect, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Toaster, toast } from 'sonner';
@@ -48,6 +48,25 @@ function AppContent() {
   const isAdminAccount = useMemo(() => !!profile?.isAdmin, [profile]);
   const isHostRoute = location.pathname.startsWith('/host');
   const isAdminRoute = location.pathname.startsWith('/admin');
+  const selectedListingIdFromUrl = useMemo(() => {
+    if (location.pathname !== '/') return null;
+    return new URLSearchParams(location.search).get('listingId');
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (!selectedListingIdFromUrl) {
+      return;
+    }
+
+    if (selectedListingForDetail?.id === selectedListingIdFromUrl) {
+      return;
+    }
+
+    const listingFromUrl = listings.find((listing) => listing.id === selectedListingIdFromUrl);
+    if (listingFromUrl) {
+      setSelectedListingForDetail(listingFromUrl);
+    }
+  }, [listings, selectedListingForDetail?.id, selectedListingIdFromUrl, setSelectedListingForDetail]);
 
   const handleListingUpdated = (updatedListing: typeof listings[number]) => {
     syncUpdatedListing(updatedListing);
@@ -59,7 +78,25 @@ function AppContent() {
   const handleListingRemoved = (listingId: string) => {
     removeListing(listingId);
     if (selectedListingForDetail?.id === listingId) {
-      setSelectedListingForDetail(null);
+      handleListingDetailClose();
+    }
+  };
+
+  const handleListingSelected = (listing: typeof listings[number]) => {
+    setSelectedListingForDetail(listing);
+    if (location.pathname === '/') {
+      const searchParams = new URLSearchParams(location.search);
+      searchParams.set('listingId', listing.id);
+      navigate({ pathname: '/', search: `?${searchParams.toString()}` }, { replace: true });
+    }
+  };
+
+  const handleListingDetailClose = () => {
+    setSelectedListingForDetail(null);
+    if (location.pathname === '/' && selectedListingIdFromUrl) {
+      const searchParams = new URLSearchParams(location.search);
+      searchParams.delete('listingId');
+      navigate({ pathname: '/', search: searchParams.toString() ? `?${searchParams.toString()}` : '' }, { replace: true });
     }
   };
 
@@ -101,7 +138,7 @@ function AppContent() {
           onBookingForPaymentProof={setBookingForPaymentProof}
           onBookingToReview={setBookingToReview}
           onListingRemoved={handleListingRemoved}
-          onListingSelected={setSelectedListingForDetail}
+          onListingSelected={handleListingSelected}
           onListingUpdated={handleListingUpdated}
           onSelectedBookingForChat={setSelectedBookingForChat}
           onSyncUpdatedBooking={syncUpdatedBooking}
@@ -144,7 +181,7 @@ function AppContent() {
             >
               <ListingDetail
                 listing={selectedListingForDetail}
-                onClose={() => setSelectedListingForDetail(null)}
+                onClose={handleListingDetailClose}
                 currentUserId={user?.id}
                 onBook={async (bookingData) => {
                   if (!user) {
@@ -165,7 +202,7 @@ function AppContent() {
 
                     syncUpdatedBooking(nextBooking);
                     toast.success('Booking request sent! The host will contact you shortly.');
-                    setSelectedListingForDetail(null);
+                    handleListingDetailClose();
                   } catch (error) {
                     console.error('Failed to create booking:', error);
                     toast.error('Booking request failed. Please try again.');

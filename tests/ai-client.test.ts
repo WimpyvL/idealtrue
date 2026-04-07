@@ -87,8 +87,24 @@ test('generateListingSocialCreative returns a browser-ready data URL', async () 
   installFetch((url) => {
     assert.equal(url, '/api/ai/social-image');
     return createJsonResponse({
+      templateId: 'featured_stay',
+      templateName: 'Featured Stay',
+      headline: 'Stay at Villa del Sol',
+      caption: 'Book now',
+      bookingUrl: 'https://ideal-stay.vercel.app/?listingId=listing-1',
       mimeType: 'image/png',
       dataBase64: 'YWJj',
+      assets: [
+        {
+          id: 'featured-stay',
+          label: 'Featured Stay',
+          width: 1080,
+          height: 1350,
+          mimeType: 'image/png',
+          fileName: 'ideal-stay-featured.png',
+          dataBase64: 'YWJj',
+        },
+      ],
     });
   });
 
@@ -97,17 +113,25 @@ test('generateListingSocialCreative returns a browser-ready data URL', async () 
     sourceImageUrl: 'https://cdn.example.com/listing.jpg',
     platform: 'instagram',
     tone: 'luxurious',
-    brief: 'Launch campaign',
+    templateId: 'featured_stay',
+    includePrice: true,
+    includeSpecialOffer: false,
+    customHeadline: 'Stay at Villa del Sol',
   });
 
+  assert.equal(creative.templateId, 'featured_stay');
   assert.equal(creative.mimeType, 'image/png');
   assert.equal(creative.dataBase64, 'YWJj');
   assert.equal(creative.dataUrl, 'data:image/png;base64,YWJj');
+  assert.equal(creative.assets[0]?.dataUrl, 'data:image/png;base64,YWJj');
   assert.deepEqual(JSON.parse(String(fetchCalls[0]?.init?.body)), {
     listingId: 'listing-1',
     sourceImageUrl: 'https://cdn.example.com/listing.jpg',
     platform: 'instagram',
     tone: 'luxurious',
-    brief: 'Launch campaign',
+    templateId: 'featured_stay',
+    includePrice: true,
+    includeSpecialOffer: false,
+    customHeadline: 'Stay at Villa del Sol',
   });
 });
