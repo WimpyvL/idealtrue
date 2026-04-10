@@ -112,7 +112,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfile(nextProfile);
         setUser(toSessionUser(nextProfile));
       } catch (error) {
-        console.error('Error restoring Encore session:', error);
+        const isUnauthenticated = error instanceof Error && error.message.includes('unauthenticated');
+        if (!isUnauthenticated) {
+          console.error('Error restoring Encore session:', error);
+        }
         if (!cancelled) {
           await logout();
         }

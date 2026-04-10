@@ -32,6 +32,7 @@ function getEncoreProxyPath(req: express.Request) {
   return `${encorePath}${search ? `?${search}` : ""}`;
 }
 
+
 async function proxyEncoreRequest(req: express.Request, res: express.Response) {
   const startedAt = Date.now();
   const requestId = getRequestId(req.headers);
@@ -46,6 +47,15 @@ async function proxyEncoreRequest(req: express.Request, res: express.Response) {
 
     if (sessionToken && !headers.has("authorization")) {
       headers.set("authorization", `Bearer ${sessionToken}`);
+    } else if (!headers.has("authorization") && process.env.NODE_ENV !== "production") {
+      logEncoreProxyEvent({
+        durationMs: 0,
+        method: req.method,
+        proxyPath: `${proxyPath} (MISSING SESSION TOKEN)`,
+        requestId,
+        status: 401,
+        targetUrl,
+      });
     }
     headers.set("x-request-id", requestId);
 
@@ -54,10 +64,10 @@ async function proxyEncoreRequest(req: express.Request, res: express.Response) {
       body = await readRawRequestBody(req);
     }
 
-    const upstream = await fetch(targetUrl, {
+    const upstream = await fetch(targetUrl as URL, {
       method: req.method,
       headers,
-      body,
+      body: body as any,
       redirect: "manual",
     });
     logEncoreProxyEvent({
