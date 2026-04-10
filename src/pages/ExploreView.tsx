@@ -44,6 +44,7 @@ export default function ExploreView({ listings, onBook }: { listings: Listing[],
 
   const filteredListings = useMemo(() => {
     const query = searchFilters.query.trim().toLowerCase();
+    const selectedListingId = searchFilters.listingId;
     const selectedFrom = searchFilters.date?.from ? startOfDay(searchFilters.date.from) : null;
     const selectedTo = searchFilters.date?.to ? startOfDay(searchFilters.date.to) : null;
 
@@ -54,6 +55,7 @@ export default function ExploreView({ listings, onBook }: { listings: Listing[],
       
       const matchesSearch =
         !query ||
+        listing.id === selectedListingId ||
         listing.title.toLowerCase().includes(query) ||
         listing.location.toLowerCase().includes(query) ||
         listing.description.toLowerCase().includes(query) ||

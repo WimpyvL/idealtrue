@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Booking, Listing, Referral } from '@/types';
 import type { AuthSessionUser } from '@/contexts/AuthContext';
-import { listHostListings, listMyBookings, listPublicListings, listReferralRewards } from '@/lib/platform-client';
+import { getListing, listHostListings, listMyBookings, listPublicListings, listReferralRewards } from '@/lib/platform-client';
 
 interface PlatformDataState {
   listings: Listing[];
@@ -83,6 +83,17 @@ export function usePlatformData(user: AuthSessionUser | null): PlatformDataState
         }
         return current.map((item) => item.id === updatedBooking.id ? updatedBooking : item);
       });
+
+      if (["confirmed", "completed", "cancelled", "declined"].includes(updatedBooking.status)) {
+        void getListing(updatedBooking.listingId)
+          .then((updatedListing) => {
+            setListings((current) => current.map((item) => item.id === updatedListing.id ? updatedListing : item));
+            setMyListings((current) => current.map((item) => item.id === updatedListing.id ? updatedListing : item));
+          })
+          .catch((error) => {
+            console.warn("Failed to refresh listing availability after booking update:", error);
+          });
+      }
     },
     syncUpdatedListing(updatedListing) {
       setListings((current) => {

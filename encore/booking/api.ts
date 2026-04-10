@@ -4,7 +4,7 @@ import { bookingDB } from "./db";
 import { bookingEvidenceBucket } from "./storage";
 import { requireAuth, requireRole } from "../shared/auth";
 import { platformEvents } from "../analytics/events";
-import { getListing } from "../catalog/api";
+import { getListing, replaceListingBlockedDates } from "../catalog/api";
 import { notifyBookingRequested, notifyBookingStatusChanged, notifyPaymentProofSubmitted } from "../ops/notifications";
 import type { BookingRecord, BookingStatus } from "../shared/domain";
 import {
@@ -144,6 +144,45 @@ async function resolveListingTitle(listingId: string) {
   } catch {
     return "your stay";
   }
+}
+
+function buildBookedDateRange(checkIn: string, checkOut: string) {
+  const start = new Date(checkIn);
+  const end = new Date(checkOut);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+    return [];
+  }
+
+  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+  const checkoutDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+  const bookedDates: string[] = [];
+
+  while (cursor < checkoutDay) {
+    bookedDates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return bookedDates;
+}
+
+async function syncListingAvailabilityForBookings(listingId: string) {
+  const rows = await bookingDB.rawQueryAll<Pick<BookingRow, "check_in" | "check_out">>(
+    `
+      SELECT check_in, check_out
+      FROM bookings
+      WHERE listing_id = $1
+        AND status IN ('confirmed', 'completed')
+    `,
+    listingId,
+  );
+
+  const blockedDates = Array.from(
+    new Set(
+      rows.flatMap((row) => buildBookedDateRange(row.check_in, row.check_out)),
+    ),
+  ).sort();
+
+  await replaceListingBlockedDates(listingId, blockedDates);
 }
 
 export async function getBookingById(id: string) {
@@ -303,6 +342,10 @@ export const updateBookingStatus = api<UpdateBookingStatusParams, { booking: Boo
           updated_at = ${now}
       WHERE id = ${params.id}
     `;
+
+    if (["confirmed", "completed", "cancelled", "declined"].includes(nextStatus)) {
+      await syncListingAvailabilityForBookings(existing.listing_id);
+    }
 
     if (nextStatus === "confirmed" || nextStatus === "cancelled") {
       await platformEvents.publish({

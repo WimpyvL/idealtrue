@@ -24,6 +24,33 @@ export default function ListingDetail({
   onBook: (bookingData: { checkIn: Date, checkOut: Date, adults: number, children: number, totalPrice: number }) => Promise<void> | void,
   currentUserId?: string
 }) {
+  const blockedDateKeys = new Set(listing.blockedDates ?? []);
+  const isDateBlocked = (date: Date) => blockedDateKeys.has(date.toISOString().slice(0, 10));
+  const rangeIncludesBlockedDates = (from?: Date, to?: Date) => {
+    if (!from || !to) return false;
+    for (let cursor = new Date(from); cursor < to; cursor = addDays(cursor, 1)) {
+      if (isDateBlocked(cursor)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const getInitialAvailableRange = () => {
+    let candidateStart = addDays(new Date(), 1);
+    for (let attempt = 0; attempt < 90; attempt += 1) {
+      const candidateEnd = addDays(candidateStart, 3);
+      if (!isDateBlocked(candidateStart) && !rangeIncludesBlockedDates(candidateStart, candidateEnd)) {
+        return {
+          from: candidateStart,
+          to: candidateEnd,
+        };
+      }
+      candidateStart = addDays(candidateStart, 1);
+    }
+
+    return undefined;
+  };
+
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loadingReviews, setLoadingReviews] = useState(true);
   const [reviewSummary, setReviewSummary] = useState('');
@@ -32,10 +59,7 @@ export default function ListingDetail({
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   // Booking state
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: addDays(new Date(), 1),
-    to: addDays(new Date(), 4),
-  });
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => getInitialAvailableRange());
   const [adults, setAdults] = useState(1);
   const [children, setChildren] = useState(0);
 
@@ -103,10 +127,27 @@ export default function ListingDetail({
     ? listing.images
     : [`https://picsum.photos/seed/${listing.id}/1200/900`];
   const selectedImage = galleryImages[Math.min(selectedImageIndex, galleryImages.length - 1)];
+  const blockedDates = (listing.blockedDates ?? [])
+    .map((blockedDate) => new Date(`${blockedDate}T00:00:00`))
+    .filter((date) => !Number.isNaN(date.getTime()));
+
+  useEffect(() => {
+    setDateRange((currentRange) => {
+      if (currentRange?.from && currentRange?.to && !rangeIncludesBlockedDates(currentRange.from, currentRange.to) && !isDateBlocked(currentRange.from)) {
+        return currentRange;
+      }
+
+      return getInitialAvailableRange();
+    });
+  }, [listing.id, listing.blockedDates]);
 
   const handleBookClick = async () => {
     if (!dateRange?.from || !dateRange?.to) {
       toast.error("Please select check-in and check-out dates.");
+      return;
+    }
+    if (isDateBlocked(dateRange.from) || rangeIncludesBlockedDates(dateRange.from, dateRange.to)) {
+      toast.error("Those dates are no longer available. Please choose different dates.");
       return;
     }
     setIsBooking(true);
@@ -299,7 +340,16 @@ export default function ListingDetail({
                       selected={dateRange}
                       onSelect={setDateRange}
                       numberOfMonths={2}
-                      disabled={(date) => isBefore(date, startOfToday())}
+                      disabled={(date) =>
+                        isBefore(date, startOfToday()) ||
+                        blockedDates.some((blockedDate) => blockedDate.toDateString() === date.toDateString())
+                      }
+                      modifiers={{
+                        booked: blockedDates,
+                      }}
+                      modifiersClassNames={{
+                        booked: "bg-slate-200 text-slate-500 line-through opacity-100 cursor-not-allowed hover:bg-slate-200 hover:text-slate-500",
+                      }}
                     />
                   </PopoverContent>
                 </Popover>

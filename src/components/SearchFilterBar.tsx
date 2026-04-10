@@ -4,6 +4,7 @@ import type { Listing } from "@/types";
 
 export type SearchFilterState = {
   query: string;
+  listingId?: string;
   guests: number;
   date?: {
     from?: Date;
@@ -38,7 +39,9 @@ export default function SearchFilterBar({ onChange, onModeChange, onSendMessage,
   const [checkOut, setCheckOut] = useState<Date | null>(null);
   const [guests, setGuests] = useState(1);
   const [location, setLocation] = useState("");
-  const [suggestions, setSuggestions] = useState<{ label: string; type: "province" | "place" | "listing" | "city"; icon?: LucideIcon }[]>([]);
+  const [selectedListingId, setSelectedListingId] = useState<string | undefined>();
+  const [selectedListingBlockedDates, setSelectedListingBlockedDates] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<{ label: string; type: "province" | "place" | "listing" | "city"; icon?: LucideIcon; listingId?: string; blockedDates?: string[] }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [isLoading, setIsLoading] = useState(false);
@@ -50,6 +53,15 @@ export default function SearchFilterBar({ onChange, onModeChange, onSendMessage,
     setIsFlipped(mode === 'search');
   }, [mode]);
 
+  useEffect(() => {
+    if (!selectedListingId) {
+      return;
+    }
+
+    const selectedListing = listings.find((listing) => listing.id === selectedListingId);
+    setSelectedListingBlockedDates(selectedListing?.blockedDates ?? []);
+  }, [listings, selectedListingId]);
+
   const handleFlip = () => {
     const nextFlipped = !isFlipped;
     setIsFlipped(nextFlipped);
@@ -58,8 +70,14 @@ export default function SearchFilterBar({ onChange, onModeChange, onSendMessage,
     onModeChange?.(nextFlipped ? 'search' : 'chat');
   };
 
-  const emit = (loc = location, g = guests, from = checkIn ?? undefined, to = checkOut ?? undefined) => {
-    onChange({ query: loc, guests: g, date: { from, to } });
+  const emit = (
+    loc = location,
+    g = guests,
+    from = checkIn ?? undefined,
+    to = checkOut ?? undefined,
+    listingId = selectedListingId,
+  ) => {
+    onChange({ query: loc, listingId, guests: g, date: { from, to } });
   };
 
   const generateCalendarDays = () => {
@@ -82,7 +100,9 @@ export default function SearchFilterBar({ onChange, onModeChange, onSendMessage,
 
   const handleLocationChange = (v: string) => {
     setLocation(v);
-    emit(v);
+    setSelectedListingId(undefined);
+    setSelectedListingBlockedDates([]);
+    emit(v, guests, checkIn ?? undefined, checkOut ?? undefined, undefined);
     setShowSuggestions(true);
     setActiveIndex(-1);
 
@@ -107,26 +127,27 @@ export default function SearchFilterBar({ onChange, onModeChange, onSendMessage,
           listing.province?.toLowerCase().includes(normalizedQuery),
         );
 
-        const places = new Map<string, boolean>();
         const listingSuggestions: { label: string; type: "listing"; icon: LucideIcon }[] = [];
         const provinces = new Set<string>();
 
         (data || []).forEach((p: any) => {
-          if (p.location && !places.has(p.location)) {
-            places.set(p.location, true);
-          }
           if (p.title) {
-            listingSuggestions.push({ label: p.title, type: "listing", icon: Home });
+            listingSuggestions.push({
+              label: p.title,
+              type: "listing",
+              icon: Home,
+              listingId: p.id,
+              blockedDates: p.blockedDates ?? [],
+            });
           }
           if (p.province && p.province.toLowerCase().includes(v.toLowerCase())) {
             provinces.add(p.province);
           }
         });
 
-        const placeItems = Array.from(places.keys()).slice(0, 4).map(l => ({ label: l, type: "place" as const, icon: MapPin }));
         const provinceItems = Array.from(provinces).slice(0, 2).map(p => ({ label: p, type: "province" as const, icon: MapPin }));
 
-        const merged = [...provinceItems, ...placeItems, ...listingSuggestions.slice(0, 3)];
+        const merged = [...provinceItems, ...listingSuggestions.slice(0, 5)];
 
         // If no results, show "no matches" state
         if (merged.length === 0) {
@@ -142,9 +163,12 @@ export default function SearchFilterBar({ onChange, onModeChange, onSendMessage,
     }, 250);
   };
 
-  const pickSuggestion = (s: { label: string; type: "province" | "place" | "listing" | "city" }) => {
+  const pickSuggestion = (s: { label: string; type: "province" | "place" | "listing" | "city"; listingId?: string; blockedDates?: string[] }) => {
     setLocation(s.label);
-    emit(s.label);
+    const nextListingId = s.type === "listing" ? s.listingId : undefined;
+    setSelectedListingId(nextListingId);
+    setSelectedListingBlockedDates(nextListingId ? (s.blockedDates ?? []) : []);
+    emit(s.label, guests, checkIn ?? undefined, checkOut ?? undefined, nextListingId);
     setShowSuggestions(false);
   };
 
@@ -197,6 +221,7 @@ export default function SearchFilterBar({ onChange, onModeChange, onSendMessage,
     const days = generateCalendarDays();
     const today = new Date();
     const monthName = today.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const blockedDateSet = new Set(selectedListingBlockedDates);
 
     return (
       <div
@@ -221,16 +246,24 @@ export default function SearchFilterBar({ onChange, onModeChange, onSendMessage,
         </div>
         <div className="grid grid-cols-7 gap-1">
           {days.map((date, idx) => {
+            const dateKey = date.toISOString().slice(0, 10);
             const isToday = date.toDateString() === today.toDateString();
             const isPast = date < today && !isToday;
             const isBeforeMin = minDate && date < minDate;
+            const isBlocked = blockedDateSet.has(dateKey);
             const isSelected = selectedDate && date.toDateString() === selectedDate.toDateString();
             return (
               <button
                 key={idx}
-                onClick={() => !isPast && !isBeforeMin && onSelect(date)}
-                disabled={isPast || isBeforeMin}
-                className={`p-2 rounded-lg text-sm transition-all ${isPast || isBeforeMin ? "text-slate-300 cursor-not-allowed" : "hover:bg-primary/10 cursor-pointer"} ${isToday ? "bg-primary/20 text-primary font-semibold" : ""} ${isSelected ? "bg-primary text-white font-semibold" : "text-slate-700"}`}
+                onClick={() => !isPast && !isBeforeMin && !isBlocked && onSelect(date)}
+                disabled={isPast || isBeforeMin || isBlocked}
+                className={`p-2 rounded-lg text-sm transition-all ${
+                  isBlocked
+                    ? "bg-slate-200 text-slate-500 line-through cursor-not-allowed"
+                    : isPast || isBeforeMin
+                      ? "text-slate-300 cursor-not-allowed"
+                      : "hover:bg-primary/10 cursor-pointer"
+                } ${isToday && !isBlocked ? "bg-primary/20 text-primary font-semibold" : ""} ${isSelected ? "bg-primary text-white font-semibold" : !isBlocked ? "text-slate-700" : ""}`}
               >
                 {date.getDate()}
               </button>

@@ -349,6 +349,33 @@ function mapListing(row: ListingRow): ListingRecord {
   };
 }
 
+export async function replaceListingBlockedDates(listingId: string, blockedDates: string[]) {
+  const existing = await catalogDB.queryRow<ListingRow>`
+    SELECT * FROM listings WHERE id = ${listingId}
+  `;
+  if (!existing) {
+    throw APIError.notFound("Listing not found.");
+  }
+
+  const normalizedBlockedDates = Array.from(new Set(blockedDates)).sort();
+  const now = new Date().toISOString();
+
+  await catalogDB.exec`
+    UPDATE listings
+    SET blocked_dates = ${normalizedBlockedDates},
+        updated_at = ${now}
+    WHERE id = ${listingId}
+  `;
+
+  return {
+    listing: {
+      ...mapListing(existing),
+      blockedDates: normalizedBlockedDates,
+      updatedAt: now,
+    },
+  };
+}
+
 async function assertHostCanCreateListing(hostId: string) {
   const host = await getHostAccess(hostId);
 
@@ -674,23 +701,7 @@ export const updateListingAvailability = api<UpdateAvailabilityParams, { listing
       throw APIError.permissionDenied("You cannot manage another host's availability.");
     }
 
-    const normalizedBlockedDates = Array.from(new Set(blockedDates)).sort();
-    const now = new Date().toISOString();
-
-    await catalogDB.exec`
-      UPDATE listings
-      SET blocked_dates = ${normalizedBlockedDates},
-          updated_at = ${now}
-      WHERE id = ${listingId}
-    `;
-
-    return {
-      listing: {
-        ...mapListing(existing),
-        blockedDates: normalizedBlockedDates,
-        updatedAt: now,
-      },
-    };
+    return replaceListingBlockedDates(listingId, blockedDates);
   },
 );
 
