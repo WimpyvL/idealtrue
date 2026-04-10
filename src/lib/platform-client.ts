@@ -101,6 +101,7 @@ export async function createBooking(params: {
   adults: number;
   children: number;
   totalPrice: number;
+  breakageDeposit?: number | null;
 }) {
   const response = await encoreRequest<{ booking: EncoreBooking }>(
     '/bookings',

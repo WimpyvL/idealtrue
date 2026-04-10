@@ -94,6 +94,8 @@ export default function CreateListing() {
     description: "",
     pricePerNight: "",
     discount: "0",
+    hasBreakageDeposit: true,
+    breakageDeposit: "500",
     images: [] as string[],
     videoUrl: null as string | null,
     isOccupied: false,
@@ -157,6 +159,8 @@ export default function CreateListing() {
           description: data.description || "",
           pricePerNight: data.pricePerNight?.toString() || "",
           discount: data.discount?.toString() || "0",
+          hasBreakageDeposit: (data.breakageDeposit ?? 0) > 0,
+          breakageDeposit: data.breakageDeposit != null ? data.breakageDeposit.toString() : "500",
           images: data.images || [],
           videoUrl: data.videoUrl || null,
           isOccupied: data.isOccupied || false,
@@ -255,6 +259,7 @@ export default function CreateListing() {
         province: formData.province || "",
         pricePerNight: Number(formData.pricePerNight),
         discount: Number(formData.discount),
+        breakageDeposit: formData.hasBreakageDeposit ? Number(formData.breakageDeposit || 0) : null,
         type: formData.category,
         amenities: formData.amenities,
         facilities: formData.facilities,
@@ -327,6 +332,7 @@ export default function CreateListing() {
       province: formData.province || "",
       pricePerNight: Number(formData.pricePerNight),
       discount: Number(formData.discount),
+      breakageDeposit: formData.hasBreakageDeposit ? Number(formData.breakageDeposit || 0) : null,
       type: formData.category,
       amenities: formData.amenities,
       facilities: formData.facilities,
@@ -890,6 +896,46 @@ export default function CreateListing() {
                     </div>
                   </div>
 
+                  <div className="space-y-4 pt-6 border-t">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1 text-left">
+                        <Label className="text-lg">Breakage Deposit</Label>
+                        <p className="text-sm text-on-surface-variant">
+                          Optional refundable damage deposit shown separately from the stay total.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => updateData("hasBreakageDeposit", !formData.hasBreakageDeposit)}
+                        className={cn(
+                          "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
+                          formData.hasBreakageDeposit ? "bg-green-500" : "bg-slate-300"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "inline-block h-4 w-4 transform rounded-full bg-surface transition-transform",
+                            formData.hasBreakageDeposit ? "translate-x-6" : "translate-x-1"
+                          )}
+                        />
+                      </button>
+                    </div>
+                    {formData.hasBreakageDeposit && (
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="text-3xl font-bold text-outline-variant">R</span>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder="500"
+                          className="text-3xl font-bold border-none text-center w-40 h-14 p-0 focus-visible:ring-0 placeholder:text-outline-variant"
+                          value={formData.breakageDeposit}
+                          onChange={(e) => updateData("breakageDeposit", e.target.value)}
+                        />
+                      </div>
+                    )}
+                  </div>
+
                   <div className="mt-8 pt-6 border-t border-outline-variant space-y-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-on-surface-variant">Service Fee (3%)</span>
@@ -907,6 +953,12 @@ export default function CreateListing() {
                         R{Math.round(Number(formData.pricePerNight) * (1 - (Number(formData.discount) / 100)) * 0.97)}
                       </span>
                     </div>
+                    {formData.hasBreakageDeposit && Number(formData.breakageDeposit) > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-on-surface-variant">Guest breakage deposit</span>
+                        <span className="font-medium">R{Math.round(Number(formData.breakageDeposit))}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

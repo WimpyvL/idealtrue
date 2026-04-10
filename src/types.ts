@@ -47,6 +47,7 @@ export interface Listing {
   type: string;
   pricePerNight: number;
   discount: number;
+  breakageDeposit?: number | null;
   images: string[];
   videoUrl: string | null;
   amenities: string[];

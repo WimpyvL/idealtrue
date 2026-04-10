@@ -60,6 +60,7 @@ export interface EncoreListing {
   type: string;
   pricePerNight: number;
   discountPercent: number;
+  breakageDeposit?: number | null;
   adults: number;
   children: number;
   bedrooms: number;
@@ -178,6 +179,7 @@ export interface SaveListingInput {
   type: string;
   pricePerNight: number;
   discount: number;
+  breakageDeposit?: number | null;
   adults: number;
   children: number;
   bedrooms: number;
@@ -254,6 +256,7 @@ export function mapEncoreListing(listing: EncoreListing): Listing {
     type: listing.type,
     pricePerNight: listing.pricePerNight,
     discount: listing.discountPercent,
+    breakageDeposit: listing.breakageDeposit ?? null,
     images: listing.images || [],
     videoUrl: listing.videoUrl || null,
     amenities: listing.amenities || [],
@@ -406,6 +409,7 @@ export function toEncoreListingPayload(input: SaveListingInput) {
     type: input.type,
     pricePerNight: Number(input.pricePerNight),
     discountPercent: Number(input.discount || 0),
+    breakageDeposit: input.breakageDeposit != null ? Number(input.breakageDeposit) : null,
     adults: Number(input.adults || 1),
     children: Number(input.children || 0),
     bedrooms: Number(input.bedrooms || 1),

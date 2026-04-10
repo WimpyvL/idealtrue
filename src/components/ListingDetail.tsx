@@ -21,7 +21,7 @@ export default function ListingDetail({
 }: { 
   listing: Listing, 
   onClose: () => void, 
-  onBook: (bookingData: { checkIn: Date, checkOut: Date, adults: number, children: number, totalPrice: number }) => Promise<void> | void,
+  onBook: (bookingData: { checkIn: Date, checkOut: Date, adults: number, children: number, totalPrice: number, breakageDeposit?: number | null }) => Promise<void> | void,
   currentUserId?: string
 }) {
   const blockedDateKeys = new Set(listing.blockedDates ?? []);
@@ -35,21 +35,6 @@ export default function ListingDetail({
     }
     return false;
   };
-  const getInitialAvailableRange = () => {
-    let candidateStart = addDays(new Date(), 1);
-    for (let attempt = 0; attempt < 90; attempt += 1) {
-      const candidateEnd = addDays(candidateStart, 3);
-      if (!isDateBlocked(candidateStart) && !rangeIncludesBlockedDates(candidateStart, candidateEnd)) {
-        return {
-          from: candidateStart,
-          to: candidateEnd,
-        };
-      }
-      candidateStart = addDays(candidateStart, 1);
-    }
-
-    return undefined;
-  };
 
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loadingReviews, setLoadingReviews] = useState(true);
@@ -59,7 +44,8 @@ export default function ListingDetail({
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   // Booking state
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => getInitialAvailableRange());
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [isDatePopoverOpen, setIsDatePopoverOpen] = useState(false);
   const [adults, setAdults] = useState(1);
   const [children, setChildren] = useState(0);
 
@@ -123,6 +109,7 @@ export default function ListingDetail({
   
   const subtotal = listing.pricePerNight * nights;
   const totalPrice = subtotal;
+  const breakageDeposit = listing.breakageDeposit ?? null;
   const galleryImages = listing.images.length > 0
     ? listing.images
     : [`https://picsum.photos/seed/${listing.id}/1200/900`];
@@ -133,13 +120,25 @@ export default function ListingDetail({
 
   useEffect(() => {
     setDateRange((currentRange) => {
-      if (currentRange?.from && currentRange?.to && !rangeIncludesBlockedDates(currentRange.from, currentRange.to) && !isDateBlocked(currentRange.from)) {
+      if (
+        currentRange?.from &&
+        !isDateBlocked(currentRange.from) &&
+        (!currentRange.to || !rangeIncludesBlockedDates(currentRange.from, currentRange.to))
+      ) {
         return currentRange;
       }
 
-      return getInitialAvailableRange();
+      return undefined;
     });
   }, [listing.id, listing.blockedDates]);
+
+  const handleDateRangeSelect = (nextRange: DateRange | undefined) => {
+    setDateRange(nextRange);
+
+    if (nextRange?.from && nextRange?.to) {
+      setIsDatePopoverOpen(false);
+    }
+  };
 
   const handleBookClick = async () => {
     if (!dateRange?.from || !dateRange?.to) {
@@ -157,7 +156,8 @@ export default function ListingDetail({
         checkOut: dateRange.to,
         adults,
         children,
-        totalPrice
+        totalPrice,
+        breakageDeposit,
       });
     } catch (err) {
       console.error(err);
@@ -321,13 +321,13 @@ export default function ListingDetail({
               </div>
               
               <div className="border border-outline-variant rounded-xl overflow-hidden">
-                <Popover>
+                <Popover open={isDatePopoverOpen} onOpenChange={setIsDatePopoverOpen}>
                   <PopoverTrigger className="w-full grid grid-cols-2 border-b border-outline-variant text-left hover:bg-surface-container-low transition-colors">
-                    <div className="p-3 border-r border-outline-variant">
+                    <div className={`p-3 border-r border-outline-variant transition-colors ${isDatePopoverOpen && !dateRange?.to ? 'bg-primary/5' : ''}`}>
                       <p className="text-[10px] font-bold uppercase text-on-surface-variant">Check-in</p>
                       <p className="text-sm">{dateRange?.from ? format(dateRange.from, 'MMM d, yyyy') : 'Add date'}</p>
                     </div>
-                    <div className="p-3">
+                    <div className={`p-3 transition-colors ${isDatePopoverOpen && dateRange?.from && !dateRange?.to ? 'bg-primary/5' : ''}`}>
                       <p className="text-[10px] font-bold uppercase text-on-surface-variant">Checkout</p>
                       <p className="text-sm">{dateRange?.to ? format(dateRange.to, 'MMM d, yyyy') : 'Add date'}</p>
                     </div>
@@ -338,7 +338,7 @@ export default function ListingDetail({
                       mode="range"
                       defaultMonth={dateRange?.from}
                       selected={dateRange}
-                      onSelect={setDateRange}
+                      onSelect={handleDateRangeSelect}
                       numberOfMonths={2}
                       disabled={(date) =>
                         isBefore(date, startOfToday()) ||
@@ -351,6 +351,13 @@ export default function ListingDetail({
                         booked: "bg-slate-200 text-slate-500 line-through opacity-100 cursor-not-allowed hover:bg-slate-200 hover:text-slate-500",
                       }}
                     />
+                    <div className="border-t border-outline-variant px-4 py-3 text-xs text-on-surface-variant">
+                      {!dateRange?.from
+                        ? 'Choose your check-in date first.'
+                        : !dateRange?.to
+                          ? 'Now choose your check-out date.'
+                          : 'Dates selected. You can click a new date to start over.'}
+                    </div>
                   </PopoverContent>
                 </Popover>
 
@@ -447,6 +454,12 @@ export default function ListingDetail({
                     <span>Estimated Total</span>
                     <span>{formatRand(totalPrice)}</span>
                   </div>
+                  {breakageDeposit != null && breakageDeposit > 0 && (
+                    <div className="flex justify-between text-sm text-on-surface-variant">
+                      <span>Breakage deposit</span>
+                      <span className="font-medium text-on-surface">{formatRand(breakageDeposit)}</span>
+                    </div>
+                  )}
                   <p className="text-[10px] text-outline-variant italic text-center">Final price and payment details will be provided by the host upon confirmation.</p>
                 </div>
               )}

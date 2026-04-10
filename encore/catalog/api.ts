@@ -26,6 +26,7 @@ type ListingRow = {
   type: string;
   price_per_night: number;
   discount_percent: number;
+  breakage_deposit: number | null;
   adults: number;
   children: number;
   bedrooms: number;
@@ -64,6 +65,7 @@ interface SaveListingParams {
   type: string;
   pricePerNight: number;
   discountPercent: number;
+  breakageDeposit?: number | null;
   adults: number;
   children: number;
   bedrooms: number;
@@ -327,6 +329,7 @@ function mapListing(row: ListingRow): ListingRecord {
     type: row.type,
     pricePerNight: row.price_per_night,
     discountPercent: row.discount_percent,
+    breakageDeposit: row.breakage_deposit,
     adults: row.adults,
     children: row.children,
     bedrooms: row.bedrooms,
@@ -526,6 +529,7 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
             type = ${params.type},
             price_per_night = ${params.pricePerNight},
             discount_percent = ${params.discountPercent},
+            breakage_deposit = ${params.breakageDeposit ?? null},
             adults = ${params.adults},
             children = ${params.children},
             bedrooms = ${params.bedrooms},
@@ -599,14 +603,14 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
     await catalogDB.exec`
       INSERT INTO listings (
         id, host_id, title, description, location, area, province, category, type,
-        price_per_night, discount_percent, adults, children, bedrooms, bathrooms,
+        price_per_night, discount_percent, breakage_deposit, adults, children, bedrooms, bathrooms,
         amenities, facilities, restaurant_offers, images, video_url, is_self_catering,
         has_restaurant, is_occupied, latitude, longitude, blocked_dates, status, rejection_reason, created_at, updated_at
       )
       VALUES (
         ${id}, ${auth.userID}, ${params.title}, ${params.description}, ${params.location},
         ${params.area ?? null}, ${params.province ?? null}, ${params.category}, ${params.type},
-        ${params.pricePerNight}, ${params.discountPercent}, ${params.adults}, ${params.children},
+        ${params.pricePerNight}, ${params.discountPercent}, ${params.breakageDeposit ?? null}, ${params.adults}, ${params.children},
         ${params.bedrooms}, ${params.bathrooms}, ${params.amenities}, ${params.facilities},
         ${params.restaurantOffers}, ${params.images}, ${params.videoUrl ?? null},
         ${params.isSelfCatering}, ${params.hasRestaurant}, ${params.isOccupied},

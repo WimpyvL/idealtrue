@@ -196,6 +196,7 @@ function AppContent() {
                       checkIn: bookingData.checkIn.toISOString(),
                       checkOut: bookingData.checkOut.toISOString(),
                       totalPrice: bookingData.totalPrice,
+                      breakageDeposit: bookingData.breakageDeposit ?? null,
                       adults: bookingData.adults,
                       children: bookingData.children,
                     });

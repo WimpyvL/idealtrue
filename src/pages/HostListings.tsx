@@ -30,6 +30,7 @@ function toSaveListingPayload(listing: Listing, status: Listing['status']) {
     type: listing.type,
     pricePerNight: listing.pricePerNight,
     discount: listing.discount,
+    breakageDeposit: listing.breakageDeposit ?? null,
     amenities: listing.amenities,
     facilities: listing.facilities,
     otherFacility: listing.otherFacility,

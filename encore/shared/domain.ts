@@ -54,6 +54,7 @@ export interface ListingRecord {
   type: string;
   pricePerNight: number;
   discountPercent: number;
+  breakageDeposit?: number | null;
   adults: number;
   children: number;
   bedrooms: number;

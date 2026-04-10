@@ -21,6 +21,7 @@ export function toListingPayload(
     type: listing.type,
     pricePerNight: listing.pricePerNight,
     discount: listing.discount,
+    breakageDeposit: listing.breakageDeposit ?? null,
     amenities: listing.amenities,
     facilities: listing.facilities,
     otherFacility: listing.otherFacility,
