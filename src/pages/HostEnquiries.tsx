@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Booking, Listing } from '../types';
 import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -10,7 +10,7 @@ import { formatRand } from '@/lib/currency';
 import { isPendingHostDecision } from '@/lib/inquiry-state';
 
 export default function HostEnquiries({ 
-  bookings, 
+  bookings,
   listings,
   onChat,
   onBookingUpdated,
@@ -21,8 +21,15 @@ export default function HostEnquiries({
   onBookingUpdated: (booking: Booking) => void,
 }) {
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
-  
-  const pendingBookings = bookings.filter(isPendingHostDecision);
+  const [localBookings, setLocalBookings] = useState(bookings);
+  console.log("[HostEnquiries] Raw bookings prop:", bookings);
+
+  useEffect(() => {
+    setLocalBookings(bookings);
+  }, [bookings]);
+
+  const pendingBookings = localBookings.filter(isPendingHostDecision);
+  console.log("[HostEnquiries] Enquiries after isPendingHostDecision filter:", pendingBookings);
 
   const handleBookingAction = async (booking: Booking, action: 'APPROVED' | 'DECLINED') => {
     setIsProcessing(booking.id);

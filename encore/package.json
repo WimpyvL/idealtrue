@@ -10,6 +10,6 @@
     "typescript": "^5.2.2"
   },
   "dependencies": {
-    "encore.dev": "^1.56.3"
+    "encore.dev": "^1.56.5"
   }
 }

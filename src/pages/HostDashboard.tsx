@@ -46,7 +46,13 @@ export default function HostDashboard({
   }, [bookings]);
 
   const activeListings = listings.filter(l => l.status === 'active');
-  const pendingBookings = localBookings.filter(isPendingHostDecision);
+  const allHostInquiries = localBookings.filter(isPendingHostDecision);
+  console.log("[HostDashboard] Total hostBookings received:", localBookings.length);
+  console.log("[HostDashboard] Host inquiries after filtering:", allHostInquiries);
+
+  const pendingBookings = allHostInquiries
+    .filter((b) => b.inquiryState === "PENDING")
+    .slice(0, 3);
   const totalRevenue = localBookings
     .filter(isBookedStay)
     .reduce((sum, b) => sum + b.totalPrice, 0);
