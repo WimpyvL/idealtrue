@@ -14,6 +14,7 @@ const ignoredPatterns = [
   `${path.sep}.git${path.sep}`,
   `${path.sep}dist${path.sep}`,
   `${path.sep}node_modules${path.sep}`,
+  `${path.sep}.vercel${path.sep}`,
   `${path.sep}.encore${path.sep}`,
   `${path.sep}encore.gen${path.sep}`,
   `${path.sep}tests${path.sep}`,

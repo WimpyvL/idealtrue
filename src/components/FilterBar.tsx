@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import { motion, AnimatePresence, useScroll, useMotionValueEvent, useReducedMotion, Transition } from "framer-motion";
+import { motion, AnimatePresence, useScroll, useMotionValueEvent, useReducedMotion, Transition } from "motion/react";
 import { ChevronRight, Home, SlidersHorizontal } from "lucide-react";
 import { CATEGORIES } from "@/constants/categories";
 import { CATEGORY_ICONS } from "@/components/icons/CategoryIcons";
