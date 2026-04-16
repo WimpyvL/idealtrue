@@ -110,6 +110,7 @@ export default function ListingDetail({
   const subtotal = listing.pricePerNight * nights;
   const totalPrice = subtotal;
   const breakageDeposit = listing.breakageDeposit ?? null;
+  const totalWithBreakageDeposit = totalPrice + (breakageDeposit ?? 0);
   const galleryImages = listing.images.length > 0
     ? listing.images
     : [`https://picsum.photos/seed/${listing.id}/1200/900`];
@@ -450,9 +451,15 @@ export default function ListingDetail({
                     <span className="underline">{formatRand(listing.pricePerNight)} x {nights} night{nights !== 1 ? 's' : ''}</span>
                     <span>{formatRand(subtotal)}</span>
                   </div>
+                  {breakageDeposit != null && breakageDeposit > 0 && (
+                    <div className="flex justify-between text-sm text-on-surface-variant">
+                      <span>Refundable breakage deposit</span>
+                      <span className="font-medium text-on-surface">{formatRand(breakageDeposit)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between font-bold text-lg pt-3 border-t border-outline-variant">
-                    <span>Estimated Total</span>
-                    <span>{formatRand(totalPrice)}</span>
+                    <span>Total before enquiry</span>
+                    <span>{formatRand(breakageDeposit != null && breakageDeposit > 0 ? totalWithBreakageDeposit : totalPrice)}</span>
                   </div>
                   <p className="text-[10px] text-outline-variant italic text-center">Final price and payment details will be provided by the host upon confirmation.</p>
                 </div>
