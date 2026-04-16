@@ -442,40 +442,18 @@ export default function ListingDetail({
                 )}
               </Button>
 
-              {breakageDeposit != null && breakageDeposit > 0 && (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="font-semibold text-amber-900">Refundable breakage deposit</span>
-                    <span className="font-bold text-amber-950">{formatRand(breakageDeposit)}</span>
-                  </div>
-                  <p className="mt-1 text-xs text-amber-800">
-                    Guests see this before sending an inquiry. It is separate from the stay total.
-                  </p>
-                </div>
-              )}
-              
               <p className="text-center text-on-surface-variant text-xs font-medium">Payment is handled directly by the host</p>
               
-              {(nights > 0 || (breakageDeposit != null && breakageDeposit > 0)) && (
+              {nights > 0 && (
                 <div className="space-y-3 pt-4 border-t border-outline-variant">
-                  {nights > 0 && (
-                    <>
-                      <div className="flex justify-between text-on-surface-variant">
-                        <span className="underline">{formatRand(listing.pricePerNight)} x {nights} night{nights !== 1 ? 's' : ''}</span>
-                        <span>{formatRand(subtotal)}</span>
-                      </div>
-                      <div className="flex justify-between font-bold text-lg pt-3 border-t border-outline-variant">
-                        <span>Estimated Total</span>
-                        <span>{formatRand(totalPrice)}</span>
-                      </div>
-                    </>
-                  )}
-                  {breakageDeposit != null && breakageDeposit > 0 && (
-                    <div className="flex justify-between text-sm text-on-surface-variant">
-                      <span>Breakage deposit</span>
-                      <span className="font-medium text-on-surface">{formatRand(breakageDeposit)}</span>
-                    </div>
-                  )}
+                  <div className="flex justify-between text-on-surface-variant">
+                    <span className="underline">{formatRand(listing.pricePerNight)} x {nights} night{nights !== 1 ? 's' : ''}</span>
+                    <span>{formatRand(subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-lg pt-3 border-t border-outline-variant">
+                    <span>Estimated Total</span>
+                    <span>{formatRand(totalPrice)}</span>
+                  </div>
                   <p className="text-[10px] text-outline-variant italic text-center">Final price and payment details will be provided by the host upon confirmation.</p>
                 </div>
               )}
