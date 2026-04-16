@@ -67,6 +67,14 @@ export async function updateListingBlockedDates(listingId: string, blockedDates:
   return mapEncoreListing(response.listing);
 }
 
+export function isEncoreEndpointNotFound(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.message.includes('"message":"endpoint not found"');
+}
+
 export async function updateListingAvailabilityBlocks(listingId: string, manualBlocks: ListingAvailabilityManualBlockInput[]) {
   const response = await encoreRequest<{ listing: EncoreListing; summary: EncoreListingAvailabilitySummary }>(
     '/host/listings/availability/blocks',

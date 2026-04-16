@@ -51,18 +51,13 @@ export function usePlatformData(user: AuthSessionUser | null): PlatformDataState
         return;
       }
 
-      console.log("[usePlatformData] Raw sessionBookings from API:", sessionBookings);
-      console.log("[usePlatformData] Current user for filtering:", user?.id);
-
       setMyListings(hostListings);
       setMyBookings(sessionBookings.filter((booking) => {
         const isGuest = booking.guestId === user?.id;
         return isGuest;
       }));
       setHostBookings(sessionBookings.filter((booking) => {
-        const isHost = booking.hostId === user?.id;
-        if (isHost) console.log("[usePlatformData] Found host booking:", booking.id);
-        return isHost;
+        return booking.hostId === user?.id;
       }));
     }
 

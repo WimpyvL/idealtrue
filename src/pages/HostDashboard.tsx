@@ -21,7 +21,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { updateBookingStatus } from '@/lib/platform-client';
 import { formatRand } from '@/lib/currency';
-import { getInquiryBadgeLabel, isBookedStay, isPendingHostDecision } from '@/lib/inquiry-state';
+import { getInquiryBadgeLabel, isBookedStay, isOpenHostInquiry, isPendingHostDecision } from '@/lib/inquiry-state';
 
 export default function HostDashboard({ 
   profile,
@@ -46,9 +46,7 @@ export default function HostDashboard({
   }, [bookings]);
 
   const activeListings = listings.filter(l => l.status === 'active');
-  const allHostInquiries = localBookings.filter(isPendingHostDecision);
-  console.log("[HostDashboard] Total hostBookings received:", localBookings.length);
-  console.log("[HostDashboard] Host inquiries after filtering:", allHostInquiries);
+  const allHostInquiries = localBookings.filter(isOpenHostInquiry);
 
   const pendingBookings = allHostInquiries
     .filter((b) => b.inquiryState === "PENDING")

@@ -19,3 +19,5 @@
 - Updated `src/lib/platform-client.ts`, `src/lib/domain-mappers.ts`, `src/types.ts`, and `src/pages/HostAvailability.tsx` so the host calendar now uses the backend interval/block APIs and server summary instead of local-only blocked-date writes.
 - Added coverage in `tests/host-availability.test.ts` for interval compression and note preservation, and kept the availability checks green with focused unit runs.
 - Updated `docs/booking-and-enquiry-workflow.md` and `README.md` to document the backend availability-block endpoints, interval semantics, and manual block notes.
+- Added a compatibility fallback in `src/lib/platform-client.ts` and `src/pages/HostAvailability.tsx` so the host calendar degrades to the legacy blocked-date endpoint when the deployed Encore backend does not yet expose the new availability summary/block endpoints.
+- Fixed `src/pages/HostDashboard.tsx` to treat all open host enquiries as enquiries instead of only pending-decision ones, and removed noisy booking debug logs from `src/hooks/use-platform-data.ts`.

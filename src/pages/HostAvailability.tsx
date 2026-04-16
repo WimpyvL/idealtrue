@@ -22,7 +22,12 @@ import { Button } from '../components/ui/button';
 import { Calendar } from '../components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Booking, Listing, ListingAvailabilitySummary } from '../types';
-import { getListingAvailabilitySummary, updateListingAvailabilityBlocks } from '../lib/platform-client';
+import {
+  getListingAvailabilitySummary,
+  isEncoreEndpointNotFound,
+  updateListingAvailabilityBlocks,
+  updateListingBlockedDates,
+} from '../lib/platform-client';
 import {
   applyAvailabilityRangeAction,
   buildDateKeysFromRange,
@@ -54,6 +59,7 @@ export default function HostAvailability({
   const [blockNote, setBlockNote] = useState('');
   const [selectedDateKey, setSelectedDateKey] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [availabilitySummary, setAvailabilitySummary] = useState<ListingAvailabilitySummary | null>(null);
+  const [supportsAvailabilityBlocksApi, setSupportsAvailabilityBlocksApi] = useState(true);
 
   const selectedListing = listings.find((listing) => listing.id === selectedListingId);
   const today = useMemo(() => startOfDay(new Date()), []);
@@ -70,13 +76,18 @@ export default function HostAvailability({
     void getListingAvailabilitySummary(selectedListingId)
       .then((summary) => {
         if (!cancelled) {
+          setSupportsAvailabilityBlocksApi(true);
           setAvailabilitySummary(summary);
         }
       })
       .catch((error) => {
         console.error('Failed to load listing availability summary', error);
         if (!cancelled) {
-          toast.error('Failed to load availability summary.');
+          if (isEncoreEndpointNotFound(error)) {
+            setSupportsAvailabilityBlocksApi(false);
+          } else {
+            toast.error('Failed to load availability summary.');
+          }
           setAvailabilitySummary(null);
         }
       })
@@ -214,9 +225,29 @@ export default function HostAvailability({
 
     setIsSaving(true);
     try {
-      const manualBlocks = buildManualBlockInputsFromDateKeys(nextManualBlockedDateKeys, manualAvailabilityBlocks);
-      const { listing: updatedListing, summary } = await updateListingAvailabilityBlocks(selectedListing.id, manualBlocks);
-      setAvailabilitySummary(summary);
+      let updatedListing: Listing;
+
+      if (supportsAvailabilityBlocksApi) {
+        try {
+          const manualBlocks = buildManualBlockInputsFromDateKeys(nextManualBlockedDateKeys, manualAvailabilityBlocks);
+          const response = await updateListingAvailabilityBlocks(selectedListing.id, manualBlocks);
+          updatedListing = response.listing;
+          setAvailabilitySummary(response.summary);
+          setSupportsAvailabilityBlocksApi(true);
+        } catch (error) {
+          if (!isEncoreEndpointNotFound(error)) {
+            throw error;
+          }
+
+          setSupportsAvailabilityBlocksApi(false);
+          updatedListing = await updateListingBlockedDates(selectedListing.id, nextManualBlockedDateKeys);
+          setAvailabilitySummary(null);
+        }
+      } else {
+        updatedListing = await updateListingBlockedDates(selectedListing.id, nextManualBlockedDateKeys);
+        setAvailabilitySummary(null);
+      }
+
       onListingUpdated?.(updatedListing);
       if (skippedDateKeys.length > 0) {
         toast.warning(`${successMessage} ${skippedDateKeys.length} locked date${skippedDateKeys.length === 1 ? ' was' : 's were'} skipped.`);
@@ -251,12 +282,32 @@ export default function HostAvailability({
       const skippedDateKeys = rangeDateKeys.filter((dateKey) => lockedDateSet.has(dateKey));
       const allowedRangeDateKeys = rangeDateKeys.filter((dateKey) => !lockedDateSet.has(dateKey));
       const nextManualBlockedDateKeys = Array.from(new Set([...manualBlockedDateKeys, ...allowedRangeDateKeys])).sort();
-      const manualBlocks = buildManualBlockInputsFromDateKeys(nextManualBlockedDateKeys, manualAvailabilityBlocks, blockNote);
 
       setIsSaving(true);
       try {
-        const { listing: updatedListing, summary } = await updateListingAvailabilityBlocks(selectedListing.id, manualBlocks);
-        setAvailabilitySummary(summary);
+        let updatedListing: Listing;
+
+        if (supportsAvailabilityBlocksApi) {
+          try {
+            const manualBlocks = buildManualBlockInputsFromDateKeys(nextManualBlockedDateKeys, manualAvailabilityBlocks, blockNote);
+            const response = await updateListingAvailabilityBlocks(selectedListing.id, manualBlocks);
+            updatedListing = response.listing;
+            setAvailabilitySummary(response.summary);
+            setSupportsAvailabilityBlocksApi(true);
+          } catch (error) {
+            if (!isEncoreEndpointNotFound(error)) {
+              throw error;
+            }
+
+            setSupportsAvailabilityBlocksApi(false);
+            updatedListing = await updateListingBlockedDates(selectedListing.id, nextManualBlockedDateKeys);
+            setAvailabilitySummary(null);
+          }
+        } else {
+          updatedListing = await updateListingBlockedDates(selectedListing.id, nextManualBlockedDateKeys);
+          setAvailabilitySummary(null);
+        }
+
         onListingUpdated?.(updatedListing);
         if (skippedDateKeys.length > 0) {
           toast.warning(`Range blocked. ${skippedDateKeys.length} locked date${skippedDateKeys.length === 1 ? ' was' : 's were'} skipped.`);
@@ -295,12 +346,32 @@ export default function HostAvailability({
     const skippedDateKeys = rangeDateKeys.filter((dateKey) => lockedDateSet.has(dateKey));
     const allowedRangeDateKeys = rangeDateKeys.filter((dateKey) => !lockedDateSet.has(dateKey));
     const nextManualBlockedDateKeys = Array.from(new Set([...manualBlockedDateKeys, ...allowedRangeDateKeys])).sort();
-    const manualBlocks = buildManualBlockInputsFromDateKeys(nextManualBlockedDateKeys, manualAvailabilityBlocks, blockNote);
 
     setIsSaving(true);
     try {
-      const { listing: updatedListing, summary } = await updateListingAvailabilityBlocks(selectedListing.id, manualBlocks);
-      setAvailabilitySummary(summary);
+      let updatedListing: Listing;
+
+      if (supportsAvailabilityBlocksApi) {
+        try {
+          const manualBlocks = buildManualBlockInputsFromDateKeys(nextManualBlockedDateKeys, manualAvailabilityBlocks, blockNote);
+          const response = await updateListingAvailabilityBlocks(selectedListing.id, manualBlocks);
+          updatedListing = response.listing;
+          setAvailabilitySummary(response.summary);
+          setSupportsAvailabilityBlocksApi(true);
+        } catch (error) {
+          if (!isEncoreEndpointNotFound(error)) {
+            throw error;
+          }
+
+          setSupportsAvailabilityBlocksApi(false);
+          updatedListing = await updateListingBlockedDates(selectedListing.id, nextManualBlockedDateKeys);
+          setAvailabilitySummary(null);
+        }
+      } else {
+        updatedListing = await updateListingBlockedDates(selectedListing.id, nextManualBlockedDateKeys);
+        setAvailabilitySummary(null);
+      }
+
       onListingUpdated?.(updatedListing);
       if (skippedDateKeys.length > 0) {
         toast.warning(`Blocked the next ${days} day${days === 1 ? '' : 's'}. ${skippedDateKeys.length} locked date${skippedDateKeys.length === 1 ? ' was' : 's were'} skipped.`);
