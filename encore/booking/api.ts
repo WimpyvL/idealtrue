@@ -4,7 +4,11 @@ import { bookingDB } from "./db";
 import { bookingEvidenceBucket } from "./storage";
 import { requireAuth, requireRole } from "../shared/auth";
 import { platformEvents } from "../analytics/events";
-import { getListing, replaceListingBlockedDates } from "../catalog/api";
+import {
+  assertListingDateRangeAvailable,
+  getListing,
+  replaceBookingAvailabilityBlocks,
+} from "../catalog/api";
 import { identityDB } from "../identity/db";
 import type { BookingRecord, InquiryLedgerEventRecord, InquiryState, PaymentState } from "../shared/domain";
 import {
@@ -224,44 +228,32 @@ async function resolveListingTitle(listingId: string) {
   }
 }
 
-function buildBookedDateRange(checkIn: string, checkOut: string) {
-  const start = new Date(checkIn);
-  const end = new Date(checkOut);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
-    return [];
-  }
-
-  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
-  const checkoutDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
-  const bookedDates: string[] = [];
-
-  while (cursor < checkoutDay) {
-    bookedDates.push(cursor.toISOString().slice(0, 10));
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-
-  return bookedDates;
-}
-
 async function syncListingAvailabilityForBookings(listingId: string) {
-  const rows = await bookingDB.rawQueryAll<Pick<BookingRow, "check_in" | "check_out">>(
+  const rows = await bookingDB.rawQueryAll<
+    Pick<BookingRow, "id" | "check_in" | "check_out" | "inquiry_state" | "payment_state">
+  >(
     `
-      SELECT check_in, check_out
+      SELECT id, check_in, check_out, inquiry_state, payment_state
       FROM bookings
       WHERE listing_id = $1
-        AND inquiry_state = 'BOOKED'
-        AND payment_state = 'COMPLETED'
+        AND (
+          (inquiry_state = 'BOOKED' AND payment_state = 'COMPLETED')
+          OR (inquiry_state = 'APPROVED' AND payment_state = 'INITIATED')
+        )
     `,
     listingId,
   );
 
-  const blockedDates = Array.from(
-    new Set(
-      rows.flatMap((row) => buildBookedDateRange(row.check_in, row.check_out)),
-    ),
-  ).sort();
-
-  await replaceListingBlockedDates(listingId, blockedDates);
+  await replaceBookingAvailabilityBlocks(
+    listingId,
+    rows.map((row) => ({
+      bookingId: row.id,
+      checkIn: row.check_in,
+      checkOut: row.check_out,
+      sourceType:
+        row.inquiry_state === "BOOKED" && row.payment_state === "COMPLETED" ? "BOOKED" : "APPROVED_HOLD",
+    })),
+  );
 }
 
 async function getHostPaymentDetails(hostId: string): Promise<HostPaymentDetailsRow> {
@@ -576,6 +568,7 @@ export const createBooking = api<CreateBookingParams, { booking: BookingRecord }
     if (bookingOverlapsBlockedDates(parsedCheckIn, parsedCheckOut, listing.blockedDates)) {
       throw APIError.failedPrecondition("Selected dates are not available for this listing.");
     }
+    await assertListingDateRangeAvailable(params.listingId, params.checkIn, params.checkOut);
 
     const serverTotalPrice = computeBookingTotalPrice(listing.pricePerNight, parsedCheckIn, parsedCheckOut);
     const serverBreakageDeposit = listing.breakageDeposit ?? null;
@@ -744,6 +737,13 @@ export const updateBookingStatus = api<UpdateBookingStatusParams, { booking: Boo
         ? existing.payment_reference ?? buildHostPaymentReference(hostPaymentDetails.payment_reference_prefix, existing.id)
         : existing.payment_reference;
 
+    if (nextStatus === "APPROVED") {
+      await assertListingDateRangeAvailable(existing.listing_id, existing.check_in, existing.check_out, {
+        excludeSourceType: "APPROVED_HOLD",
+        excludeSourceId: existing.id,
+      });
+    }
+
     let updated = await persistInquiryStateChange({
       inquiry: existing,
       nextInquiryState: nextStatus,
@@ -772,7 +772,7 @@ export const updateBookingStatus = api<UpdateBookingStatusParams, { booking: Boo
       });
     }
 
-    if (nextStatus === "BOOKED") {
+    if (existing.inquiry_state === "APPROVED" || nextStatus === "APPROVED" || nextStatus === "BOOKED") {
       await syncListingAvailabilityForBookings(existing.listing_id);
     }
 

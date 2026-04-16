@@ -5,6 +5,20 @@ export type HostPlan = 'standard' | 'professional' | 'premium';
 export type AccountStatus = 'active' | 'suspended' | 'deactivated';
 export type InquiryState = 'PENDING' | 'VIEWED' | 'RESPONDED' | 'APPROVED' | 'DECLINED' | 'EXPIRED' | 'BOOKED';
 export type PaymentState = 'UNPAID' | 'INITIATED' | 'COMPLETED' | 'FAILED';
+export type AvailabilityBlockSource = 'MANUAL' | 'APPROVED_HOLD' | 'BOOKED';
+
+export interface ListingAvailabilityBlock {
+  id: string;
+  listingId: string;
+  sourceType: AvailabilityBlockSource;
+  sourceId: string;
+  startsOn: string;
+  endsOn: string;
+  nights: string[];
+  bookingId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface UserProfile {
   id: string;
@@ -72,6 +86,8 @@ export interface Listing {
   updatedAt?: string;
   coordinates?: { lat: number; lng: number };
   blockedDates?: string[];
+  manualBlockedDates?: string[];
+  availabilityBlocks?: ListingAvailabilityBlock[];
 }
 
 export interface Booking {

@@ -3,6 +3,16 @@ import { getAuthData } from "encore.dev/internal/codegen/auth";
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { catalogDB } from "./db";
+import {
+  buildBlockedDatesFromAvailability,
+  buildManualBlockedDates,
+  buildSingleNightInterval,
+  enumerateAvailabilityNights,
+  findAvailabilityConflict,
+  normalizeAvailabilityDateKey,
+  toAvailabilityBlockRecord,
+  type AvailabilityBlockInput,
+} from "./availability";
 import { listingMediaBucket } from "./storage";
 import { computeHostListingQuota, type HostListingQuota } from "./quota";
 import { requireRole, type AuthData } from "../shared/auth";
@@ -12,7 +22,12 @@ import { identityDB } from "../identity/db";
 import { notifyListingReviewed } from "../ops/notifications";
 import { platformEvents } from "../analytics/events";
 import { reviewsDB } from "../reviews/db";
-import type { ListingRecord, ListingStatus } from "../shared/domain";
+import type {
+  AvailabilityBlockSource,
+  ListingAvailabilityBlockRecord,
+  ListingRecord,
+  ListingStatus,
+} from "../shared/domain";
 
 type ListingRow = {
   id: string;
@@ -44,6 +59,18 @@ type ListingRow = {
   blocked_dates: string[];
   status: ListingStatus;
   rejection_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type AvailabilityBlockRow = {
+  id: string;
+  listing_id: string;
+  source_type: AvailabilityBlockSource;
+  source_id: string;
+  starts_on: string;
+  ends_on: string;
+  nights: string[];
   created_at: string;
   updated_at: string;
 };
@@ -316,7 +343,184 @@ interface UpdateAvailabilityParams {
   blockedDates: string[];
 }
 
-function mapListing(row: ListingRow): ListingRecord {
+interface BookingAvailabilitySnapshotItem {
+  bookingId: string;
+  checkIn: string;
+  checkOut: string;
+  sourceType: Extract<AvailabilityBlockSource, "APPROVED_HOLD" | "BOOKED">;
+}
+
+type BookingAvailabilityRow = {
+  id: string;
+  check_in: string;
+  check_out: string;
+  inquiry_state: "APPROVED" | "BOOKED";
+  payment_state: "INITIATED" | "COMPLETED";
+};
+
+function toAvailabilityBlockInput(row: AvailabilityBlockRow): AvailabilityBlockInput {
+  return {
+    id: row.id,
+    listingId: row.listing_id,
+    sourceType: row.source_type,
+    sourceId: row.source_id,
+    startsOn: normalizeAvailabilityDateKey(row.starts_on),
+    endsOn: normalizeAvailabilityDateKey(row.ends_on),
+    nights: (row.nights ?? []).map(normalizeAvailabilityDateKey),
+    bookingId: row.source_type === "MANUAL" ? null : row.source_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+async function listAvailabilityBlockInputs(listingId: string) {
+  const rows = await catalogDB.queryAll<AvailabilityBlockRow>`
+    SELECT id, listing_id, source_type, source_id, starts_on::text, ends_on::text, nights, created_at, updated_at
+    FROM listing_availability_blocks
+    WHERE listing_id = ${listingId}
+    ORDER BY starts_on ASC, source_type ASC, created_at ASC
+  `;
+
+  return rows.map(toAvailabilityBlockInput);
+}
+
+async function insertManualAvailabilityDates(listingId: string, dates: string[]) {
+  const normalizedDates = Array.from(new Set((dates ?? []).map(normalizeAvailabilityDateKey))).sort();
+
+  for (const dateKey of normalizedDates) {
+    const interval = buildSingleNightInterval(dateKey);
+    const now = new Date().toISOString();
+    await catalogDB.exec`
+      INSERT INTO listing_availability_blocks (
+        id, listing_id, source_type, source_id, starts_on, ends_on, nights, created_at, updated_at
+      )
+      VALUES (
+        ${randomUUID()},
+        ${listingId},
+        ${"MANUAL"},
+        ${dateKey},
+        ${interval.startsOn},
+        ${interval.endsOn},
+        ${interval.nights},
+        ${now},
+        ${now}
+      )
+    `;
+  }
+}
+
+async function ensureListingAvailabilityHydrated(row: ListingRow) {
+  const existingBlocks = await listAvailabilityBlockInputs(row.id);
+  if (existingBlocks.length > 0) {
+    return existingBlocks;
+  }
+
+  const bookingRows = await bookingDB.rawQueryAll<BookingAvailabilityRow>(
+    `
+      SELECT id, check_in, check_out, inquiry_state, payment_state
+      FROM bookings
+      WHERE listing_id = $1
+        AND (
+          (inquiry_state = 'BOOKED' AND payment_state = 'COMPLETED')
+          OR (inquiry_state = 'APPROVED' AND payment_state = 'INITIATED')
+        )
+    `,
+    row.id,
+  );
+
+  if (bookingRows.length === 0 && (row.blocked_dates ?? []).length === 0) {
+    return [];
+  }
+
+  const bookingEntries: BookingAvailabilitySnapshotItem[] = bookingRows.map((booking) => ({
+    bookingId: booking.id,
+    checkIn: booking.check_in,
+    checkOut: booking.check_out,
+    sourceType: booking.inquiry_state === "BOOKED" ? "BOOKED" : "APPROVED_HOLD",
+  }));
+
+  const bookingNights = new Set(
+    bookingEntries.flatMap((entry) => enumerateAvailabilityNights(entry.checkIn.slice(0, 10), entry.checkOut.slice(0, 10))),
+  );
+  const manualLegacyDates = (row.blocked_dates ?? [])
+    .map(normalizeAvailabilityDateKey)
+    .filter((dateKey) => !bookingNights.has(dateKey));
+
+  if (manualLegacyDates.length > 0) {
+    await insertManualAvailabilityDates(row.id, manualLegacyDates);
+  }
+
+  if (bookingEntries.length > 0) {
+    await replaceBookingAvailabilityBlocks(row.id, bookingEntries);
+  }
+
+  const refreshed = await refreshListingBlockedDatesFromAvailability(row.id);
+  return refreshed.availabilityBlocks.map((block) => ({
+    id: block.id,
+    listingId: block.listingId,
+    sourceType: block.sourceType,
+    sourceId: block.sourceId,
+    startsOn: block.startsOn,
+    endsOn: block.endsOn,
+    nights: block.nights,
+    bookingId: block.bookingId,
+    createdAt: block.createdAt,
+    updatedAt: block.updatedAt,
+  }));
+}
+
+async function listAvailabilityBlocksForListings(listingIds: string[]) {
+  const uniqueListingIds = Array.from(new Set(listingIds.filter(Boolean)));
+  const availabilityByListing = new Map<string, ListingAvailabilityBlockRecord[]>();
+
+  await Promise.all(
+    uniqueListingIds.map(async (listingId) => {
+      const listingRow = await catalogDB.queryRow<ListingRow>`
+        SELECT * FROM listings WHERE id = ${listingId}
+      `;
+      if (!listingRow) {
+        availabilityByListing.set(listingId, []);
+        return;
+      }
+
+      const blocks = await ensureListingAvailabilityHydrated(listingRow);
+      availabilityByListing.set(
+        listingId,
+        blocks.map((block) => toAvailabilityBlockRecord(block)),
+      );
+    }),
+  );
+
+  return availabilityByListing;
+}
+
+async function refreshListingBlockedDatesFromAvailability(listingId: string) {
+  const blocks = await listAvailabilityBlockInputs(listingId);
+  const blockedDates = buildBlockedDatesFromAvailability(blocks);
+  const now = new Date().toISOString();
+
+  await catalogDB.exec`
+    UPDATE listings
+    SET blocked_dates = ${blockedDates},
+        updated_at = ${now}
+    WHERE id = ${listingId}
+  `;
+
+  return {
+    blockedDates,
+    updatedAt: now,
+    availabilityBlocks: blocks.map((block) => toAvailabilityBlockRecord(block)),
+    manualBlockedDates: buildManualBlockedDates(blocks),
+  };
+}
+
+async function getListingWithAvailability(row: ListingRow): Promise<ListingRecord> {
+  const availabilityBlocks = await ensureListingAvailabilityHydrated(row);
+  return mapListing(row, availabilityBlocks.map((block) => toAvailabilityBlockRecord(block)));
+}
+
+function mapListing(row: ListingRow, availabilityBlocks?: ListingAvailabilityBlockRecord[]): ListingRecord {
+  const resolvedAvailabilityBlocks = availabilityBlocks ?? [];
   return {
     id: row.id,
     hostId: row.host_id,
@@ -345,6 +549,8 @@ function mapListing(row: ListingRow): ListingRecord {
     latitude: row.latitude,
     longitude: row.longitude,
     blockedDates: row.blocked_dates ?? [],
+    manualBlockedDates: buildManualBlockedDates(resolvedAvailabilityBlocks),
+    availabilityBlocks: resolvedAvailabilityBlocks,
     status: row.status,
     rejectionReason: row.rejection_reason,
     createdAt: row.created_at,
@@ -352,7 +558,36 @@ function mapListing(row: ListingRow): ListingRecord {
   };
 }
 
-export async function replaceListingBlockedDates(listingId: string, blockedDates: string[]) {
+export async function assertListingDateRangeAvailable(
+  listingId: string,
+  checkIn: string,
+  checkOut: string,
+  options?: {
+    excludeSourceType?: AvailabilityBlockSource;
+    excludeSourceId?: string;
+  },
+) {
+  const blocks = await listAvailabilityBlockInputs(listingId);
+  const requestedNights = enumerateAvailabilityNights(checkIn.slice(0, 10), checkOut.slice(0, 10));
+  const conflict = findAvailabilityConflict(requestedNights, blocks, options);
+
+  if (!conflict) {
+    return;
+  }
+
+  const descriptor =
+    conflict.block.sourceType === "MANUAL"
+      ? "a manual host block"
+      : conflict.block.sourceType === "APPROVED_HOLD"
+        ? "another approved enquiry hold"
+        : "an existing booked stay";
+
+  throw APIError.failedPrecondition(
+    `Selected dates overlap ${descriptor} on ${conflict.conflictingNights.join(", ")}.`,
+  );
+}
+
+export async function replaceManualListingAvailability(listingId: string, blockedDates: string[]) {
   const existing = await catalogDB.queryRow<ListingRow>`
     SELECT * FROM listings WHERE id = ${listingId}
   `;
@@ -360,23 +595,121 @@ export async function replaceListingBlockedDates(listingId: string, blockedDates
     throw APIError.notFound("Listing not found.");
   }
 
-  const normalizedBlockedDates = Array.from(new Set(blockedDates)).sort();
-  const now = new Date().toISOString();
+  const normalizedBlockedDates = Array.from(new Set((blockedDates ?? []).map(normalizeAvailabilityDateKey))).sort();
+  const existingBlocks = await listAvailabilityBlockInputs(listingId);
+  const nonManualBlocks = existingBlocks.filter((block) => block.sourceType !== "MANUAL");
+  const manualConflict = findAvailabilityConflict(normalizedBlockedDates, nonManualBlocks);
+
+  if (manualConflict) {
+    const descriptor =
+      manualConflict.block.sourceType === "BOOKED" ? "a booked stay" : "an approved enquiry hold";
+    throw APIError.failedPrecondition(
+      `Manual availability cannot overlap ${descriptor} on ${manualConflict.conflictingNights.join(", ")}.`,
+    );
+  }
 
   await catalogDB.exec`
-    UPDATE listings
-    SET blocked_dates = ${normalizedBlockedDates},
-        updated_at = ${now}
-    WHERE id = ${listingId}
+    DELETE FROM listing_availability_blocks
+    WHERE listing_id = ${listingId}
+      AND source_type = ${"MANUAL"}
   `;
+
+  await insertManualAvailabilityDates(listingId, normalizedBlockedDates);
+
+  const refreshed = await refreshListingBlockedDatesFromAvailability(listingId);
 
   return {
     listing: {
-      ...mapListing(existing),
-      blockedDates: normalizedBlockedDates,
-      updatedAt: now,
+      ...mapListing(existing, refreshed.availabilityBlocks),
+      blockedDates: refreshed.blockedDates,
+      manualBlockedDates: refreshed.manualBlockedDates,
+      availabilityBlocks: refreshed.availabilityBlocks,
+      updatedAt: refreshed.updatedAt,
     },
   };
+}
+
+export async function replaceBookingAvailabilityBlocks(listingId: string, entries: BookingAvailabilitySnapshotItem[]) {
+  const existing = await catalogDB.queryRow<ListingRow>`
+    SELECT * FROM listings WHERE id = ${listingId}
+  `;
+  if (!existing) {
+    throw APIError.notFound("Listing not found.");
+  }
+
+  const normalizedEntries = entries.map((entry) => {
+    const nights = enumerateAvailabilityNights(entry.checkIn.slice(0, 10), entry.checkOut.slice(0, 10));
+    return {
+      bookingId: entry.bookingId,
+      sourceType: entry.sourceType,
+      sourceId: entry.bookingId,
+      startsOn: nights[0]!,
+      endsOn: normalizeAvailabilityDateKey(entry.checkOut.slice(0, 10)),
+      nights,
+    };
+  });
+
+  const manualBlocks = (await listAvailabilityBlockInputs(listingId)).filter((block) => block.sourceType === "MANUAL");
+  const bookingCandidateBlocks: AvailabilityBlockInput[] = normalizedEntries.map((entry) => ({
+    id: `${entry.sourceType}:${entry.bookingId}`,
+    listingId,
+    sourceType: entry.sourceType,
+    sourceId: entry.sourceId,
+    startsOn: entry.startsOn,
+    endsOn: entry.endsOn,
+    nights: entry.nights,
+    bookingId: entry.bookingId,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }));
+
+  for (const candidate of bookingCandidateBlocks) {
+    const conflictWithManual = findAvailabilityConflict(candidate.nights, manualBlocks);
+    if (conflictWithManual) {
+      throw APIError.failedPrecondition(
+        `Availability for inquiry ${candidate.sourceId} overlaps a manual host block on ${conflictWithManual.conflictingNights.join(", ")}.`,
+      );
+    }
+
+    const conflictWithBooking = findAvailabilityConflict(candidate.nights, bookingCandidateBlocks, {
+      excludeSourceType: candidate.sourceType,
+      excludeSourceId: candidate.sourceId,
+    });
+
+    if (conflictWithBooking) {
+      throw APIError.failedPrecondition(
+        `Availability for inquiry ${candidate.sourceId} overlaps another active inquiry or booking on ${conflictWithBooking.conflictingNights.join(", ")}.`,
+      );
+    }
+  }
+
+  await catalogDB.exec`
+    DELETE FROM listing_availability_blocks
+    WHERE listing_id = ${listingId}
+      AND (source_type = ${"APPROVED_HOLD"} OR source_type = ${"BOOKED"})
+  `;
+
+  for (const entry of normalizedEntries) {
+    const now = new Date().toISOString();
+    await catalogDB.exec`
+      INSERT INTO listing_availability_blocks (
+        id, listing_id, source_type, source_id, starts_on, ends_on, nights, created_at, updated_at
+      )
+      VALUES (
+        ${randomUUID()},
+        ${listingId},
+        ${entry.sourceType},
+        ${entry.sourceId},
+        ${entry.startsOn},
+        ${entry.endsOn},
+        ${entry.nights},
+        ${now},
+        ${now}
+      )
+    `;
+  }
+
+  return refreshListingBlockedDatesFromAvailability(listingId);
 }
 
 async function assertHostCanCreateListing(hostId: string) {
@@ -411,7 +744,8 @@ export const listListings = api<ListListingsParams, { listings: ListingRecord[] 
         hostId,
       );
 
-      return { listings: rows.map(mapListing) };
+      const availabilityByListing = await listAvailabilityBlocksForListings(rows.map((row) => row.id));
+      return { listings: rows.map((row) => mapListing(row, availabilityByListing.get(row.id) ?? [])) };
     }
 
     const canSeeUnpublished =
@@ -431,7 +765,8 @@ export const listListings = api<ListListingsParams, { listings: ListingRecord[] 
         hostId,
       );
 
-      return { listings: rows.map(mapListing) };
+      const availabilityByListing = await listAvailabilityBlocksForListings(rows.map((row) => row.id));
+      return { listings: rows.map((row) => mapListing(row, availabilityByListing.get(row.id) ?? [])) };
     }
 
     const rows = await catalogDB.rawQueryAll<ListingRow>(
@@ -445,7 +780,8 @@ export const listListings = api<ListListingsParams, { listings: ListingRecord[] 
       status,
     );
 
-    return { listings: rows.map(mapListing) };
+    const availabilityByListing = await listAvailabilityBlocksForListings(rows.map((row) => row.id));
+    return { listings: rows.map((row) => mapListing(row, availabilityByListing.get(row.id) ?? [])) };
   },
 );
 
@@ -462,7 +798,7 @@ export const getListing = api<{ id: string }, { listing: ListingRecord }>(
       throw APIError.notFound("Listing not found.");
     }
 
-    return { listing: mapListing(row) };
+    return { listing: await getListingWithAvailability(row) };
   },
 );
 
@@ -544,7 +880,7 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
             is_occupied = ${params.isOccupied},
             latitude = ${params.latitude ?? null},
             longitude = ${params.longitude ?? null},
-            blocked_dates = ${params.blockedDates ?? existing.blocked_dates ?? []},
+            blocked_dates = ${existing.blocked_dates ?? []},
             status = ${nextStatus},
             rejection_reason = ${nextRejectionReason},
             updated_at = ${now}
@@ -576,17 +912,15 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
         }
       }
 
+      const updatedRow = await catalogDB.queryRow<ListingRow>`
+        SELECT * FROM listings WHERE id = ${params.id}
+      `;
+      if (!updatedRow) {
+        throw APIError.notFound("Listing not found after update.");
+      }
+
       return {
-        listing: {
-          ...mapListing(existing),
-          ...params,
-          id: params.id,
-          hostId: existing.host_id,
-          status: nextStatus,
-          rejectionReason: nextRejectionReason,
-          createdAt: existing.created_at,
-          updatedAt: now,
-        },
+        listing: await getListingWithAvailability(updatedRow),
       };
     }
 
@@ -614,7 +948,7 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
         ${params.bedrooms}, ${params.bathrooms}, ${params.amenities}, ${params.facilities},
         ${params.restaurantOffers}, ${params.images}, ${params.videoUrl ?? null},
         ${params.isSelfCatering}, ${params.hasRestaurant}, ${params.isOccupied},
-        ${params.latitude ?? null}, ${params.longitude ?? null}, ${params.blockedDates ?? []}, ${createdStatus}, ${null}, ${now}, ${now}
+        ${params.latitude ?? null}, ${params.longitude ?? null}, ${[]}, ${createdStatus}, ${null}, ${now}, ${now}
       )
     `;
 
@@ -626,16 +960,15 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
       payload: JSON.stringify({ hostId: auth.userID, status: createdStatus }),
     });
 
+    const createdRow = await catalogDB.queryRow<ListingRow>`
+      SELECT * FROM listings WHERE id = ${id}
+    `;
+    if (!createdRow) {
+      throw APIError.notFound("Listing not found after creation.");
+    }
+
     return {
-      listing: {
-        ...params,
-        status: createdStatus,
-        id,
-        hostId: auth.userID,
-        rejectionReason: null,
-        createdAt: now,
-        updatedAt: now,
-      },
+      listing: await getListingWithAvailability(createdRow),
     };
   },
 );
@@ -705,7 +1038,7 @@ export const updateListingAvailability = api<UpdateAvailabilityParams, { listing
       throw APIError.permissionDenied("You cannot manage another host's availability.");
     }
 
-    return replaceListingBlockedDates(listingId, blockedDates);
+    return replaceManualListingAvailability(listingId, blockedDates);
   },
 );
 

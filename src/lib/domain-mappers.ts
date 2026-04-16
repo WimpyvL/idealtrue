@@ -76,6 +76,8 @@ export interface EncoreListing {
   latitude?: number | null;
   longitude?: number | null;
   blockedDates?: string[];
+  manualBlockedDates?: string[];
+  availabilityBlocks?: Listing['availabilityBlocks'];
   status: Listing['status'];
   rejectionReason?: string | null;
   createdAt: string;
@@ -289,6 +291,8 @@ export function mapEncoreListing(listing: EncoreListing): Listing {
         ? { lat: listing.latitude, lng: listing.longitude }
         : undefined,
     blockedDates: listing.blockedDates || [],
+    manualBlockedDates: listing.manualBlockedDates || [],
+    availabilityBlocks: listing.availabilityBlocks || [],
   };
 }
 

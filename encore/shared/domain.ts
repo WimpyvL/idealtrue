@@ -4,6 +4,7 @@ export type KycStatus = "none" | "pending" | "verified" | "rejected";
 export type ReferralTier = "bronze" | "silver" | "gold";
 export type AccountStatus = "active" | "suspended" | "deactivated";
 export type ListingStatus = "draft" | "pending" | "active" | "inactive" | "rejected" | "archived";
+export type AvailabilityBlockSource = "MANUAL" | "APPROVED_HOLD" | "BOOKED";
 export type InquiryState =
   | "PENDING"
   | "VIEWED"
@@ -71,8 +72,23 @@ export interface ListingRecord {
   latitude?: number | null;
   longitude?: number | null;
   blockedDates?: string[];
+  manualBlockedDates?: string[];
+  availabilityBlocks?: ListingAvailabilityBlockRecord[];
   status: ListingStatus;
   rejectionReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListingAvailabilityBlockRecord {
+  id: string;
+  listingId: string;
+  sourceType: AvailabilityBlockSource;
+  sourceId: string;
+  startsOn: string;
+  endsOn: string;
+  nights: string[];
+  bookingId?: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -6,7 +6,7 @@ import { Calendar } from '../components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { updateListingBlockedDates } from '../lib/platform-client';
 import { format, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
-import { CalendarDays, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
+import { CalendarDays, AlertCircle } from 'lucide-react';
 import { isBookedStay } from '@/lib/inquiry-state';
 
 export default function HostAvailability({
@@ -49,9 +49,20 @@ export default function HostAvailability({
 
   // Blocked dates from listing
   const blockedDates = useMemo(() => {
-    if (!selectedListing?.blockedDates) return [];
-    return selectedListing.blockedDates.map(d => parseISO(d));
-  }, [selectedListing?.blockedDates]);
+    if (!selectedListing?.manualBlockedDates) return [];
+    return selectedListing.manualBlockedDates.map(d => parseISO(d));
+  }, [selectedListing?.manualBlockedDates]);
+
+  const approvedHoldDates = useMemo(() => {
+    if (!selectedListing?.availabilityBlocks?.length) return [];
+
+    return selectedListing.availabilityBlocks
+      .filter((block) => block.sourceType === 'APPROVED_HOLD')
+      .flatMap((block) => block.nights)
+      .map((dateKey) => parseISO(dateKey));
+  }, [selectedListing?.availabilityBlocks]);
+
+  const disabledDates = useMemo(() => [...bookedDates, ...approvedHoldDates], [approvedHoldDates, bookedDates]);
 
   const handleSelectDates = async (dates: Date[] | undefined) => {
     if (!selectedListing || !dates) return;
@@ -121,6 +132,10 @@ export default function HostAvailability({
                   </div>
                   <span className="text-sm">Booked (by guest)</span>
                 </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 rounded-sm bg-amber-100 border border-amber-300"></div>
+                  <span className="text-sm">Approved enquiry hold</span>
+                </div>
               </div>
               
               <div className="mt-6 p-4 bg-surface-container-lowest rounded-lg border border-outline-variant text-sm text-on-surface-variant">
@@ -148,12 +163,14 @@ export default function HostAvailability({
                     mode="multiple"
                     selected={blockedDates}
                     onSelect={handleSelectDates}
-                    disabled={bookedDates}
+                    disabled={disabledDates}
                     modifiers={{
                       booked: bookedDates,
+                      approvedHold: approvedHoldDates,
                     }}
                     modifiersClassNames={{
                       booked: "bg-red-50 text-red-900 line-through opacity-70 hover:bg-red-50 hover:text-red-900",
+                      approvedHold: "bg-amber-50 text-amber-900 opacity-80 hover:bg-amber-50 hover:text-amber-900",
                     }}
                     className="p-4 pointer-events-auto"
                     numberOfMonths={2}
