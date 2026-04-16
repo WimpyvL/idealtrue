@@ -1,0 +1,238 @@
+flowchart TD
+    A["User Opens App"] --> B["React App Boot<br/>main.tsx -> App.tsx"]
+    B --> C["Auth Bootstrap<br/>GET /api/encore/auth/session"]
+    C -->|session ok| D["Authenticated Shell"]
+    C -->|unauthenticated| E["Anonymous Shell"]
+
+    B --> N0["Notification Provider"]
+    N0 --> N1["Poll every 15s<br/>GET /api/encore/ops/my-notifications"]
+    N1 --> N2["Unread badge / toast / mark read / dismiss"]
+
+    subgraph Public["Public / Anonymous Flows"]
+        E --> P1["Explore '/'"]
+        P1 --> P2["SearchFilterBar + FilterBar + FiltersModal"]
+        P2 --> P3["Grid View or Map View"]
+        P3 --> P4["Open Listing Detail Modal"]
+        P4 -->|not signed in + click Book| S1["Go to '/signup'"]
+        P1 --> P5["Trip Planner entry<br/>Search bar sends q -> '/planner'"]
+        E --> S1
+        S1 --> S2["Sign up"]
+        S1 --> S3["Sign in"]
+        S1 --> S4["Forgot password"]
+        S1 --> S5["Reset password via token"]
+        S1 --> S6["Verify email via token"]
+        S2 --> S7["POST /api/encore/auth/signup"]
+        S3 --> S8["POST /api/encore/auth/login"]
+        S4 --> S9["POST /api/encore/auth/request-password-reset"]
+        S5 --> S10["POST /api/encore/auth/reset-password"]
+        S6 --> S11["POST /api/encore/auth/verify-email"]
+        S7 --> D
+        S8 --> D
+    end
+
+    subgraph Planner["AI Trip Planner"]
+        P5 --> T1["HolidayPlanner '/planner'"]
+        T1 --> T2["Conversation state in page memory"]
+        T2 --> T3["POST /api/ai/trip-planner"]
+        T3 --> T4["Express AI rails + rate limit + actor resolution"]
+        T4 --> T5["Planner reply returned to UI"]
+    end
+
+    subgraph Marketplace["Marketplace & Booking"]
+        D --> M1["Explore '/'"]
+        M1 --> M2["Listing Detail Modal"]
+        M2 --> M3["Create booking request"]
+        M3 --> M4["POST /api/encore/bookings"]
+        M4 --> M5["Booking created<br/>state=PENDING payment=INITIATED/UNPAID path-owned by backend"]
+        M5 --> M6["Guest sees booking in '/guest'"]
+        M5 --> M7["Host sees enquiry in '/host' and '/host/enquiries'"]
+    end
+
+    subgraph Inquiry["Inquiry / Booking State Machine"]
+        M7 --> I1["Host marks viewed<br/>POST /bookings/:id/view"]
+        I1 --> I2["State VIEWED"]
+        M7 --> I3["Host approves<br/>PATCH /bookings/:id/status APPROVED"]
+        M7 --> I4["Host declines<br/>PATCH /bookings/:id/status DECLINED"]
+        I3 --> I5["Payment unlocked for guest"]
+        I5 --> I6["Guest submits payment proof dialog"]
+        I6 --> I7["POST /bookings/:id/payment-proof"]
+        I7 --> I8["Backend stores proof / reference / timestamps"]
+        I8 --> I9["Booking progresses to confirmed/booked path in backend"]
+        I9 --> I10["UI displays BOOKED when inquiryState=BOOKED and paymentState=COMPLETED"]
+        I4 --> I11["Guest sees declined"]
+        I2 --> I3
+    end
+
+    subgraph Messaging["Booking Chat / Previous Chat Implementation"]
+        M6 --> C1["Guest clicks Message"]
+        M7 --> C2["Host clicks Message"]
+        C1 --> C3["Open ChatModal"]
+        C2 --> C3
+        C3 --> C4["GET /api/encore/messages/:bookingId"]
+        C4 --> C5["Load existing message history for this booking"]
+        C3 --> C6["POST /api/encore/messages"]
+        C6 --> C7["Persist new message"]
+        C7 --> C8["Messages remain booking-scoped history"]
+        C3 --> C9["Quick suggestions<br/>house rules / directions / payment info / check-in / checkout"]
+    end
+
+    subgraph Guest["Guest Dashboard '/guest'"]
+        D --> G1["Guest Dashboard"]
+        G1 --> G2["List my bookings"]
+        G2 --> G3["Message host"]
+        G2 --> G4["Submit payment proof when APPROVED"]
+        G2 --> G5["Leave review when BOOKED"]
+        G5 --> G6["ReviewForm"]
+        G6 --> G7["POST /api/encore/reviews"]
+        G7 --> G8["Review stored / moderation status managed in backend"]
+        G1 --> G9["Become a Host -> '/account'"]
+    end
+
+    subgraph Account["Account / Identity / KYC"]
+        D --> A1["Account '/account'"]
+        A1 --> A2["Update profile"]
+        A2 --> A3["PUT /api/encore/users/me"]
+        A1 --> A4["Upload profile photo"]
+        A4 --> A5["POST /users/me/photo"]
+        A1 --> A6["Request email verification"]
+        A6 --> A7["POST /auth/request-email-verification"]
+        A1 --> A8["Switch role guest <-> host <-> admin(if admin account)"]
+        A8 --> A3
+        A1 --> A9["Host payment coordination fields"]
+        A9 --> A3
+        A1 --> A10["Open KYC modal"]
+        A10 --> A11["Capture/upload ID + selfie"]
+        A11 --> A12["Compress/serialize in browser"]
+        A12 --> A13["POST /api/encore/ops/kyc/submissions"]
+        A13 --> A14["KYC status: none -> pending -> verified/rejected"]
+    end
+
+    subgraph Host["Host Workspace '/host/*'"]
+        D --> H0["Host route guard<br/>profile.role must be host"]
+        H0 --> H1["Host Dashboard"]
+        H1 --> H2["Metrics: bookings / enquiries / listings / revenue"]
+        H1 --> H3["Approve or decline recent enquiries"]
+        H1 --> H4["Open Content Studio"]
+        H1 --> H5["Upgrade plan -> '/pricing'"]
+
+        H0 --> H6["Host Inbox '/host/inbox'"]
+        H6 --> C3
+
+        H0 --> H7["Host Enquiries '/host/enquiries'"]
+        H7 --> I1
+        H7 --> I3
+        H7 --> I4
+        H7 --> C3
+
+        H0 --> H8["Host Listings '/host/listings'"]
+        H8 --> H9["Toggle active/inactive"]
+        H8 --> H10["Edit listing"]
+        H8 --> H11["Delete listing"]
+        H8 --> H12["Create social post from listing"]
+
+        H9 --> H13["PUT /api/encore/host/listings"]
+        H10 --> H14["'/host/edit-listing/:id' -> CreateListing form"]
+        H11 --> H15["DELETE /api/encore/host/listings/:id"]
+
+        H0 --> H16["Create listing '/host/create-listing'"]
+        H16 --> H17["Save draft/pending listing"]
+        H17 --> H13
+
+        H0 --> H18["Availability '/host/availability'"]
+        H18 --> H19["Update blocked dates"]
+        H19 --> H20["PUT /api/encore/host/listings/availability"]
+
+        H0 --> H21["Reports '/host/reports'"]
+
+        H0 --> H22["Referrals '/host/referrals'"]
+        H22 --> R1
+
+        H0 --> H23["Social Dashboard '/host/social'"]
+    end
+
+    subgraph Billing["Pricing / Subscriptions / Content Credits"]
+        D --> B1["Pricing '/pricing'"]
+        B1 --> B2["Choose monthly or annual plan"]
+        B2 --> B3["POST /api/encore/billing/subscriptions/checkout"]
+        B3 --> B4["Redirect to checkout URL"]
+        B4 --> B5["Return with billing_status + checkout_id"]
+        B5 --> B6["Poll GET /api/encore/billing/checkouts/:id"]
+        B6 -->|paid| B7["Refresh profile hostPlan"]
+        B6 -->|cancelled/failed| B8["Show status toast"]
+
+        H23 --> B9["GET /billing/content/entitlements"]
+        H23 --> B10["GET /billing/content/drafts"]
+        H23 --> B11["Buy content credits"]
+        B11 --> B12["POST /billing/content/credits/checkout"]
+        B12 --> B4
+    end
+
+    subgraph ContentStudio["Host Content Studio"]
+        H23 --> S20["Select listing"]
+        S20 --> S21["Select template / platform / tone / options"]
+        S21 --> S22["Generate post set"]
+        S22 --> S23["POST /api/encore/billing/content/drafts/generate"]
+        S22 --> S24["POST /api/ai/social-image"]
+        S23 --> S25["Draft persisted with entitlements update"]
+        S24 --> S26["Creative assets returned from Express AI endpoint"]
+        S25 --> S27["Draft editor"]
+        S26 --> S28["Visual pack preview/download"]
+        S27 --> S29["Save draft / schedule / mark published"]
+        S29 --> S30["PUT /api/encore/billing/content/drafts/:id"]
+    end
+
+    subgraph Referrals["Referrals / Rewards"]
+        D --> R1["Referral page '/referral' or '/host/referrals'"]
+        R1 --> R2["GET /api/encore/referrals/rewards"]
+        R1 --> R3["Show code / tier / balance / reward history"]
+        S2 --> R4["Signup may include referral code from query param"]
+        R4 --> R5["Backend awards referral on signup/subscription triggers"]
+    end
+
+    subgraph Admin["Admin Workspace '/admin'"]
+        D --> AD0{"profile.role === admin?"}
+        AD0 -->|yes| AD1["Admin Dashboard"]
+        AD1 --> AD2["Overview / observability / stats"]
+        AD1 --> AD3["Pending listings moderation"]
+        AD1 --> AD4["KYC review"]
+        AD1 --> AD5["Users management"]
+        AD1 --> AD6["Enquiries review"]
+        AD1 --> AD7["Listings management"]
+        AD1 --> AD8["Reviews moderation"]
+        AD1 --> AD9["Referrals / rewards"]
+        AD1 --> AD10["Financials / subscriptions / checkouts"]
+        AD1 --> AD11["Notifications composer"]
+        AD1 --> AD12["Platform settings"]
+
+        AD3 --> AD13["Approve/reject listing"]
+        AD13 --> AD14["Host notified"]
+
+        AD4 --> AD15["Load secure KYC assets"]
+        AD15 --> AD16["Approve or reject KYC"]
+        AD16 --> AD17["User kycStatus updated"]
+        AD16 --> AD18["User notified"]
+
+        AD5 --> AD19["Edit user / role / plan / balance / account status"]
+        AD19 --> AD20["Suspend / deactivate / reactivate"]
+        AD20 --> AD21["User notified"]
+
+        AD8 --> AD22["Delete review"]
+        AD9 --> AD23["Create/delete referral reward"]
+        AD11 --> AD24["Create/delete platform notification"]
+    end
+
+    subgraph Infra["Transport / Backend Shape"]
+        X1["React client"] --> X2["encoreRequest()"]
+        X2 --> X3["Same-origin Express proxy '/api/encore/*'"]
+        X3 --> X4["Session cookie -> Bearer token bridge"]
+        X4 --> X5["Encore services"]
+        X5 --> X6["identity"]
+        X5 --> X7["catalog"]
+        X5 --> X8["booking"]
+        X5 --> X9["messaging"]
+        X5 --> X10["reviews"]
+        X5 --> X11["referrals"]
+        X5 --> X12["billing"]
+        X5 --> X13["ops"]
+        X5 --> X14["analytics/events"]
+    end

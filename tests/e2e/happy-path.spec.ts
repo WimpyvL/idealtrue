@@ -75,7 +75,8 @@ test('guest booking request, host approval, and guest notification smoke flow', 
     adults: 1,
     children: 0,
     totalPrice: 5445,
-    status: 'pending',
+    inquiryState: 'PENDING',
+    paymentState: 'UNPAID',
     paymentMethod: 'bank_transfer',
     paymentInstructions: 'Pay within 24 hours.',
     createdAt: '2026-04-01T10:05:00.000Z',
@@ -137,7 +138,8 @@ test('guest booking request, host approval, and guest notification smoke flow', 
         ...body,
         id: 'booking-1',
         guestId: currentSession?.id || guestUser.id,
-        status: 'pending',
+        inquiryState: 'PENDING',
+        paymentState: 'UNPAID',
         createdAt: '2026-04-01T10:05:00.000Z',
         updatedAt: '2026-04-01T10:05:00.000Z',
       };
@@ -149,7 +151,8 @@ test('guest booking request, host approval, and guest notification smoke flow', 
       const body = JSON.parse(request.postData() || '{}');
       booking = {
         ...booking,
-        status: body.status,
+        inquiryState: body.status,
+        paymentState: body.status === 'APPROVED' ? 'INITIATED' : booking.paymentState,
         updatedAt: '2026-04-01T10:10:00.000Z',
       };
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ booking }) });
@@ -163,7 +166,7 @@ test('guest booking request, host approval, and guest notification smoke flow', 
 
     if (path === '/ops/my-notifications' && method === 'GET') {
       const notifications =
-        currentSession?.id === guestUser.id && booking.status === 'awaiting_guest_payment'
+        currentSession?.id === guestUser.id && booking.inquiryState === 'APPROVED' && booking.paymentState === 'INITIATED'
           ? [
               {
                 id: 'notification-1',
@@ -220,7 +223,7 @@ test('guest booking request, host approval, and guest notification smoke flow', 
 
   await page.getByRole('link', { name: 'Enquiries' }).click();
   await expect(page.getByRole('heading', { name: 'Sea Point Stay' }).first()).toBeVisible();
-  await page.getByRole('button', { name: 'Approve & Request Payment' }).click();
+  await page.getByRole('button', { name: 'Approve' }).click();
 
   await page.goto('/signup');
   await page.locator('main').getByRole('button', { name: 'Sign in' }).click();
@@ -230,7 +233,7 @@ test('guest booking request, host approval, and guest notification smoke flow', 
   await page.getByRole('button', { name: 'Sign in' }).last().click();
 
   await page.getByRole('link', { name: 'My Stays' }).click();
-  await expect(page.getByText('Awaiting Payment')).toBeVisible();
+  await expect(page.getByText('Ready for Payment')).toBeVisible();
   await page.getByRole('button', { name: 'Open notifications' }).click();
   await expect(page.getByText('Payment requested')).toBeVisible();
   await expect(page.getByText('1 new')).toBeVisible();

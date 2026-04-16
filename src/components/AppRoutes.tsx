@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, type ReactElement } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import HostLayout from '@/components/HostLayout';
@@ -27,6 +27,14 @@ function RouteLoader() {
       <Loader2 className="w-6 h-6 animate-spin text-outline-variant" />
     </div>
   );
+}
+
+function RequireAuthRoute({ profile, children }: { profile: UserProfile | null; children: ReactElement }) {
+  if (!profile) {
+    return <Navigate to="/signup" replace />;
+  }
+
+  return children;
 }
 
 type AppRoutesProps = {
@@ -101,19 +109,21 @@ export default function AppRoutes({
         <Route
           path="/guest"
           element={
-            <GuestDashboard
-              profile={profile}
-              bookings={myBookings}
-              listings={listings}
-              onReview={onBookingToReview}
-              onExplore={() => navigate('/')}
-              onChat={onSelectedBookingForChat}
-              onSubmitPaymentProof={onBookingForPaymentProof}
-            />
+            <RequireAuthRoute profile={profile}>
+              <GuestDashboard
+                profile={profile}
+                bookings={myBookings}
+                listings={listings}
+                onReview={onBookingToReview}
+                onExplore={() => navigate('/')}
+                onChat={onSelectedBookingForChat}
+                onSubmitPaymentProof={onBookingForPaymentProof}
+              />
+            </RequireAuthRoute>
           }
         />
-        <Route path="/referral" element={<ReferralView profile={profile} referrals={referrals} />} />
-        <Route path="/account" element={<AccountPage />} />
+        <Route path="/referral" element={<RequireAuthRoute profile={profile}><ReferralView profile={profile} referrals={referrals} /></RequireAuthRoute>} />
+        <Route path="/account" element={<RequireAuthRoute profile={profile}><AccountPage /></RequireAuthRoute>} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/pricing" element={<PricingPage onBack={() => navigate('/host')} />} />
         <Route path="*" element={<Navigate to="/" />} />

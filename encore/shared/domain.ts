@@ -180,7 +180,7 @@ export type DomainEvent =
       payload: { hostId: string; status: ListingStatus };
     }
   | {
-      type: "inquiry.created" | "inquiry.status_changed" | "inquiry.payment_changed";
+      type: "inquiry.created" | "inquiry.status_changed" | "inquiry.payment_changed" | "inquiry.payment_submitted";
       aggregateId: string;
       actorId: string;
       occurredAt: string;
@@ -191,6 +191,7 @@ export type DomainEvent =
         hostId: string;
         inquiryState: InquiryState;
         paymentState: PaymentState;
+        paymentSubmittedAt?: string | null;
         actor: "host" | "system" | "guest";
       };
     }

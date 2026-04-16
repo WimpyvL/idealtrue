@@ -4,8 +4,9 @@ import test from 'node:test';
 import {
   bookingOverlapsBlockedDates,
   computeBookingTotalPrice,
-  getBookingStatusTransitionError,
+  getInquiryStatusTransitionError,
   getPaymentProofSubmissionError,
+  getPaymentStateTransitionError,
 } from '../encore/booking/workflow.ts';
 
 test('computeBookingTotalPrice uses nightly pricing only for valid stays', () => {
@@ -38,19 +39,21 @@ test('bookingOverlapsBlockedDates catches blocked nights inside the requested st
   );
 });
 
-test('getBookingStatusTransitionError allows the intended payment workflow', () => {
-  assert.equal(getBookingStatusTransitionError('pending', 'awaiting_guest_payment'), null);
-  assert.equal(getBookingStatusTransitionError('payment_submitted', 'confirmed'), null);
-  assert.equal(getBookingStatusTransitionError('confirmed', 'completed'), null);
+test('workflow allows the intended inquiry and payment transitions', () => {
+  assert.equal(getInquiryStatusTransitionError('PENDING', 'APPROVED', 'host'), null);
+  assert.equal(getPaymentStateTransitionError('APPROVED', 'UNPAID', 'INITIATED', 'system'), null);
+  assert.equal(getPaymentStateTransitionError('APPROVED', 'INITIATED', 'COMPLETED', 'host'), null);
+  assert.equal(getInquiryStatusTransitionError('APPROVED', 'BOOKED', 'system'), null);
 });
 
-test('getBookingStatusTransitionError rejects invalid host transitions', () => {
-  assert.match(getBookingStatusTransitionError('pending', 'confirmed') || '', /confirmed after the payment step/);
-  assert.match(getBookingStatusTransitionError('completed', 'cancelled') || '', /Closed bookings/);
+test('workflow rejects invalid transitions and direct guest completion', () => {
+  assert.match(getInquiryStatusTransitionError('PENDING', 'BOOKED', 'host') || '', /Hosts can only view, respond to, approve, or decline/);
+  assert.match(getPaymentStateTransitionError('APPROVED', 'INITIATED', 'COMPLETED', 'guest') || '', /Guests cannot directly mark payments complete/);
+  assert.match(getInquiryStatusTransitionError('BOOKED', 'DECLINED', 'host') || '', /immutable/);
 });
 
 test('getPaymentProofSubmissionError only allows payment-step bookings', () => {
-  assert.equal(getPaymentProofSubmissionError('awaiting_guest_payment'), null);
-  assert.equal(getPaymentProofSubmissionError('payment_submitted'), null);
-  assert.match(getPaymentProofSubmissionError('pending') || '', /Payment proof can only be submitted/);
+  assert.equal(getPaymentProofSubmissionError('APPROVED', 'INITIATED'), null);
+  assert.match(getPaymentProofSubmissionError('PENDING', 'UNPAID') || '', /Payment is only available/);
+  assert.match(getPaymentProofSubmissionError('APPROVED', 'COMPLETED') || '', /Payment is only available/);
 });

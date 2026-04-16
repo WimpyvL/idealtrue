@@ -165,6 +165,19 @@ export async function submitPaymentProof(params: {
   return mapEncoreBooking(response.booking);
 }
 
+export async function confirmPayment(id: string) {
+  const response = await encoreRequest<{ booking: EncoreBooking }>(
+    `/bookings/${id}/payment-confirm`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    },
+    { auth: true },
+  );
+
+  return mapEncoreBooking(response.booking);
+}
+
 export async function listListingReviews(listingId: string): Promise<Review[]> {
   const response = await encoreRequest<{ reviews: EncoreReview[] }>(`/reviews/${listingId}`);
   return response.reviews.map(mapEncoreReview);

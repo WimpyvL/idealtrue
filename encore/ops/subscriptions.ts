@@ -6,6 +6,7 @@ import {
   notifyPaymentCompleted,
   notifyPaymentFailed,
   notifyPaymentInitiated,
+  notifyPaymentProofSubmitted,
 } from "./notifications";
 
 type InquiryEventPayload = {
@@ -15,6 +16,7 @@ type InquiryEventPayload = {
   hostId: string;
   inquiryState: "PENDING" | "VIEWED" | "RESPONDED" | "APPROVED" | "DECLINED" | "EXPIRED" | "BOOKED";
   paymentState: "UNPAID" | "INITIATED" | "COMPLETED" | "FAILED";
+  paymentSubmittedAt?: string | null;
   actor: "host" | "system" | "guest";
 };
 
@@ -47,6 +49,14 @@ export const inquiryNotificationProjection = new Subscription(
             listingTitle,
           });
         }
+        return;
+      }
+
+      if (event.type === "inquiry.payment_submitted") {
+        await notifyPaymentProofSubmitted({
+          hostId: payload.hostId,
+          listingTitle,
+        });
         return;
       }
 

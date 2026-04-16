@@ -74,7 +74,11 @@ export default function PaymentProofDialog({
     if (!booking) return;
 
     const trimmedReference = paymentReference.trim();
+    const trimmedProofUrl = paymentProofUrl.trim();
     if (!trimmedReference) {
+      return;
+    }
+    if (!paymentProof && !trimmedProofUrl) {
       return;
     }
 
@@ -84,7 +88,7 @@ export default function PaymentProofDialog({
         id: booking.id,
         paymentReference: trimmedReference,
         paymentProof,
-        paymentProofUrl: paymentProofUrl.trim() || null,
+        paymentProofUrl: trimmedProofUrl || null,
       });
       onClose();
     } finally {
@@ -171,16 +175,19 @@ export default function PaymentProofDialog({
 
             <div className="flex items-center gap-2 pt-1 text-xs font-semibold uppercase tracking-[0.16em] text-on-surface-variant">
               <Link2 className="h-3.5 w-3.5" />
-              Optional fallback link
+              Fallback proof link
             </div>
             <Textarea
               id="payment-proof-url"
               value={paymentProofUrl}
               onChange={(event) => setPaymentProofUrl(event.target.value)}
-              placeholder="Optional: paste a hosted receipt link if you already have one"
+              placeholder="Paste a hosted receipt link if you cannot upload an image"
               className="min-h-[96px]"
               disabled={!!paymentProof}
             />
+            <p className="text-xs text-on-surface-variant">
+              Attach a receipt image or provide a hosted proof link. The host cannot confirm payment without one.
+            </p>
           </div>
         </div>
 
@@ -188,7 +195,7 @@ export default function PaymentProofDialog({
           <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting || !paymentReference.trim()}>
+          <Button onClick={handleSubmit} disabled={isSubmitting || !paymentReference.trim() || (!paymentProof && !paymentProofUrl.trim())}>
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit proof"}
           </Button>
         </DialogFooter>

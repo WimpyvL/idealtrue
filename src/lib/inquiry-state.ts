@@ -1,6 +1,8 @@
 import type { Booking, InquiryState } from '@/types';
 
-export function getInquiryDisplayState(booking: Pick<Booking, 'inquiryState' | 'paymentState'>): InquiryState {
+type BookingStateSlice = Pick<Booking, 'inquiryState' | 'paymentState' | 'paymentSubmittedAt' | 'paymentConfirmedAt'>;
+
+export function getInquiryDisplayState(booking: BookingStateSlice): InquiryState {
   if (booking.inquiryState === 'APPROVED' && booking.paymentState === 'COMPLETED') {
     return 'BOOKED';
   }
@@ -8,7 +10,11 @@ export function getInquiryDisplayState(booking: Pick<Booking, 'inquiryState' | '
   return booking.inquiryState;
 }
 
-export function getInquiryBadgeLabel(booking: Pick<Booking, 'inquiryState' | 'paymentState'>) {
+export function getInquiryBadgeLabel(booking: BookingStateSlice) {
+  if (isAwaitingHostPaymentConfirmation(booking)) {
+    return 'Payment Under Review';
+  }
+
   const state = getInquiryDisplayState(booking);
 
   switch (state) {
@@ -31,7 +37,11 @@ export function getInquiryBadgeLabel(booking: Pick<Booking, 'inquiryState' | 'pa
   }
 }
 
-export function getInquiryResponseText(booking: Pick<Booking, 'inquiryState' | 'paymentState'>) {
+export function getInquiryResponseText(booking: BookingStateSlice) {
+  if (isAwaitingHostPaymentConfirmation(booking)) {
+    return 'Payment proof submitted. Awaiting host confirmation';
+  }
+
   const state = getInquiryDisplayState(booking);
 
   switch (state) {
@@ -54,16 +64,20 @@ export function getInquiryResponseText(booking: Pick<Booking, 'inquiryState' | '
   }
 }
 
-export function canGuestPay(booking: Pick<Booking, 'inquiryState' | 'paymentState'>) {
-  return booking.inquiryState === 'APPROVED' && booking.paymentState === 'INITIATED';
+export function canGuestPay(booking: BookingStateSlice) {
+  return booking.inquiryState === 'APPROVED' && booking.paymentState === 'INITIATED' && !booking.paymentSubmittedAt;
 }
 
-export function canGuestViewStayDetails(booking: Pick<Booking, 'inquiryState' | 'paymentState'>) {
+export function canGuestViewStayDetails(booking: BookingStateSlice) {
   return booking.inquiryState === 'BOOKED' && booking.paymentState === 'COMPLETED';
 }
 
-export function isBookedStay(booking: Pick<Booking, 'inquiryState' | 'paymentState'>) {
+export function isBookedStay(booking: BookingStateSlice) {
   return booking.inquiryState === 'BOOKED' && booking.paymentState === 'COMPLETED';
+}
+
+export function isAwaitingHostPaymentConfirmation(booking: BookingStateSlice) {
+  return booking.inquiryState === 'APPROVED' && booking.paymentState === 'INITIATED' && !!booking.paymentSubmittedAt && !booking.paymentConfirmedAt;
 }
 
 export function isOpenHostInquiry(booking: Pick<Booking, 'inquiryState'>) {

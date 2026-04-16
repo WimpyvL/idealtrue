@@ -96,6 +96,10 @@ interface SubmitPaymentProofParams {
   paymentProofUrl?: string | null;
 }
 
+interface ConfirmPaymentParams {
+  id: string;
+}
+
 function mapBooking(row: BookingRow): BookingRecord {
   return {
     id: row.id,
@@ -302,7 +306,7 @@ async function appendLedgerEvent(params: {
 }
 
 async function publishInquiryEvent(params: {
-  type: "inquiry.created" | "inquiry.status_changed" | "inquiry.payment_changed";
+  type: "inquiry.created" | "inquiry.status_changed" | "inquiry.payment_changed" | "inquiry.payment_submitted";
   inquiry: BookingRow;
   listingTitle: string;
   actorId: string;
@@ -321,6 +325,7 @@ async function publishInquiryEvent(params: {
       hostId: params.inquiry.host_id,
       inquiryState: params.inquiry.inquiry_state,
       paymentState: params.inquiry.payment_state,
+      paymentSubmittedAt: params.inquiry.payment_submitted_at,
       actor: params.actor,
     }),
   });
@@ -449,6 +454,55 @@ async function persistPaymentStateChange(params: {
     listingTitle: await resolveListingTitle(nextRow.listing_id),
     actorId: params.actorId,
     actor: params.actor,
+    occurredAt: params.now,
+  });
+
+  return nextRow;
+}
+
+async function persistPaymentProofSubmission(params: {
+  inquiry: BookingRow;
+  actorId: string;
+  now: string;
+  paymentReference?: string | null;
+  paymentProofKey?: string | null;
+  paymentProofUrl?: string | null;
+}) {
+  const nextRow: BookingRow = {
+    ...params.inquiry,
+    payment_reference: params.paymentReference ?? params.inquiry.payment_reference,
+    payment_proof_key: params.paymentProofKey ?? params.inquiry.payment_proof_key,
+    payment_proof_url: params.paymentProofUrl ?? params.inquiry.payment_proof_url,
+    payment_submitted_at: params.now,
+    updated_at: params.now,
+  };
+
+  await bookingDB.exec`
+    UPDATE bookings
+    SET payment_reference = ${nextRow.payment_reference},
+        payment_proof_key = ${nextRow.payment_proof_key},
+        payment_proof_url = ${nextRow.payment_proof_url},
+        payment_submitted_at = ${nextRow.payment_submitted_at},
+        updated_at = ${nextRow.updated_at}
+    WHERE id = ${nextRow.id}
+  `;
+
+  await appendLedgerEvent({
+    inquiryId: nextRow.id,
+    event: "PAYMENT_CHANGED",
+    fromState: params.inquiry.payment_state,
+    toState: nextRow.payment_state,
+    actor: "guest",
+    metadata: { inquiryState: nextRow.inquiry_state, paymentSubmittedAt: params.now },
+    timestamp: params.now,
+  });
+
+  await publishInquiryEvent({
+    type: "inquiry.payment_submitted",
+    inquiry: nextRow,
+    listingTitle: await resolveListingTitle(nextRow.listing_id),
+    actorId: params.actorId,
+    actor: "guest",
     occurredAt: params.now,
   });
 
@@ -735,7 +789,7 @@ export const submitPaymentProof = api<SubmitPaymentProofParams, { booking: Booki
     const existing = await fetchBookingRow(params.id);
     if (!existing) throw APIError.notFound("Inquiry not found.");
     if (existing.guest_id !== auth.userID) {
-      throw APIError.permissionDenied("Only the guest can complete payment for this inquiry.");
+      throw APIError.permissionDenied("Only the guest can submit payment proof for this inquiry.");
     }
 
     const paymentError = getPaymentProofSubmissionError(existing.inquiry_state, existing.payment_state);
@@ -769,8 +823,44 @@ export const submitPaymentProof = api<SubmitPaymentProofParams, { booking: Booki
       paymentProofUrl = params.paymentProofUrl ?? null;
     }
 
+    if (!paymentProofKey && !paymentProofUrl) {
+      throw APIError.invalidArgument("Attach a payment proof image or provide a hosted proof link.");
+    }
+
     const now = new Date().toISOString();
-    const paymentTransitionError = getPaymentStateTransitionError(existing.inquiry_state, existing.payment_state, "COMPLETED", "guest");
+    const updated = await persistPaymentProofSubmission({
+      inquiry: existing,
+      actorId: auth.userID,
+      now,
+      paymentReference: params.paymentReference ?? existing.payment_reference,
+      paymentProofKey,
+      paymentProofUrl,
+    });
+
+    return {
+      booking: await mapBookingAccessRecord(updated),
+    };
+  },
+);
+
+export const confirmPayment = api<ConfirmPaymentParams, { booking: BookingRecord }>(
+  { expose: true, method: "POST", path: "/bookings/:id/payment-confirm", auth: true },
+  async (params) => {
+    const auth = requireAuth();
+    const existing = await fetchBookingRow(params.id);
+    if (!existing) throw APIError.notFound("Inquiry not found.");
+    if (existing.host_id !== auth.userID) {
+      throw APIError.permissionDenied("Only the host can confirm payment for this inquiry.");
+    }
+    if (!existing.payment_submitted_at) {
+      throw APIError.failedPrecondition("The guest has not submitted payment proof yet.");
+    }
+    if (!existing.payment_proof_key && !existing.payment_proof_url) {
+      throw APIError.failedPrecondition("Payment proof is missing for this inquiry.");
+    }
+
+    const now = new Date().toISOString();
+    const paymentTransitionError = getPaymentStateTransitionError(existing.inquiry_state, existing.payment_state, "COMPLETED", "host");
     if (paymentTransitionError) {
       throw APIError.failedPrecondition(paymentTransitionError);
     }
@@ -779,12 +869,8 @@ export const submitPaymentProof = api<SubmitPaymentProofParams, { booking: Booki
       inquiry: existing,
       nextPaymentState: "COMPLETED",
       actorId: auth.userID,
-      actor: "guest",
+      actor: "host",
       now,
-      paymentReference: params.paymentReference ?? existing.payment_reference,
-      paymentProofKey,
-      paymentProofUrl,
-      paymentSubmittedAt: now,
       paymentConfirmedAt: now,
     });
 

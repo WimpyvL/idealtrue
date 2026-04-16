@@ -76,12 +76,12 @@ export function getPaymentStateTransitionError(inquiryState: InquiryState, curre
     return "Payment can only complete against an approved inquiry.";
   }
 
-  if (actor === "guest" && !["INITIATED", "COMPLETED", "FAILED"].includes(next)) {
-    return "Guests can only interact with the active payment flow.";
+  if (actor === "guest") {
+    return "Guests cannot directly mark payments complete. They can only submit payment proof.";
   }
 
-  if (actor === "host" && next !== "INITIATED") {
-    return "Hosts can only unlock payment. They cannot directly mark guest payments complete.";
+  if (actor === "host" && !["INITIATED", "COMPLETED"].includes(next)) {
+    return "Hosts can only unlock payment or confirm a submitted payment.";
   }
 
   if (next === "COMPLETED" && current !== "INITIATED") {

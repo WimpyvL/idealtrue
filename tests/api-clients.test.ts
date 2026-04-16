@@ -12,7 +12,7 @@ import { uploadListingMedia } from '../src/lib/media-client.ts';
 import { deleteAdminUser, getAdminPlatformSettings, listAdminNotifications, setAdminUserAccountStatus } from '../src/lib/admin-client.ts';
 import { dismissNotification } from '../src/lib/notification-client.ts';
 import { reviewKycSubmission } from '../src/lib/ops-client.ts';
-import { deleteListing, getListing, mapReferralStatus, saveListing, submitPaymentProof, updateBookingStatus } from '../src/lib/platform-client.ts';
+import { confirmPayment, deleteListing, getListing, mapReferralStatus, saveListing, submitPaymentProof, updateBookingStatus } from '../src/lib/platform-client.ts';
 
 type FetchCall = {
   url: string;
@@ -270,6 +270,7 @@ test('getListing and saveListing use the canonical Encore listing contract', asy
     type: 'house',
     pricePerNight: 2200,
     discountPercent: 5,
+    breakageDeposit: null,
     adults: 4,
     children: 2,
     bedrooms: 2,
@@ -318,7 +319,8 @@ test('updateBookingStatus sends the booking status patch to the correct endpoint
         adults: 2,
         children: 1,
         totalPrice: 3200,
-        status: 'awaiting_guest_payment',
+        inquiryState: 'APPROVED',
+        paymentState: 'INITIATED',
         paymentMethod: 'bank_transfer',
         paymentInstructions: 'Pay within 24 hours.',
         createdAt: '2026-03-30T09:00:00.000Z',
@@ -327,15 +329,16 @@ test('updateBookingStatus sends the booking status patch to the correct endpoint
     }),
   );
 
-  const booking = await updateBookingStatus('booking-1', 'awaiting_guest_payment');
+  const booking = await updateBookingStatus('booking-1', 'APPROVED');
 
   assert.equal(fetchCalls[0]?.url, `${DEFAULT_ENCORE_API_URL}/bookings/booking-1/status`);
   assert.equal(fetchCalls[0]?.init?.method, 'PATCH');
   assert.deepEqual(JSON.parse(String(fetchCalls[0]?.init?.body)), {
     id: 'booking-1',
-    status: 'awaiting_guest_payment',
+    status: 'APPROVED',
   });
-  assert.equal(booking.status, 'awaiting_guest_payment');
+  assert.equal(booking.inquiryState, 'APPROVED');
+  assert.equal(booking.paymentState, 'INITIATED');
   assert.equal(booking.paymentInstructions, 'Pay within 24 hours.');
 });
 
@@ -352,7 +355,8 @@ test('submitPaymentProof posts the guest payment proof to the booking payment en
         adults: 2,
         children: 0,
         totalPrice: 4100,
-        status: 'payment_submitted',
+        inquiryState: 'APPROVED',
+        paymentState: 'INITIATED',
         paymentMethod: 'bank_transfer',
         paymentReference: 'IDEAL-4100',
         paymentProofUrl: 'https://cdn.example.com/payment-proof.jpg',
@@ -373,12 +377,55 @@ test('submitPaymentProof posts the guest payment proof to the booking payment en
   assert.equal(fetchCalls[0]?.init?.method, 'POST');
   assert.deepEqual(JSON.parse(String(fetchCalls[0]?.init?.body)), {
     paymentReference: 'IDEAL-4100',
-    paymentProof: null,
+    paymentProofFilename: null,
+    paymentProofContentType: null,
+    paymentProofDataBase64: null,
     paymentProofUrl: 'https://cdn.example.com/payment-proof.jpg',
   });
-  assert.equal(booking.status, 'payment_submitted');
+  assert.equal(booking.inquiryState, 'APPROVED');
+  assert.equal(booking.paymentState, 'INITIATED');
+  assert.equal(booking.paymentSubmittedAt, '2026-03-30T11:00:00.000Z');
   assert.equal(booking.paymentReference, 'IDEAL-4100');
   assert.equal(booking.paymentProofUrl, 'https://cdn.example.com/payment-proof.jpg');
+});
+
+test('confirmPayment posts the host confirmation to the booking payment confirmation endpoint', async () => {
+  installFetch(() =>
+    createJsonResponse({
+      booking: {
+        id: 'booking-9',
+        listingId: 'listing-2',
+        guestId: 'guest-1',
+        hostId: 'host-1',
+        checkIn: '2026-04-20',
+        checkOut: '2026-04-22',
+        adults: 2,
+        children: 0,
+        totalPrice: 4100,
+        inquiryState: 'BOOKED',
+        paymentState: 'COMPLETED',
+        paymentMethod: 'bank_transfer',
+        paymentReference: 'IDEAL-4100',
+        paymentProofUrl: 'https://cdn.example.com/payment-proof.jpg',
+        paymentSubmittedAt: '2026-03-30T11:00:00.000Z',
+        paymentConfirmedAt: '2026-03-30T11:15:00.000Z',
+        bookedAt: '2026-03-30T11:15:00.000Z',
+        createdAt: '2026-03-30T10:30:00.000Z',
+        updatedAt: '2026-03-30T11:15:00.000Z',
+      },
+    }),
+  );
+
+  const booking = await confirmPayment('booking-9');
+
+  assert.equal(fetchCalls[0]?.url, `${DEFAULT_ENCORE_API_URL}/bookings/booking-9/payment-confirm`);
+  assert.equal(fetchCalls[0]?.init?.method, 'POST');
+  assert.deepEqual(JSON.parse(String(fetchCalls[0]?.init?.body)), {
+    id: 'booking-9',
+  });
+  assert.equal(booking.inquiryState, 'BOOKED');
+  assert.equal(booking.paymentState, 'COMPLETED');
+  assert.equal(booking.paymentConfirmedAt, '2026-03-30T11:15:00.000Z');
 });
 
 test('uploadListingMedia uses a signed upload URL instead of proxying the video through Encore', async () => {

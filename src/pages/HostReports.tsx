@@ -7,6 +7,10 @@ import { format, subDays, isAfter } from 'date-fns';
 import { formatRand } from '@/lib/currency';
 import { isBookedStay } from '@/lib/inquiry-state';
 
+function getBookingRevenueDate(booking: Booking) {
+  return booking.paymentConfirmedAt || booking.bookedAt || booking.createdAt;
+}
+
 export default function HostReports({ bookings, listings }: { bookings: Booking[], listings: Listing[] }) {
   const confirmedBookings = bookings.filter(isBookedStay);
   
@@ -15,13 +19,13 @@ export default function HostReports({ bookings, listings }: { bookings: Booking[
   
   // Last 30 days revenue
   const thirtyDaysAgo = subDays(new Date(), 30);
-  const recentBookings = confirmedBookings.filter(b => isAfter(new Date(b.createdAt), thirtyDaysAgo));
+  const recentBookings = confirmedBookings.filter((b) => isAfter(new Date(getBookingRevenueDate(b)), thirtyDaysAgo));
   const recentRevenue = recentBookings.reduce((sum, b) => sum + b.totalPrice, 0);
 
   // Generate chart data from confirmed bookings in the last 7 days.
   const chartData = Array.from({ length: 7 }).map((_, i) => {
     const date = subDays(new Date(), 6 - i);
-    const dayBookings = confirmedBookings.filter(b => format(new Date(b.createdAt), 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd'));
+    const dayBookings = confirmedBookings.filter((b) => format(new Date(getBookingRevenueDate(b)), 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd'));
     const revenue = dayBookings.reduce((sum, b) => sum + b.totalPrice, 0);
     return {
       name: format(date, 'EEE'),

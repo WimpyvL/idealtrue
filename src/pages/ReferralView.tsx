@@ -165,8 +165,8 @@ export default function ReferralView({
 
   const isHost = profile?.role === 'host';
   const tiers = isHost ? HOST_TIERS : GUEST_TIERS;
-  const referralCode = profile?.referralCode || 'REFERRAL-PENDING';
-  const referralLink = `${window.location.origin}?ref=${referralCode}`;
+  const referralCode = profile?.referralCode?.trim() || '';
+  const referralLink = referralCode ? `${window.location.origin}?ref=${referralCode}` : '';
   const totalEarned = referrals
     .filter((referral) => referral.status === 'rewarded' || referral.status === 'confirmed')
     .reduce((sum, referral) => sum + referral.amount, 0);
@@ -200,6 +200,9 @@ export default function ReferralView({
   }, []);
 
   function copyToClipboard() {
+    if (!referralLink) {
+      return;
+    }
     navigator.clipboard.writeText(referralLink);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);

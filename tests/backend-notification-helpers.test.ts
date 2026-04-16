@@ -3,9 +3,9 @@ import test from 'node:test';
 
 import {
   buildBookingRequestedNotification,
-  buildBookingStatusChangedNotification,
   buildCheckoutStatusChangedNotification,
   buildContentCreditsPurchasedNotification,
+  buildInquiryStatusChangedNotification,
   buildKycReviewedNotification,
   buildListingReviewedNotification,
   buildMessageReceivedNotification,
@@ -47,14 +47,14 @@ test('booking notification builders target the right inbox paths', () => {
 
 test('booking status builder distinguishes success and warning states', () => {
   assert.deepEqual(
-    buildBookingStatusChangedNotification({
+    buildInquiryStatusChangedNotification({
       guestId: 'guest-1',
-      status: 'confirmed',
+      inquiryState: 'BOOKED',
       listingTitle: 'Sea Point Stay',
     }),
     {
-      title: 'Booking updated',
-      message: 'Your booking for Sea Point Stay is confirmed.',
+      title: 'Inquiry updated',
+      message: 'Your stay at Sea Point Stay is confirmed.',
       type: 'success',
       target: 'guest-1',
       actionPath: '/guest',
@@ -62,14 +62,14 @@ test('booking status builder distinguishes success and warning states', () => {
   );
 
   assert.deepEqual(
-    buildBookingStatusChangedNotification({
+    buildInquiryStatusChangedNotification({
       guestId: 'guest-1',
-      status: 'declined',
+      inquiryState: 'DECLINED',
       listingTitle: 'Sea Point Stay',
     }),
     {
-      title: 'Booking updated',
-      message: 'Your booking for Sea Point Stay was declined.',
+      title: 'Inquiry updated',
+      message: 'Your inquiry for Sea Point Stay was declined.',
       type: 'warning',
       target: 'guest-1',
       actionPath: '/guest',

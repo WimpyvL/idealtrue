@@ -110,8 +110,8 @@ export function buildPaymentProofSubmittedNotification(params: {
   listingTitle: string;
 }): NotificationInput {
   return {
-    title: "Payment submitted",
-    message: `A guest completed the payment step for ${params.listingTitle}.`,
+    title: "Payment proof submitted",
+    message: `A guest submitted payment proof for ${params.listingTitle}.`,
     type: "info",
     target: params.hostId,
     actionPath: "/host/enquiries",

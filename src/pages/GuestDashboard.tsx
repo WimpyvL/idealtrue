@@ -7,7 +7,7 @@ import { Calendar, MapPin, Shield } from 'lucide-react';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { formatRand } from '@/lib/currency';
-import { canGuestPay, getInquiryBadgeLabel, getInquiryResponseText, isBookedStay } from '@/lib/inquiry-state';
+import { canGuestPay, getInquiryBadgeLabel, getInquiryResponseText, isAwaitingHostPaymentConfirmation, isBookedStay } from '@/lib/inquiry-state';
 
 export default function GuestDashboard({ 
   profile, 
@@ -52,6 +52,7 @@ export default function GuestDashboard({
           const listing = listings.find(l => l.id === booking.listingId);
           const statusLabel = getInquiryBadgeLabel(booking);
           const bookingReady = isBookedStay(booking);
+          const paymentAwaitingReview = isAwaitingHostPaymentConfirmation(booking);
           return (
             <Card key={booking.id} className="p-0 overflow-hidden flex flex-col">
               <div className="aspect-video bg-surface-container relative">
@@ -76,6 +77,8 @@ export default function GuestDashboard({
                     <span className="text-[10px] text-outline-variant">
                       {canGuestPay(booking)
                         ? 'Payment unlocked. Complete payment to confirm the stay.'
+                        : paymentAwaitingReview
+                          ? 'Payment proof submitted. The host still needs to confirm it.'
                         : getInquiryResponseText(booking)}
                     </span>
                   </div>
