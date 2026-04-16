@@ -52,6 +52,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
+import BrandLogo from '@/components/BrandLogo';
 import {
   Dialog,
   DialogContent,
@@ -520,11 +521,12 @@ export default function AdminDashboard() {
   return (
     <div className="flex h-screen overflow-hidden bg-[#fcfcfc]">
       <aside className="z-20 flex w-64 flex-col border-r border-slate-100 bg-white">
-        <div className="flex items-center gap-2 p-6">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0f172a]">
-            <Settings className="h-5 w-5 text-white" />
+        <div className="flex flex-col items-start gap-3 p-6">
+          <BrandLogo size="lg" priority className="h-20" />
+          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-slate-500">
+            <Settings className="h-3.5 w-3.5" />
+            Admin
           </div>
-          <span className="text-xl font-bold tracking-tight text-[#0f172a]">AdminPanel</span>
         </div>
 
         <div className="flex-1 space-y-8 overflow-y-auto px-4 py-4">

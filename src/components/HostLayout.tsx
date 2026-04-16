@@ -22,6 +22,7 @@ import { Button } from './ui/button';
 import { cn } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
 import NotificationBell from './NotificationBell';
+import BrandLogo from './BrandLogo';
 
 export default function HostLayout() {
   const navigate = useNavigate();
@@ -86,11 +87,8 @@ export default function HostLayout() {
     <div className="flex h-screen bg-[#F8F9FA] overflow-hidden font-sans text-on-surface w-full">
       {/* Sidebar */}
       <aside className="w-64 bg-surface border-r border-outline-variant flex flex-col h-full shrink-0 hidden md:flex">
-        <div className="p-6 flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
-          <div className="w-10 h-10 bg-gradient-to-br from-slate-900 to-blue-600 rounded-lg flex items-center justify-center overflow-hidden shadow-lg shadow-blue-900/20">
-            <span className="text-xl font-black text-white">IS</span>
-          </div>
-          <span className="text-xl font-black tracking-tight text-on-surface">IDEAL STAY</span>
+        <div className="p-6 flex items-center justify-center cursor-pointer" onClick={() => navigate('/')} aria-label="Go to Ideal Stay marketplace">
+          <BrandLogo size="lg" priority className="h-24" />
         </div>
 
         <div className="px-4 mb-2">

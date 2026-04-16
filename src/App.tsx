@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Toaster, toast } from 'sonner';
 import { useLocation, useNavigate } from 'react-router-dom';
 import AppNavigation from './components/AppNavigation';
+import BrandLogo from './components/BrandLogo';
 import AppRoutes from './components/AppRoutes';
 import ListingDetail from './components/ListingDetail';
 import PaymentProofDialog from './components/PaymentProofDialog';
@@ -106,7 +107,8 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-surface">
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-surface">
+        <BrandLogo size="lg" priority className="h-24" />
         <Loader2 className="w-8 h-8 animate-spin text-outline-variant" />
       </div>
     );
