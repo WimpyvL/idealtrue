@@ -48,8 +48,16 @@ export default function AppNavigation({
       <nav className="sticky top-0 z-50 bg-surface-variant/60 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
-            <div className="flex items-center cursor-pointer" onClick={() => navigate('/')} aria-label="Go to Ideal Stay home">
+            <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')} aria-label="Go to Ideal Stay home">
               <BrandLogo size="md" priority className="h-12 sm:h-14" />
+              <div className="flex flex-col leading-none">
+                <span className="text-sm font-semibold uppercase tracking-[0.24em] text-on-surface sm:text-base">
+                  Ideal Stay
+                </span>
+                <span className="text-[11px] text-on-surface-variant sm:text-xs">
+                  Curated stays, built for ease
+                </span>
+              </div>
             </div>
 
             <div className="hidden md:flex items-center gap-6">
