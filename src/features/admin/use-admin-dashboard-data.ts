@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
+  AdminHostBillingAccount,
   Booking,
   Listing,
   Notification,
@@ -15,6 +16,7 @@ import {
   createAdminNotification,
   getAdminObservability,
   getAdminPlatformSettings,
+  listAdminHostBillingAccounts,
   listAdminBookings,
   listAdminCheckouts,
   listAdminListings,
@@ -23,6 +25,7 @@ import {
   listAdminReviews,
   listAdminSubscriptions,
   listAdminUsers,
+  setAdminHostGreylist,
   updateAdminPlatformSettings,
   updateAdminUser,
 } from '@/lib/admin-client';
@@ -55,6 +58,7 @@ export function useAdminDashboardData({ notify, profileId, profileRole }: UseAdm
   const [allReviews, setAllReviews] = useState<Review[]>([]);
   const [allSubscriptions, setAllSubscriptions] = useState<Subscription[]>([]);
   const [allCheckouts, setAllCheckouts] = useState<AdminCheckout[]>([]);
+  const [allHostBillingAccounts, setAllHostBillingAccounts] = useState<AdminHostBillingAccount[]>([]);
   const [allNotifications, setAllNotifications] = useState<Notification[]>([]);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings | null>(null);
   const [observability, setObservability] = useState<AdminObservabilitySnapshot | null>(null);
@@ -73,6 +77,7 @@ export function useAdminDashboardData({ notify, profileId, profileRole }: UseAdm
         referrals,
         subscriptions,
         checkouts,
+        hostBillingAccounts,
         notifications,
         settings,
       ] = await Promise.all([
@@ -83,6 +88,7 @@ export function useAdminDashboardData({ notify, profileId, profileRole }: UseAdm
         listAdminReferralRewards(),
         listAdminSubscriptions(),
         listAdminCheckouts(),
+        listAdminHostBillingAccounts(),
         listAdminNotifications(),
         getAdminPlatformSettings(),
       ]);
@@ -94,6 +100,7 @@ export function useAdminDashboardData({ notify, profileId, profileRole }: UseAdm
       setAllReferrals(referrals);
       setAllSubscriptions(subscriptions);
       setAllCheckouts(checkouts);
+      setAllHostBillingAccounts(hostBillingAccounts);
       setAllNotifications(notifications);
       setPlatformSettings(settings);
       setRecentEnquiries([...bookings].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5));
@@ -234,9 +241,32 @@ export function useAdminDashboardData({ notify, profileId, profileRole }: UseAdm
     }
   }, [notify]);
 
+  const handleSetHostGreylist = useCallback(async (params: {
+    userId: string;
+    greylisted: boolean;
+    reason?: string | null;
+  }) => {
+    try {
+      const account = await setAdminHostGreylist(params);
+      setAllHostBillingAccounts((current) =>
+        current.some((item) => item.userId === account.userId)
+          ? current.map((item) => item.userId === account.userId ? account : item)
+          : [account, ...current],
+      );
+      notify({
+        title: params.greylisted ? 'Host greylisted' : 'Host restored',
+        description: params.greylisted ? 'Listings were paused for billing follow-up.' : 'Greylist flag removed.',
+      });
+    } catch (error) {
+      console.error('Failed to update host greylist state', error);
+      notify({ title: 'Greylist update failed', description: 'Could not update host billing status.', variant: 'destructive' });
+    }
+  }, [notify]);
+
   return {
     allBookings,
     allCheckouts,
+    allHostBillingAccounts,
     allListings,
     allNotifications,
     allReferrals,
@@ -244,6 +274,7 @@ export function useAdminDashboardData({ notify, profileId, profileRole }: UseAdm
     allSubscriptions,
     allUsers,
     handleApproveKyc,
+    handleSetHostGreylist,
     handleUpdateListingStatus,
     handleUpdateSettings,
     handleUpdateUserRole,
@@ -258,6 +289,7 @@ export function useAdminDashboardData({ notify, profileId, profileRole }: UseAdm
     refreshObservability,
     setAllBookings,
     setAllCheckouts,
+    setAllHostBillingAccounts,
     setAllListings,
     setAllNotifications,
     setAllReferrals,

@@ -112,6 +112,7 @@ export default function AdminDashboard() {
     setTopListings,
     allListings,
     setAllListings,
+    allHostBillingAccounts,
     allUsers,
     setAllUsers,
     allReferrals,
@@ -127,6 +128,7 @@ export default function AdminDashboard() {
     kycSubmissions,
     setKycSubmissions,
     handleApproveKyc: handleApproveKYC,
+    handleSetHostGreylist,
     handleUpdateListingStatus,
     handleUpdateSettings,
     handleUpdateUserRole,
@@ -490,7 +492,7 @@ export default function AdminDashboard() {
       case 'kyc':
         return <KycSection allUsers={allUsers} handleApproveKYC={handleApproveKYC} handleReviewKYC={handleReviewKYC} kycSubmissions={kycSubmissions} openRejectKycDialog={openRejectKycDialog} />;
       case 'users':
-        return <UsersSection allUsers={allUsers} handleReviewKYC={handleReviewKYC} handleUpdateUserRole={handleUpdateUserRole} kycSubmissions={kycSubmissions} navigate={navigate} openAccountStatusDialog={openAccountStatusDialog} setConfirmDelete={setConfirmDelete} setEditingUser={setEditingUser} />;
+        return <UsersSection allHostBillingAccounts={allHostBillingAccounts} allUsers={allUsers} handleReviewKYC={handleReviewKYC} handleSetHostGreylist={handleSetHostGreylist} handleUpdateUserRole={handleUpdateUserRole} kycSubmissions={kycSubmissions} navigate={navigate} openAccountStatusDialog={openAccountStatusDialog} setConfirmDelete={setConfirmDelete} setEditingUser={setEditingUser} />;
       case 'enquiries':
         return <EnquiriesSection allBookings={allBookings} allListings={allListings} allUsers={allUsers} />;
       case 'listings':

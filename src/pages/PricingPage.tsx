@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { ArrowRight, Check, Loader2, Megaphone, ShieldCheck, Sparkles, Smartphone, Video, BarChart4, Users, Share2, LineChart, BadgeCheck } from "lucide-react";
 import { toast } from 'sonner';
 import { useAuth } from "@/contexts/AuthContext";
-import { createSubscriptionCheckout, getCheckoutStatus } from "@/lib/billing-client";
+import { createSubscriptionCheckout, getCheckoutStatus, redeemHostVoucher } from "@/lib/billing-client";
 
 type PlanTier = 'standard' | 'professional' | 'premium';
 type BillingInterval = 'monthly' | 'annual';
@@ -41,7 +41,7 @@ const plans: Plan[] = [
             { text: "1 active listing", included: true },
             { text: "Higher Search Ranking", included: true },
             { text: "Full Photo Gallery", included: true },
-            { text: "Showcase Video Slot", included: true },
+            { text: "Showcase Video Slot", included: false },
             { text: "Monthly Social Visibility", included: true },
             { text: "Verified Host Badge", included: true },
             { text: "Holiday Campaign Priority", included: true },
@@ -100,7 +100,7 @@ const planStats = [
 const comparisonRows = [
     { label: "Listings included", values: ["1", "Multiple", "Multiple"] },
     { label: "Verified badge", values: ["Included", "Included", "Priority"] },
-    { label: "Video placement", values: ["Included", "Optional", "Included"] },
+    { label: "Video placement", values: ["Not included", "Included", "Included"] },
     { label: "Social promotion", values: ["Monthly visibility", "2 promos", "Featured promo"] },
     { label: "Content engine", values: ["Any listing", "Any listing + multi-platform", "Any listing + campaign-ready"] },
     { label: "Analytics", values: ["Basic", "Advanced", "Advanced"] },
@@ -114,6 +114,8 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
     const [fetchingPlan, setFetchingPlan] = useState(true);
     const [currentPlan, setCurrentPlan] = useState<PlanTier>('standard');
     const [billingInterval, setBillingInterval] = useState<BillingInterval>('monthly');
+    const [voucherCode, setVoucherCode] = useState('');
+    const [redeemingVoucher, setRedeemingVoucher] = useState(false);
     const [searchParams] = useSearchParams();
     const sourceLabel = searchParams.get('source_label') || searchParams.get('region');
     const billingStatus = searchParams.get('billing_status');
@@ -211,6 +213,28 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
             setLoadingPlan(null);
         }
     }, [billingInterval, user]);
+
+    const handleVoucherRedeem = useCallback(async () => {
+        if (!user) {
+            toast.error("Please sign in before redeeming a voucher PIN.");
+            return;
+        }
+
+        setRedeemingVoucher(true);
+        try {
+            const account = await redeemHostVoucher(voucherCode);
+            const nextProfile = await refreshProfile();
+            setCurrentPlan((nextProfile?.hostPlan as PlanTier) || account.plan);
+            toast.success(`Voucher redeemed. Free Standard access now runs until ${account.currentPeriodEnd?.slice(0, 10)}.`);
+            setVoucherCode('');
+            navigate('/host', { replace: true });
+        } catch (error: any) {
+            console.error("Voucher redemption failed:", error);
+            toast.error("Voucher redemption failed: " + error.message);
+        } finally {
+            setRedeemingVoucher(false);
+        }
+    }, [navigate, refreshProfile, user, voucherCode]);
 
     const getPlanPrice = useCallback((plan: Plan) => {
         if (billingInterval === 'monthly') {
@@ -323,6 +347,30 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
                             </div>
                         ))}
                     </div>
+                </div>
+            </section>
+
+            <section className="grid gap-4 rounded-[2rem] border border-emerald-200 bg-[linear-gradient(135deg,#f0fdf4_0%,#ecfeff_55%,#f8fafc_100%)] p-6 shadow-sm lg:grid-cols-[1fr_auto] lg:items-center">
+                <div className="space-y-2">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/80 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">
+                        Founding Host Voucher
+                    </div>
+                    <h2 className="text-2xl font-black text-slate-950">First 100 hosts can redeem a 3-month Standard voucher PIN.</h2>
+                    <p className="text-sm leading-6 text-slate-600">
+                        Redeeming the PIN starts a free Standard billing cycle immediately. Card capture is not required upfront, but hosts will start receiving reminders 7 days before the free period ends.
+                    </p>
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                    <input
+                        type="text"
+                        value={voucherCode}
+                        onChange={(event) => setVoucherCode(event.target.value.toUpperCase())}
+                        placeholder="Enter voucher PIN"
+                        className="h-12 min-w-[220px] rounded-xl border border-emerald-200 bg-white px-4 text-sm font-semibold tracking-[0.2em] text-slate-900 outline-none focus:border-emerald-500"
+                    />
+                    <Button onClick={handleVoucherRedeem} disabled={redeemingVoucher || !voucherCode.trim()} className="h-12 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">
+                        {redeemingVoucher ? 'Redeeming...' : 'Redeem Voucher'}
+                    </Button>
                 </div>
             </section>
 

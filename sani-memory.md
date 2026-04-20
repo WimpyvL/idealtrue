@@ -1,5 +1,6 @@
 ## Change Log
 
+- Reduced the verified-state `Continue` button in `src/components/KYCModal.tsx` so the success modal uses a much smaller CTA footprint.
 - Updated `src/components/AppNavigation.tsx` so the public header now shows the `Ideal Stay` name next to the logo, making the brand lockup explicit in the main nav.
 - Added `public/ideal-stay-logo.png` from the supplied asset and created `src/components/BrandLogo.tsx` to centralize branding.
 - Replaced old text/icon branding in `src/components/AppNavigation.tsx`, `src/components/HostLayout.tsx`, `src/pages/AdminDashboard.tsx`, and `src/pages/SignupPage.tsx`.
@@ -22,3 +23,13 @@
 - Updated `docs/booking-and-enquiry-workflow.md` and `README.md` to document the backend availability-block endpoints, interval semantics, and manual block notes.
 - Added a compatibility fallback in `src/lib/platform-client.ts` and `src/pages/HostAvailability.tsx` so the host calendar degrades to the legacy blocked-date endpoint when the deployed Encore backend does not yet expose the new availability summary/block endpoints.
 - Fixed `src/pages/HostDashboard.tsx` to treat all open host enquiries as enquiries instead of only pending-decision ones, and removed noisy booking debug logs from `src/hooks/use-platform-data.ts`.
+- Raised the Standard host listing-photo cap to 10 in `src/pages/CreateListing.tsx` and `encore/catalog/api.ts`, while keeping Professional/Premium at 20 and leaving the single showcase-video slot unchanged.
+- Added a UI regression test in `tests/ui/create-listing.test.tsx` to lock the Standard-plan photo cap at 10 and verify the media step still exposes a single video uploader.
+- Removed Standard-tier showcase video access across `src/pages/CreateListing.tsx`, `encore/catalog/api.ts`, `encore/catalog/host-plan.ts`, `src/pages/PricingPage.tsx`, and `encore/shared/domain.ts` so Standard is now 10 photos and 0 video while paid tiers keep 20 photos and 1 video.
+- Added host billing lifecycle infrastructure in `encore/billing/host-billing.ts`, `encore/billing/host-billing-service.ts`, and migration `encore/billing/migrations/7_host_vouchers_and_billing.up.sql` to support voucher-backed onboarding, billing-cycle state, reminder windows, card-on-file tracking, greylisting, and billing event history.
+- Seeded the first 100 founding-host voucher PINs in the new billing migration and exported the same codes to `docs/host-voucher-pins-2026-04-20.csv` for distribution.
+- Exposed new billing APIs in `encore/billing/api.ts` plus frontend clients in `src/lib/billing-client.ts` and `src/lib/admin-client.ts` for voucher redemption, host billing account reads, card capture, admin host billing reads, and greylist control.
+- Updated `encore/catalog/api.ts` so greylisted hosts are hidden from public listing surfaces and direct public listing fetches, while greylisting also pauses active listings by forcing them inactive in the billing service.
+- Reworked `src/pages/HostDashboard.tsx` into a real host billing surface that shows billing source, cycle dates, reminder state, greylist state, and a billing-card capture form instead of a fake static plan card.
+- Extended admin billing visibility through `src/features/admin/use-admin-dashboard-data.ts`, `src/features/admin/dashboard-sections.tsx`, and `src/pages/AdminDashboard.tsx` so admins can see billing-greylisted hosts and toggle greylist state directly from the user management surface.
+- Added coverage in `tests/host-billing-lifecycle.test.ts`, `tests/catalog-billing-helpers.test.ts`, `tests/api-clients.test.ts`, and updated UI/MSW tests so the new entitlements, voucher lifecycle, and billing endpoints are locked down by focused checks.

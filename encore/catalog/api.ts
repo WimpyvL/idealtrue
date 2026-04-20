@@ -16,6 +16,7 @@ import {
 } from "./availability";
 import { listingMediaBucket } from "./storage";
 import { computeHostListingQuota, type HostListingQuota } from "./quota";
+import { getMaxImagesForPlan, supportsListingVideo } from "./host-plan";
 import { requireRole, type AuthData } from "../shared/auth";
 import { billingDB } from "../billing/db";
 import { bookingDB } from "../booking/db";
@@ -156,10 +157,6 @@ const ALLOWED_LISTING_VIDEO_CONTENT_TYPES = new Set([
   "video/quicktime",
 ]);
 
-function getMaxImagesForPlan(plan: HostAccessRow["host_plan"]) {
-  return plan === "standard" ? 5 : 20;
-}
-
 async function getHostAccess(hostId: string) {
   const host = await identityDB.queryRow<HostAccessRow>`
     SELECT id, host_plan, kyc_status
@@ -191,6 +188,12 @@ function assertListingImageCount(images: string[], plan: HostAccessRow["host_pla
   const maxImages = getMaxImagesForPlan(plan);
   if (images.length > maxImages) {
     throw APIError.invalidArgument(`Your ${plan} plan allows up to ${maxImages} images per listing.`);
+  }
+}
+
+function assertListingVideoAccess(videoUrl: string | null | undefined, plan: HostAccessRow["host_plan"]) {
+  if (videoUrl && !supportsListingVideo(plan)) {
+    throw APIError.invalidArgument("Standard hosts cannot add a showcase video.");
   }
 }
 
@@ -283,6 +286,34 @@ function canReadUnpublishedListing(auth: AuthData | null, listingHostId: string)
   if (auth.role === "admin" || auth.role === "support") return true;
   if (auth.role === "host" && auth.userID === listingHostId) return true;
   return false;
+}
+
+async function isHostGreylisted(hostId: string) {
+  const row = await billingDB.queryRow<{ billing_status: string }>`
+    SELECT billing_status
+    FROM host_billing_accounts
+    WHERE user_id = ${hostId}
+  `;
+  return row?.billing_status === "greylisted";
+}
+
+async function filterPubliclyVisibleListings(rows: ListingRow[]) {
+  const hostIds = Array.from(new Set(rows.map((row) => row.host_id).filter(Boolean)));
+  if (hostIds.length === 0) {
+    return rows;
+  }
+
+  const greylistedRows = await billingDB.rawQueryAll<{ user_id: string }>(
+    `
+      SELECT user_id
+      FROM host_billing_accounts
+      WHERE billing_status = 'greylisted'
+        AND user_id = ANY($1::text[])
+    `,
+    hostIds,
+  );
+  const greylistedHosts = new Set(greylistedRows.map((row) => row.user_id));
+  return rows.filter((row) => !greylistedHosts.has(row.host_id));
 }
 
 function getListingMediaObjectKey(publicUrl: string) {
@@ -903,8 +934,9 @@ export const listListings = api<ListListingsParams, { listings: ListingRecord[] 
         hostId,
       );
 
-      const availabilityByListing = await listAvailabilityBlocksForListings(rows.map((row) => row.id));
-      return { listings: rows.map((row) => mapListing(row, availabilityByListing.get(row.id) ?? [])) };
+      const visibleRows = await filterPubliclyVisibleListings(rows);
+      const availabilityByListing = await listAvailabilityBlocksForListings(visibleRows.map((row) => row.id));
+      return { listings: visibleRows.map((row) => mapListing(row, availabilityByListing.get(row.id) ?? [])) };
     }
 
     const canSeeUnpublished =
@@ -924,8 +956,9 @@ export const listListings = api<ListListingsParams, { listings: ListingRecord[] 
         hostId,
       );
 
-      const availabilityByListing = await listAvailabilityBlocksForListings(rows.map((row) => row.id));
-      return { listings: rows.map((row) => mapListing(row, availabilityByListing.get(row.id) ?? [])) };
+      const visibleRows = await filterPubliclyVisibleListings(rows);
+      const availabilityByListing = await listAvailabilityBlocksForListings(visibleRows.map((row) => row.id));
+      return { listings: visibleRows.map((row) => mapListing(row, availabilityByListing.get(row.id) ?? [])) };
     }
 
     const rows = await catalogDB.rawQueryAll<ListingRow>(
@@ -956,6 +989,9 @@ export const getListing = api<{ id: string }, { listing: ListingRecord }>(
     if (row.status !== "active" && !canReadUnpublishedListing(auth, row.host_id)) {
       throw APIError.notFound("Listing not found.");
     }
+    if (row.status === "active" && !canReadUnpublishedListing(auth, row.host_id) && await isHostGreylisted(row.host_id)) {
+      throw APIError.notFound("Listing not found.");
+    }
 
     return { listing: await getListingWithAvailability(row) };
   },
@@ -978,6 +1014,7 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
     const hostAccess = isStaffOperator ? null : await getHostAccess(auth.userID);
     if (hostAccess) {
       assertListingImageCount(params.images, hostAccess.host_plan);
+      assertListingVideoAccess(params.videoUrl, hostAccess.host_plan);
     }
 
     if (params.id) {
@@ -1314,6 +1351,12 @@ export const uploadListingVideo = api.raw(
       }
 
       await assertCanUploadMedia(auth, listingId);
+      if (auth.role !== "admin") {
+        const hostAccess = await getHostAccess(auth.userID);
+        if (!supportsListingVideo(hostAccess.host_plan)) {
+          throw APIError.permissionDenied("Standard hosts cannot upload showcase videos.");
+        }
+      }
       const videoData = await readRawBuffer(req, 100 * 1024 * 1024);
       const objectKey = buildListingMediaObjectKey({ auth, listingId, filename });
 

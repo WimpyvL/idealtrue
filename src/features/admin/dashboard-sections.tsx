@@ -43,6 +43,7 @@ import { cn } from '@/lib/utils';
 import { formatRand } from '@/lib/currency';
 import { getInquiryBadgeLabel, isBookedStay } from '@/lib/inquiry-state';
 import type {
+  AdminHostBillingAccount,
   Booking,
   Listing,
   Notification,
@@ -321,8 +322,10 @@ export function PendingListingsSection({
 }
 
 export function UsersSection({
+  allHostBillingAccounts,
   allUsers,
   handleReviewKYC,
+  handleSetHostGreylist,
   handleUpdateUserRole,
   kycSubmissions,
   navigate,
@@ -330,8 +333,10 @@ export function UsersSection({
   setConfirmDelete,
   setEditingUser,
 }: {
+  allHostBillingAccounts: AdminHostBillingAccount[];
   allUsers: UserProfile[];
   handleReviewKYC: (submission: KycSubmission) => void;
+  handleSetHostGreylist: (params: { userId: string; greylisted: boolean; reason?: string | null }) => Promise<void> | void;
   handleUpdateUserRole: (userId: string, role: UserProfile['role']) => Promise<void> | void;
   kycSubmissions: KycSubmission[];
   navigate: (value: string) => void;
@@ -341,6 +346,7 @@ export function UsersSection({
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortDirection, setSortDirection] = useState<DateSortDirection>('desc');
+  const billingByUserId = new Map(allHostBillingAccounts.map((account) => [account.userId, account]));
   const filteredUsers = sortByDate(
     allUsers.filter((user) =>
       user.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -380,7 +386,9 @@ export function UsersSection({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredUsers.map((user) => (
+              {filteredUsers.map((user) => {
+                const billingAccount = billingByUserId.get(user.id);
+                return (
                 <tr key={user.id} className="transition-colors hover:bg-slate-50">
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-2.5">
@@ -415,6 +423,14 @@ export function UsersSection({
                       {user.accountStatusReason ? (
                         <p className="line-clamp-2 max-w-[180px] text-[10px] leading-4 text-slate-500">{user.accountStatusReason}</p>
                       ) : null}
+                      {billingAccount?.billingStatus === 'greylisted' ? (
+                        <>
+                          <Badge variant="warning" className="text-[9px] uppercase">billing greylist</Badge>
+                          <p className="line-clamp-2 max-w-[180px] text-[10px] leading-4 text-slate-500">
+                            {billingAccount.greylistReason || 'Billing follow-up required.'}
+                          </p>
+                        </>
+                      ) : null}
                     </div>
                   </td>
                   <td className="px-4 py-2.5">
@@ -433,6 +449,31 @@ export function UsersSection({
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <div className="flex flex-wrap justify-end gap-1.5">
+                      {user.role === 'host' ? (
+                        billingAccount?.billingStatus === 'greylisted' ? (
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8 text-emerald-700 hover:bg-emerald-50"
+                            title="Remove billing greylist"
+                            aria-label="Remove billing greylist"
+                            onClick={() => handleSetHostGreylist({ userId: user.id, greylisted: false })}
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8 text-amber-700 hover:bg-amber-50"
+                            title="Greylist host"
+                            aria-label="Greylist host"
+                            onClick={() => handleSetHostGreylist({ userId: user.id, greylisted: true, reason: 'Greylisted by admin for billing follow-up.' })}
+                          >
+                            <Ban className="h-3.5 w-3.5" />
+                          </Button>
+                        )
+                      ) : null}
                       {user.kycStatus === 'pending' ? (
                         <Button
                           variant="outline"
@@ -515,7 +556,7 @@ export function UsersSection({
                     </div>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>

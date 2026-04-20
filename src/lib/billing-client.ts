@@ -1,6 +1,7 @@
 import { encoreRequest } from './encore-client';
 import type { Listing } from '@/types';
 import type { SocialPlatform, SocialTemplateId, SocialTone } from './social-content';
+import type { AdminHostBillingAccount, HostBillingAccount } from '@/types';
 
 export type HostPlan = 'standard' | 'professional' | 'premium';
 export type BillingInterval = 'monthly' | 'annual';
@@ -126,4 +127,52 @@ export async function getCheckoutStatus(checkoutId: string) {
     {},
     { auth: true },
   );
+}
+
+export async function getMyHostBillingAccount() {
+  const response = await encoreRequest<{ account: HostBillingAccount }>(
+    '/billing/host/account',
+    {},
+    { auth: true },
+  );
+  return response.account;
+}
+
+export async function redeemHostVoucher(code: string) {
+  const response = await encoreRequest<{ account: HostBillingAccount }>(
+    '/billing/host/vouchers/redeem',
+    {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    },
+    { auth: true },
+  );
+  return response.account;
+}
+
+export async function saveHostBillingCard(params: {
+  cardholderName: string;
+  brand: string;
+  last4: string;
+  expiryMonth: number;
+  expiryYear: number;
+}) {
+  const response = await encoreRequest<{ account: HostBillingAccount }>(
+    '/billing/host/card',
+    {
+      method: 'POST',
+      body: JSON.stringify(params),
+    },
+    { auth: true },
+  );
+  return response.account;
+}
+
+export async function listAdminHostBillingAccounts() {
+  const response = await encoreRequest<{ accounts: AdminHostBillingAccount[] }>(
+    '/admin/billing/host-accounts',
+    {},
+    { auth: true },
+  );
+  return response.accounts;
 }

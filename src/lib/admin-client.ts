@@ -1,5 +1,5 @@
 import { encoreRequest } from './encore-client';
-import type { AccountStatus, Booking, Listing, Notification, PlatformSettings, Referral, Review, Subscription, UserProfile } from '@/types';
+import type { AccountStatus, AdminHostBillingAccount, Booking, Listing, Notification, PlatformSettings, Referral, Review, Subscription, UserProfile } from '@/types';
 import {
   mapEncoreBooking,
   mapEncoreListing,
@@ -208,6 +208,31 @@ export async function listAdminSubscriptions(): Promise<Subscription[]> {
 export async function listAdminCheckouts(): Promise<AdminCheckout[]> {
   const response = await encoreRequest<{ checkouts: EncoreCheckout[] }>('/admin/checkouts', {}, { auth: true });
   return response.checkouts.map(mapCheckout);
+}
+
+export async function listAdminHostBillingAccounts(): Promise<AdminHostBillingAccount[]> {
+  const response = await encoreRequest<{ accounts: AdminHostBillingAccount[] }>(
+    '/admin/billing/host-accounts',
+    {},
+    { auth: true },
+  );
+  return response.accounts;
+}
+
+export async function setAdminHostGreylist(params: {
+  userId: string;
+  greylisted: boolean;
+  reason?: string | null;
+}) {
+  const response = await encoreRequest<{ account: AdminHostBillingAccount }>(
+    '/admin/billing/host-accounts/greylist',
+    {
+      method: 'POST',
+      body: JSON.stringify(params),
+    },
+    { auth: true },
+  );
+  return response.account;
 }
 
 export async function listAdminNotifications(): Promise<Notification[]> {

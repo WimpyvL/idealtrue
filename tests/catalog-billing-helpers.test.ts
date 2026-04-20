@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { classifyYocoWebhookOutcome } from '../encore/billing/webhook-classification.ts';
+import { getMaxImagesForPlan, supportsListingVideo } from '../encore/catalog/host-plan.ts';
 import { computeHostListingQuota, countsTowardHostListingQuota } from '../encore/catalog/quota.ts';
 
 test('countsTowardHostListingQuota only excludes archived and draft listings', () => {
@@ -43,6 +44,16 @@ test('computeHostListingQuota leaves paid tiers unrestricted', () => {
     usedListings: 12,
     canCreate: true,
   });
+});
+
+test('listing media entitlements keep Standard at 10 photos and no video while paid tiers keep richer media', () => {
+  assert.equal(getMaxImagesForPlan('standard'), 10);
+  assert.equal(getMaxImagesForPlan('professional'), 20);
+  assert.equal(getMaxImagesForPlan('premium'), 20);
+
+  assert.equal(supportsListingVideo('standard'), false);
+  assert.equal(supportsListingVideo('professional'), true);
+  assert.equal(supportsListingVideo('premium'), true);
 });
 
 test('classifyYocoWebhookOutcome treats succeeded events as paid', () => {

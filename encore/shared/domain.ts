@@ -268,7 +268,7 @@ export const HOST_PLANS: SubscriptionPlan[] = [
     name: "Standard",
     monthlyAmount: 149,
     annualAmount: 1490,
-    features: ["Verified host badge", "Video slot", "Content studio access"],
+    features: ["Verified host badge", "10-photo gallery", "Content studio access"],
   },
   {
     id: "professional",

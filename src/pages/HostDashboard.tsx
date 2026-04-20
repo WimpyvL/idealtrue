@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Listing, Booking, UserProfile } from '../types';
+import { Booking, HostBillingAccount, Listing, UserProfile } from '../types';
 import { 
   LayoutDashboard, 
   Calendar, 
@@ -17,9 +17,11 @@ import {
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { Input } from '../components/ui/input';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { updateBookingStatus } from '@/lib/platform-client';
+import { getMyHostBillingAccount, saveHostBillingCard } from '@/lib/billing-client';
 import { formatRand } from '@/lib/currency';
 import { getInquiryBadgeLabel, isBookedStay, isOpenHostInquiry, isPendingHostDecision } from '@/lib/inquiry-state';
 
@@ -40,10 +42,43 @@ export default function HostDashboard({
 }) {
   const navigate = useNavigate();
   const [localBookings, setLocalBookings] = useState(bookings);
+  const [billingAccount, setBillingAccount] = useState<HostBillingAccount | null>(null);
+  const [billingCardForm, setBillingCardForm] = useState({
+    cardholderName: '',
+    brand: 'Visa',
+    last4: '',
+    expiryMonth: '',
+    expiryYear: '',
+  });
+  const [savingBillingCard, setSavingBillingCard] = useState(false);
 
   useEffect(() => {
     setLocalBookings(bookings);
   }, [bookings]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadBillingAccount() {
+      if (profile?.role !== 'host') {
+        return;
+      }
+
+      try {
+        const account = await getMyHostBillingAccount();
+        if (!cancelled) {
+          setBillingAccount(account);
+        }
+      } catch (error) {
+        console.error('Failed to load host billing account', error);
+      }
+    }
+
+    void loadBillingAccount();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.role]);
 
   const activeListings = listings.filter(l => l.status === 'active');
   const allHostInquiries = localBookings.filter(isOpenHostInquiry);
@@ -54,6 +89,8 @@ export default function HostDashboard({
   const totalRevenue = localBookings
     .filter(isBookedStay)
     .reduce((sum, b) => sum + b.totalPrice, 0);
+  const isGreylisted = billingAccount?.billingStatus === 'greylisted';
+  const isVoucherHost = billingAccount?.billingSource === 'voucher';
 
   return (
     <div className="space-y-8">
@@ -271,9 +308,9 @@ export default function HostDashboard({
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <h3 className="text-lg font-bold">Current Plan: <span className="capitalize">{profile?.hostPlan || 'Standard'}</span></h3>
-                {profile?.hostPlan && (
-                  <Badge variant="success" className="flex items-center gap-1">
-                    <Crown className="w-3 h-3" /> Active
+                {(billingAccount?.billingStatus || profile?.hostPlan) && (
+                  <Badge variant={isGreylisted ? 'warning' : 'success'} className="flex items-center gap-1">
+                    <Crown className="w-3 h-3" /> {isGreylisted ? 'Greylisted' : 'Active'}
                   </Badge>
                 )}
               </div>
@@ -283,7 +320,7 @@ export default function HostDashboard({
                   : profile?.hostPlan === 'professional'
                   ? 'You have access to the content studio and advanced listing features. Upgrade to Premium for priority support.'
                   : profile?.hostPlan === 'standard'
-                  ? 'You are on the entry paid tier. One live listing, content studio access, and a clean path to upgrade when you need more reach.'
+                  ? 'You are on the entry host tier. One live listing, content studio access, 10 photos per listing, and no showcase video on Standard.'
                   : 'Your plan details are syncing.'}
               </p>
             </div>
@@ -298,6 +335,81 @@ export default function HostDashboard({
               )}
             </div>
           </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <div className="rounded-2xl border border-outline-variant bg-surface-container-low p-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Billing Source</p>
+              <p className="mt-2 text-lg font-bold capitalize">{billingAccount?.billingSource || 'none'}</p>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                {isVoucherHost ? 'Voucher-backed onboarding period.' : billingAccount?.billingSource === 'paid' ? 'Paid subscription cycle is active.' : 'No voucher or paid cycle is active yet.'}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-outline-variant bg-surface-container-low p-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Current Cycle</p>
+              <p className="mt-2 text-sm font-bold">
+                {billingAccount?.currentPeriodStart?.slice(0, 10) || 'Not started'} {billingAccount?.currentPeriodEnd ? `to ${billingAccount.currentPeriodEnd.slice(0, 10)}` : ''}
+              </p>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                {billingAccount?.inReminderWindow
+                  ? 'Reminder window is active. Add a billing card now.'
+                  : isGreylisted
+                    ? 'This account is currently greylisted for billing follow-up.'
+                    : billingAccount?.currentPeriodEnd
+                      ? `Next billing action lands on ${billingAccount.currentPeriodEnd.slice(0, 10)}.`
+                      : 'Redeem a voucher or choose a paid plan to start a billing cycle.'}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-outline-variant bg-surface-container-low p-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Card On File</p>
+              <p className="mt-2 text-sm font-bold">{billingAccount?.cardOnFile ? billingAccount.cardLabel || 'Card saved' : 'Not added'}</p>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                {billingAccount?.cardOnFile ? 'Billing follow-up is covered.' : 'Voucher hosts need a card on file before the free period ends.'}
+              </p>
+            </div>
+          </div>
+
+          {isGreylisted ? (
+            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              Your host account is on the billing greylist. Public listings are paused until admin reviews the account.
+            </div>
+          ) : null}
+
+          {!billingAccount?.cardOnFile ? (
+            <form
+              className="mt-6 grid gap-3 rounded-2xl border border-outline-variant bg-surface-container-low p-4 md:grid-cols-5"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                setSavingBillingCard(true);
+                try {
+                  const nextAccount = await saveHostBillingCard({
+                    cardholderName: billingCardForm.cardholderName,
+                    brand: billingCardForm.brand,
+                    last4: billingCardForm.last4,
+                    expiryMonth: Number(billingCardForm.expiryMonth),
+                    expiryYear: Number(billingCardForm.expiryYear),
+                  });
+                  setBillingAccount(nextAccount);
+                  toast.success('Billing card saved. Reminder notifications will stop.');
+                } catch (error) {
+                  console.error('Failed to save billing card', error);
+                  toast.error('Could not save the billing card details.');
+                } finally {
+                  setSavingBillingCard(false);
+                }
+              }}
+            >
+              <Input placeholder="Cardholder name" value={billingCardForm.cardholderName} onChange={(event) => setBillingCardForm((current) => ({ ...current, cardholderName: event.target.value }))} />
+              <Input placeholder="Brand" value={billingCardForm.brand} onChange={(event) => setBillingCardForm((current) => ({ ...current, brand: event.target.value }))} />
+              <Input placeholder="Last 4 digits" maxLength={4} value={billingCardForm.last4} onChange={(event) => setBillingCardForm((current) => ({ ...current, last4: event.target.value.replace(/\D/g, '') }))} />
+              <Input placeholder="MM" maxLength={2} value={billingCardForm.expiryMonth} onChange={(event) => setBillingCardForm((current) => ({ ...current, expiryMonth: event.target.value.replace(/\D/g, '') }))} />
+              <div className="flex gap-3">
+                <Input placeholder="YYYY" maxLength={4} value={billingCardForm.expiryYear} onChange={(event) => setBillingCardForm((current) => ({ ...current, expiryYear: event.target.value.replace(/\D/g, '') }))} />
+                <Button type="submit" disabled={savingBillingCard}>
+                  {savingBillingCard ? 'Saving...' : 'Add Card'}
+                </Button>
+              </div>
+            </form>
+          ) : null}
         </Card>
       </div>
 

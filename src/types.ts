@@ -3,9 +3,45 @@ export type ReferralTier = 'bronze' | 'silver' | 'gold';
 export type KycStatus = 'none' | 'pending' | 'verified' | 'rejected';
 export type HostPlan = 'standard' | 'professional' | 'premium';
 export type AccountStatus = 'active' | 'suspended' | 'deactivated';
+export type HostBillingSource = 'none' | 'voucher' | 'paid';
+export type HostBillingStatus = 'inactive' | 'active' | 'greylisted';
+export type HostBillingNextAction = 'redeem_voucher' | 'add_card' | 'choose_plan' | 'greylist' | 'none';
 export type InquiryState = 'PENDING' | 'VIEWED' | 'RESPONDED' | 'APPROVED' | 'DECLINED' | 'EXPIRED' | 'BOOKED';
 export type PaymentState = 'UNPAID' | 'INITIATED' | 'COMPLETED' | 'FAILED';
 export type AvailabilityBlockSource = 'MANUAL' | 'APPROVED_HOLD' | 'BOOKED';
+
+export interface HostBillingAccount {
+  userId: string;
+  plan: HostPlan;
+  billingSource: HostBillingSource;
+  billingStatus: HostBillingStatus;
+  voucherCode?: string | null;
+  voucherRedeemedAt?: string | null;
+  currentPeriodStart?: string | null;
+  currentPeriodEnd?: string | null;
+  reminderWindowStartsAt?: string | null;
+  lastReminderSentAt?: string | null;
+  reminderCount: number;
+  cardOnFile: boolean;
+  cardholderName?: string | null;
+  cardBrand?: string | null;
+  cardLast4?: string | null;
+  cardExpiryMonth?: number | null;
+  cardExpiryYear?: number | null;
+  cardLabel?: string | null;
+  greylistedAt?: string | null;
+  greylistReason?: string | null;
+  inReminderWindow: boolean;
+  greylistEligible: boolean;
+  nextAction: HostBillingNextAction;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminHostBillingAccount extends HostBillingAccount {
+  activeListingCount: number;
+  visibleListingCount: number;
+}
 
 export interface ListingAvailabilityBlock {
   id: string;

@@ -38,10 +38,11 @@ vi.mock('@/lib/platform-client', () => ({
 }));
 
 vi.mock('@/components/ui/image-upload', () => ({
-  default: () => <div data-testid="image-upload" />,
+  default: ({ maxFiles }: { maxFiles?: number }) => <div data-testid="image-upload">{maxFiles}</div>,
 }));
 
 vi.mock('@/components/ui/video-upload', () => ({
+  DEFAULT_VIDEO_UPLOAD_MAX_MB: 250,
   default: () => <div data-testid="video-upload" />,
 }));
 
@@ -124,5 +125,34 @@ describe('CreateListing', () => {
 
     fireEvent.change(propertyName, { target: { value: 'Sea Point Penthouse' } });
     expect(screen.getByDisplayValue('Sea Point Penthouse')).toBeInTheDocument();
+  });
+
+  it('gives standard hosts 10 photo slots and removes the showcase video uploader', async () => {
+    getMyListingQuotaMock.mockResolvedValue({
+      plan: 'standard',
+      maxListings: 1,
+      usedListings: 0,
+      canCreate: true,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/host/create-listing']}>
+        <Routes>
+          <Route path="/host/create-listing" element={<CreateListing />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('button', { name: 'Next' });
+    fireEvent.click(screen.getByRole('button', { name: 'Hotels & Resorts' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hotels' }));
+
+    for (let index = 0; index < 4; index += 1) {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    }
+
+    expect(await screen.findByText(/standard hosts get 10 images and no video; professional and premium hosts get 20 images and 1 video\./i)).toBeInTheDocument();
+    expect(screen.getByTestId('image-upload')).toHaveTextContent('10');
+    expect(screen.queryByTestId('video-upload')).not.toBeInTheDocument();
   });
 });

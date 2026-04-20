@@ -18,6 +18,16 @@ import { platformEvents } from "../analytics/events";
 import { createYocoCheckout, getAppUrl, verifyYocoWebhookSignature, type YocoWebhookEvent } from "./yoco";
 import { rewardSubscriptionReferralConversion } from "../referrals/api";
 import {
+  getHostBillingAccount,
+  listAdminHostBillingAccounts,
+  redeemHostVoucher,
+  saveHostBillingCard,
+  setHostGreylist,
+  syncPaidBillingAccount,
+  type AdminHostBillingAccount,
+  type HostBillingAccount,
+} from "./host-billing-service";
+import {
   getSocialTemplateDefinition,
   type ListingSnapshot,
   normalizeDraftOptions,
@@ -38,6 +48,24 @@ interface SubscriptionCheckoutParams {
 
 interface PurchaseCreditsParams {
   credits: number;
+}
+
+interface RedeemHostVoucherParams {
+  code: string;
+}
+
+interface SaveBillingCardParams {
+  cardholderName: string;
+  brand: string;
+  last4: string;
+  expiryMonth: number;
+  expiryYear: number;
+}
+
+interface AdminSetHostGreylistParams {
+  userId: string;
+  greylisted: boolean;
+  reason?: string | null;
 }
 
 interface GenerateContentDraftParams {
@@ -508,6 +536,13 @@ async function activatePlanFromCheckout(session: CheckoutSessionRow) {
     WHERE id = ${session.user_id}
   `;
 
+  await syncPaidBillingAccount({
+    userId: session.user_id,
+    plan: session.host_plan,
+    currentPeriodStart: now.toISOString(),
+    currentPeriodEnd: endsAt.toISOString(),
+  });
+
   if (!existingSubscription) {
     await platformEvents.publish({
       type: "subscription.changed",
@@ -840,6 +875,53 @@ export const listAdminCheckouts = api<void, { checkouts: CheckoutSessionRow[] }>
       ORDER BY created_at DESC
     `;
     return { checkouts };
+  },
+);
+
+export const getMyHostBillingAccount = api<void, { account: HostBillingAccount }>(
+  { expose: true, method: "GET", path: "/billing/host/account", auth: true },
+  async () => {
+    const auth = requireRole("host", "admin");
+    return { account: await getHostBillingAccount(auth.userID) };
+  },
+);
+
+export const redeemVoucher = api<RedeemHostVoucherParams, { account: HostBillingAccount }>(
+  { expose: true, method: "POST", path: "/billing/host/vouchers/redeem", auth: true },
+  async ({ code }) => {
+    const auth = requireRole("host", "admin");
+    return { account: await redeemHostVoucher(auth.userID, code) };
+  },
+);
+
+export const saveBillingCard = api<SaveBillingCardParams, { account: HostBillingAccount }>(
+  { expose: true, method: "POST", path: "/billing/host/card", auth: true },
+  async (params) => {
+    const auth = requireRole("host", "admin");
+    return { account: await saveHostBillingCard(auth.userID, params) };
+  },
+);
+
+export const listAdminHostBilling = api<void, { accounts: AdminHostBillingAccount[] }>(
+  { expose: true, method: "GET", path: "/admin/billing/host-accounts", auth: true },
+  async () => {
+    requireRole("admin", "support");
+    return { accounts: await listAdminHostBillingAccounts() };
+  },
+);
+
+export const adminSetHostGreylist = api<AdminSetHostGreylistParams, { account: HostBillingAccount }>(
+  { expose: true, method: "POST", path: "/admin/billing/host-accounts/greylist", auth: true },
+  async ({ userId, greylisted, reason }) => {
+    const auth = requireRole("admin", "support");
+    return {
+      account: await setHostGreylist({
+        userId,
+        greylisted,
+        reason,
+        actorId: auth.userID,
+      }),
+    };
   },
 );
 

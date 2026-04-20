@@ -9,7 +9,8 @@ import {
 } from '../src/lib/encore-client.ts';
 import { getEncoreSessionProfile } from '../src/lib/identity-client.ts';
 import { uploadListingMedia } from '../src/lib/media-client.ts';
-import { deleteAdminUser, getAdminPlatformSettings, listAdminNotifications, setAdminUserAccountStatus } from '../src/lib/admin-client.ts';
+import { deleteAdminUser, getAdminPlatformSettings, listAdminHostBillingAccounts, listAdminNotifications, setAdminHostGreylist, setAdminUserAccountStatus } from '../src/lib/admin-client.ts';
+import { getMyHostBillingAccount, redeemHostVoucher, saveHostBillingCard } from '../src/lib/billing-client.ts';
 import { dismissNotification } from '../src/lib/notification-client.ts';
 import { reviewKycSubmission } from '../src/lib/ops-client.ts';
 import { confirmPayment, deleteListing, getListing, mapReferralStatus, saveListing, submitPaymentProof, updateBookingStatus } from '../src/lib/platform-client.ts';
@@ -550,6 +551,224 @@ test('admin notification and settings helpers hit the ops endpoints via the prox
   assert.equal(getHeaders(fetchCalls[1]?.init).get('Authorization'), null);
   assert.equal(notifications[0]?.type, 'warning');
   assert.equal(settings.platformName, 'Ideal Stay');
+});
+
+test('host billing helpers use the new voucher and card endpoints via the proxy', async () => {
+  installFetch((url, init) => {
+    if (url.endsWith('/billing/host/account')) {
+      return createJsonResponse({
+        account: {
+          userId: 'host-1',
+          plan: 'standard',
+          billingSource: 'voucher',
+          billingStatus: 'active',
+          voucherCode: 'HOST-ABC123XYZ9',
+          voucherRedeemedAt: '2026-04-20T08:00:00.000Z',
+          currentPeriodStart: '2026-04-20T08:00:00.000Z',
+          currentPeriodEnd: '2026-07-20T08:00:00.000Z',
+          reminderWindowStartsAt: '2026-07-13T08:00:00.000Z',
+          lastReminderSentAt: null,
+          reminderCount: 0,
+          cardOnFile: false,
+          cardholderName: null,
+          cardBrand: null,
+          cardLast4: null,
+          cardExpiryMonth: null,
+          cardExpiryYear: null,
+          cardLabel: null,
+          greylistedAt: null,
+          greylistReason: null,
+          inReminderWindow: false,
+          greylistEligible: false,
+          nextAction: 'add_card',
+          createdAt: '2026-04-20T08:00:00.000Z',
+          updatedAt: '2026-04-20T08:00:00.000Z',
+        },
+      });
+    }
+
+    if (url.endsWith('/billing/host/vouchers/redeem')) {
+      assert.equal(init?.method, 'POST');
+      return createJsonResponse({
+        account: {
+          userId: 'host-1',
+          plan: 'standard',
+          billingSource: 'voucher',
+          billingStatus: 'active',
+          voucherCode: 'HOST-ABC123XYZ9',
+          voucherRedeemedAt: '2026-04-20T08:00:00.000Z',
+          currentPeriodStart: '2026-04-20T08:00:00.000Z',
+          currentPeriodEnd: '2026-07-20T08:00:00.000Z',
+          reminderWindowStartsAt: '2026-07-13T08:00:00.000Z',
+          lastReminderSentAt: null,
+          reminderCount: 0,
+          cardOnFile: false,
+          cardholderName: null,
+          cardBrand: null,
+          cardLast4: null,
+          cardExpiryMonth: null,
+          cardExpiryYear: null,
+          cardLabel: null,
+          greylistedAt: null,
+          greylistReason: null,
+          inReminderWindow: false,
+          greylistEligible: false,
+          nextAction: 'add_card',
+          createdAt: '2026-04-20T08:00:00.000Z',
+          updatedAt: '2026-04-20T08:00:00.000Z',
+        },
+      });
+    }
+
+    if (url.endsWith('/billing/host/card')) {
+      assert.equal(init?.method, 'POST');
+      return createJsonResponse({
+        account: {
+          userId: 'host-1',
+          plan: 'standard',
+          billingSource: 'voucher',
+          billingStatus: 'active',
+          voucherCode: 'HOST-ABC123XYZ9',
+          voucherRedeemedAt: '2026-04-20T08:00:00.000Z',
+          currentPeriodStart: '2026-04-20T08:00:00.000Z',
+          currentPeriodEnd: '2026-07-20T08:00:00.000Z',
+          reminderWindowStartsAt: '2026-07-13T08:00:00.000Z',
+          lastReminderSentAt: null,
+          reminderCount: 0,
+          cardOnFile: true,
+          cardholderName: 'Host Example',
+          cardBrand: 'Visa',
+          cardLast4: '4242',
+          cardExpiryMonth: 12,
+          cardExpiryYear: 2028,
+          cardLabel: 'Visa ending 4242',
+          greylistedAt: null,
+          greylistReason: null,
+          inReminderWindow: false,
+          greylistEligible: false,
+          nextAction: 'none',
+          createdAt: '2026-04-20T08:00:00.000Z',
+          updatedAt: '2026-04-20T08:00:00.000Z',
+        },
+      });
+    }
+
+    throw new Error(`Unexpected URL: ${url}`);
+  });
+
+  const account = await getMyHostBillingAccount();
+  const redeemed = await redeemHostVoucher('HOST-ABC123XYZ9');
+  const withCard = await saveHostBillingCard({
+    cardholderName: 'Host Example',
+    brand: 'Visa',
+    last4: '4242',
+    expiryMonth: 12,
+    expiryYear: 2028,
+  });
+
+  assert.equal(account.billingSource, 'voucher');
+  assert.deepEqual(JSON.parse(String(fetchCalls[1]?.init?.body)), { code: 'HOST-ABC123XYZ9' });
+  assert.deepEqual(JSON.parse(String(fetchCalls[2]?.init?.body)), {
+    cardholderName: 'Host Example',
+    brand: 'Visa',
+    last4: '4242',
+    expiryMonth: 12,
+    expiryYear: 2028,
+  });
+  assert.equal(redeemed.currentPeriodEnd, '2026-07-20T08:00:00.000Z');
+  assert.equal(withCard.cardLabel, 'Visa ending 4242');
+});
+
+test('admin host billing helpers hit the billing moderation endpoints via the proxy', async () => {
+  installFetch((url, init) => {
+    if (url.endsWith('/admin/billing/host-accounts')) {
+      return createJsonResponse({
+        accounts: [
+          {
+            userId: 'host-1',
+            plan: 'standard',
+            billingSource: 'voucher',
+            billingStatus: 'greylisted',
+            voucherCode: 'HOST-ABC123XYZ9',
+            voucherRedeemedAt: '2026-04-20T08:00:00.000Z',
+            currentPeriodStart: '2026-04-20T08:00:00.000Z',
+            currentPeriodEnd: '2026-07-20T08:00:00.000Z',
+            reminderWindowStartsAt: '2026-07-13T08:00:00.000Z',
+            lastReminderSentAt: '2026-07-19T08:00:00.000Z',
+            reminderCount: 7,
+            cardOnFile: false,
+            cardholderName: null,
+            cardBrand: null,
+            cardLast4: null,
+            cardExpiryMonth: null,
+            cardExpiryYear: null,
+            cardLabel: null,
+            greylistedAt: '2026-07-20T08:00:01.000Z',
+            greylistReason: 'Voucher grace period ended without a billing card on file.',
+            inReminderWindow: false,
+            greylistEligible: true,
+            nextAction: 'greylist',
+            activeListingCount: 0,
+            visibleListingCount: 1,
+            createdAt: '2026-04-20T08:00:00.000Z',
+            updatedAt: '2026-07-20T08:00:01.000Z',
+          },
+        ],
+      });
+    }
+
+    if (url.endsWith('/admin/billing/host-accounts/greylist')) {
+      assert.equal(init?.method, 'POST');
+      return createJsonResponse({
+        account: {
+          userId: 'host-1',
+          plan: 'standard',
+          billingSource: 'voucher',
+          billingStatus: 'greylisted',
+          voucherCode: 'HOST-ABC123XYZ9',
+          voucherRedeemedAt: '2026-04-20T08:00:00.000Z',
+          currentPeriodStart: '2026-04-20T08:00:00.000Z',
+          currentPeriodEnd: '2026-07-20T08:00:00.000Z',
+          reminderWindowStartsAt: '2026-07-13T08:00:00.000Z',
+          lastReminderSentAt: '2026-07-19T08:00:00.000Z',
+          reminderCount: 7,
+          cardOnFile: false,
+          cardholderName: null,
+          cardBrand: null,
+          cardLast4: null,
+          cardExpiryMonth: null,
+          cardExpiryYear: null,
+          cardLabel: null,
+          greylistedAt: '2026-07-20T08:00:01.000Z',
+          greylistReason: 'Voucher grace period ended without a billing card on file.',
+          inReminderWindow: false,
+          greylistEligible: true,
+          nextAction: 'greylist',
+          activeListingCount: 0,
+          visibleListingCount: 1,
+          createdAt: '2026-04-20T08:00:00.000Z',
+          updatedAt: '2026-07-20T08:00:01.000Z',
+        },
+      });
+    }
+
+    throw new Error(`Unexpected URL: ${url}`);
+  });
+
+  const accounts = await listAdminHostBillingAccounts();
+  const account = await setAdminHostGreylist({
+    userId: 'host-1',
+    greylisted: true,
+    reason: 'Voucher grace period ended without a billing card on file.',
+  });
+
+  assert.equal(accounts[0]?.billingStatus, 'greylisted');
+  assert.deepEqual(JSON.parse(String(fetchCalls[1]?.init?.body)), {
+    userId: 'host-1',
+    greylisted: true,
+    reason: 'Voucher grace period ended without a billing card on file.',
+  });
+  assert.equal(account.greylistReason, 'Voucher grace period ended without a billing card on file.');
 });
 
 test('deleteAdminUser issues a real DELETE request to the admin user endpoint', async () => {

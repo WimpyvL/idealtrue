@@ -134,7 +134,14 @@ export default function CreateListing() {
     checkLimits();
   }, [checkLimits]);
 
-  const maxImagesForPlan = plan === 'standard' ? 5 : 20;
+  const maxImagesForPlan = plan === 'standard' ? 10 : 20;
+  const canUploadVideo = plan !== 'standard';
+
+  useEffect(() => {
+    if (!canUploadVideo && formData.videoUrl) {
+      setFormData((prev) => ({ ...prev, videoUrl: null }));
+    }
+  }, [canUploadVideo, formData.videoUrl]);
 
   const fetchListingData = useCallback(async () => {
     if (!id || !user) return;
@@ -834,7 +841,7 @@ export default function CreateListing() {
                     <div className="mb-2">
                       <Label>Property Photos</Label>
                       <p className="text-sm text-on-surface-variant">
-                        Upload up to {maxImagesForPlan} high-quality photos. Standard hosts get 5 images; Professional and Premium hosts get 20.
+                        Upload up to {maxImagesForPlan} high-quality photos. Standard hosts get 10 images and no video; Professional and Premium hosts get 20 images and 1 video.
                       </p>
                     </div>
                     <ImageUpload
@@ -847,16 +854,18 @@ export default function CreateListing() {
                     />
                   </div>
 
-                  <div className="space-y-3 pt-6 border-t border-outline-variant">
-                    <Label className="text-base">Showcase Video</Label>
-                    <VideoUpload
-                      value={formData.videoUrl}
-                      onChange={(url) => updateData("videoUrl", url)}
-                      listingId={workingListingId}
-                      ensureListingId={ensureListingId}
-                      maxSizeMB={DEFAULT_VIDEO_UPLOAD_MAX_MB}
-                    />
-                  </div>
+                  {canUploadVideo ? (
+                    <div className="space-y-3 pt-6 border-t border-outline-variant">
+                      <Label className="text-base">Showcase Video</Label>
+                      <VideoUpload
+                        value={formData.videoUrl}
+                        onChange={(url) => updateData("videoUrl", url)}
+                        listingId={workingListingId}
+                        ensureListingId={ensureListingId}
+                        maxSizeMB={DEFAULT_VIDEO_UPLOAD_MAX_MB}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>

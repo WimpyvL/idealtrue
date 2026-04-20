@@ -269,7 +269,7 @@ export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
                 Your identity has been successfully verified. You can now list your properties!
               </p>
             </div>
-            <Button onClick={handleClose} className="rounded-xl px-8">
+            <Button onClick={handleClose} size="xs" className="rounded-lg px-4">
               Continue
             </Button>
           </div>
