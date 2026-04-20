@@ -23,7 +23,7 @@ import { toast } from 'sonner';
 import { updateBookingStatus } from '@/lib/platform-client';
 import { getMyHostBillingAccount, saveHostBillingCard } from '@/lib/billing-client';
 import { formatRand } from '@/lib/currency';
-import { getInquiryBadgeLabel, isBookedStay, isOpenHostInquiry, isPendingHostDecision } from '@/lib/inquiry-state';
+import { getInquiryBadgeLabel, isBookedStay, isPendingHostDecision } from '@/lib/inquiry-state';
 
 export default function HostDashboard({ 
   profile,
@@ -81,11 +81,7 @@ export default function HostDashboard({
   }, [profile?.role]);
 
   const activeListings = listings.filter(l => l.status === 'active');
-  const allHostInquiries = localBookings.filter(isOpenHostInquiry);
-
-  const pendingBookings = allHostInquiries
-    .filter((b) => b.inquiryState === "PENDING")
-    .slice(0, 3);
+  const needsResponseBookings = localBookings.filter(isPendingHostDecision);
   const totalRevenue = localBookings
     .filter(isBookedStay)
     .reduce((sum, b) => sum + b.totalPrice, 0);
@@ -139,9 +135,9 @@ export default function HostDashboard({
         <Card className="p-6 flex flex-col gap-2 border-l-4 border-l-amber-500">
           <div className="flex items-center gap-2 text-on-surface-variant">
             <MessageSquare className="w-5 h-5 text-amber-500" />
-            <h3 className="font-medium">Pending Enquiries</h3>
+            <h3 className="font-medium">Needs Response</h3>
           </div>
-          <p className="text-3xl font-bold">{pendingBookings.length}</p>
+          <p className="text-3xl font-bold">{needsResponseBookings.length}</p>
         </Card>
         <Card className="p-6 flex flex-col gap-2 border-l-4 border-l-purple-500">
           <div className="flex items-center gap-2 text-on-surface-variant">

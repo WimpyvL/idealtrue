@@ -1,5 +1,7 @@
 ## Change Log
 
+- Fixed `src/pages/HostDashboard.tsx` so the enquiry summary card now uses the real host `needs_response` queue instead of a sliced local preview, keeping the dashboard aligned with the enquiry workflow buckets.
+- Added `tests/ui/host-dashboard.test.tsx` to lock the host dashboard metric to the full needs-response count and prevent approved enquiries from inflating that card.
 - Reduced the verified-state `Continue` button in `src/components/KYCModal.tsx` so the success modal uses a much smaller CTA footprint.
 - Updated `src/components/AppNavigation.tsx` so the public header now shows the `Ideal Stay` name next to the logo, making the brand lockup explicit in the main nav.
 - Added `public/ideal-stay-logo.png` from the supplied asset and created `src/components/BrandLogo.tsx` to centralize branding.
