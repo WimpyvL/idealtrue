@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Booking, HostBillingAccount, Listing, UserProfile } from '../types';
 import { 
@@ -12,7 +12,10 @@ import {
   MessageSquare,
   Building2,
   DollarSign,
-  Activity
+  Activity,
+  TimerReset,
+  CircleDollarSign,
+  AlertTriangle
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
@@ -24,7 +27,14 @@ import { updateBookingStatus } from '@/lib/platform-client';
 import { getMyHostBillingAccount, saveHostBillingCard } from '@/lib/billing-client';
 import { formatRand } from '@/lib/currency';
 import { getHostBillingTimelinePresentation } from '@/lib/host-billing-ui';
-import { getInquiryBadgeLabel, getInquiryDeadlineState, isBookedStay, isPendingHostDecision } from '@/lib/inquiry-state';
+import {
+  getInquiryBadgeLabel,
+  getInquiryDeadlineState,
+  getInquiryDeadlineUrgency,
+  groupHostInquiries,
+  isBookedStay,
+  isPendingHostDecision,
+} from '@/lib/inquiry-state';
 
 export default function HostDashboard({ 
   profile,
@@ -82,7 +92,10 @@ export default function HostDashboard({
   }, [profile?.role]);
 
   const activeListings = listings.filter(l => l.status === 'active');
-  const needsResponseBookings = localBookings.filter(isPendingHostDecision);
+  const groupedBookings = useMemo(() => groupHostInquiries(localBookings), [localBookings]);
+  const needsResponseBookings = groupedBookings.needsResponse;
+  const awaitingGuestPaymentBookings = groupedBookings.awaitingGuestPayment;
+  const paymentReviewBookings = groupedBookings.paymentReview;
   const totalRevenue = localBookings
     .filter(isBookedStay)
     .reduce((sum, b) => sum + b.totalPrice, 0);
@@ -97,6 +110,75 @@ export default function HostDashboard({
         : billingTimeline.urgencyTone === 'success'
           ? 'success'
           : 'neutral';
+  const approvedHoldWatchlist = useMemo(() => {
+    return [...awaitingGuestPaymentBookings, ...paymentReviewBookings]
+      .map((booking) => ({
+        booking,
+        urgency: getInquiryDeadlineUrgency(booking),
+      }))
+      .sort((left, right) => {
+        const leftDeadline = left.urgency ? new Date(left.urgency.deadlineAt).getTime() : Number.POSITIVE_INFINITY;
+        const rightDeadline = right.urgency ? new Date(right.urgency.deadlineAt).getTime() : Number.POSITIVE_INFINITY;
+        return leftDeadline - rightDeadline;
+      });
+  }, [awaitingGuestPaymentBookings, paymentReviewBookings]);
+
+  const guestPaymentUrgentCount = approvedHoldWatchlist.filter(
+    ({ booking, urgency }) => groupedBookings.awaitingGuestPayment.some((item) => item.id === booking.id) && urgency?.within24Hours,
+  ).length;
+  const paymentReviewUrgentCount = approvedHoldWatchlist.filter(
+    ({ booking, urgency }) => groupedBookings.paymentReview.some((item) => item.id === booking.id) && urgency?.within24Hours,
+  ).length;
+  const mostUrgentApprovedHold = approvedHoldWatchlist[0] ?? null;
+
+  function getApprovedHoldCardTone(bookings: Booking[]) {
+    const tones = bookings
+      .map((booking) => getInquiryDeadlineUrgency(booking)?.tone)
+      .filter((tone): tone is 'neutral' | 'warning' | 'danger' => !!tone);
+
+    if (tones.includes('danger')) {
+      return {
+        border: 'border-l-red-500',
+        icon: 'text-red-500',
+        badge: 'danger' as const,
+      };
+    }
+
+    if (tones.includes('warning')) {
+      return {
+        border: 'border-l-amber-500',
+        icon: 'text-amber-500',
+        badge: 'warning' as const,
+      };
+    }
+
+    return {
+      border: 'border-l-slate-400',
+      icon: 'text-slate-500',
+      badge: 'neutral' as const,
+    };
+  }
+
+  function getApprovedHoldHelperText(
+    bookings: Booking[],
+    urgentCount: number,
+    emptyLabel: string,
+    baseLabel: string,
+    urgentLabel: (count: number) => string,
+  ) {
+    if (bookings.length === 0) {
+      return emptyLabel;
+    }
+
+    if (urgentCount > 0) {
+      return urgentLabel(urgentCount);
+    }
+
+    return baseLabel;
+  }
+
+  const awaitingGuestPaymentTone = getApprovedHoldCardTone(awaitingGuestPaymentBookings);
+  const paymentReviewTone = getApprovedHoldCardTone(paymentReviewBookings);
 
   return (
     <div className="space-y-8">
@@ -134,7 +216,7 @@ export default function HostDashboard({
       </div>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
         <Card className="p-6 flex flex-col gap-2 border-l-4 border-l-blue-500">
           <div className="flex items-center gap-2 text-on-surface-variant">
             <Calendar className="w-5 h-5 text-blue-500" />
@@ -148,6 +230,53 @@ export default function HostDashboard({
             <h3 className="font-medium">Needs Response</h3>
           </div>
           <p className="text-3xl font-bold">{needsResponseBookings.length}</p>
+          <p className="text-xs text-on-surface-variant">
+            {needsResponseBookings.length > 0
+              ? `${needsResponseBookings.length} ${needsResponseBookings.length === 1 ? 'guest is' : 'guests are'} still waiting on your decision.`
+              : 'No live decision queue right now.'}
+          </p>
+        </Card>
+        <Card className={`p-6 flex flex-col gap-2 border-l-4 ${awaitingGuestPaymentTone.border}`}>
+          <div className="flex items-center gap-2 text-on-surface-variant">
+            <CircleDollarSign className={`w-5 h-5 ${awaitingGuestPaymentTone.icon}`} />
+            <h3 className="font-medium">Awaiting Guest Payment</h3>
+          </div>
+          <p className="text-3xl font-bold">{awaitingGuestPaymentBookings.length}</p>
+          <div className="flex items-center gap-2">
+            <Badge variant={awaitingGuestPaymentTone.badge}>
+              {guestPaymentUrgentCount > 0 ? 'Expiring Soon' : 'Approved Hold'}
+            </Badge>
+            <p className="text-xs text-on-surface-variant">
+              {getApprovedHoldHelperText(
+                awaitingGuestPaymentBookings,
+                guestPaymentUrgentCount,
+                'No approved holds are waiting on payment.',
+                'Guest payment is still outstanding on these approved stays.',
+                (count) => `${count} ${count === 1 ? 'hold expires' : 'holds expire'} within 24 hours.`,
+              )}
+            </p>
+          </div>
+        </Card>
+        <Card className={`p-6 flex flex-col gap-2 border-l-4 ${paymentReviewTone.border}`}>
+          <div className="flex items-center gap-2 text-on-surface-variant">
+            <TimerReset className={`w-5 h-5 ${paymentReviewTone.icon}`} />
+            <h3 className="font-medium">Payment Confirmation</h3>
+          </div>
+          <p className="text-3xl font-bold">{paymentReviewBookings.length}</p>
+          <div className="flex items-center gap-2">
+            <Badge variant={paymentReviewTone.badge}>
+              {paymentReviewUrgentCount > 0 ? 'Action Due' : 'Review Queue'}
+            </Badge>
+            <p className="text-xs text-on-surface-variant">
+              {getApprovedHoldHelperText(
+                paymentReviewBookings,
+                paymentReviewUrgentCount,
+                'No payment proofs are waiting on you.',
+                'Proof has been submitted and still needs your confirmation.',
+                (count) => `${count} ${count === 1 ? 'confirmation deadline closes' : 'confirmation deadlines close'} within 24 hours.`,
+              )}
+            </p>
+          </div>
         </Card>
         <Card className="p-6 flex flex-col gap-2 border-l-4 border-l-purple-500">
           <div className="flex items-center gap-2 text-on-surface-variant">
@@ -215,6 +344,63 @@ export default function HostDashboard({
 
         {/* Recent Activity / Bookings */}
         <div className="space-y-6">
+          <Card className="p-5 border border-outline-variant bg-surface-container-low">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5" /> Approved Hold Watchlist
+                </h2>
+                <p className="text-sm text-on-surface-variant">
+                  The nearest approval deadlines across guest payment and payment confirmation.
+                </p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/host/enquiries')}>Open Queue</Button>
+            </div>
+            <div className="mt-4 space-y-3">
+              {approvedHoldWatchlist.slice(0, 4).map(({ booking, urgency }) => {
+                const listing = listings.find((item) => item.id === booking.listingId);
+                const deadlineLabel = urgency
+                  ? urgency.isExpired
+                    ? 'Hold already expired'
+                    : urgency.deadlineKind === 'confirmation_due'
+                      ? `Confirm before ${formatDistanceToNowStrict(new Date(urgency.deadlineAt), { addSuffix: true })}`
+                      : `Payment due ${formatDistanceToNowStrict(new Date(urgency.deadlineAt), { addSuffix: true })}`
+                  : 'Awaiting the next workflow step';
+
+                return (
+                  <div key={booking.id} className="rounded-2xl border border-outline-variant bg-background/70 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate">{listing?.title || 'Unknown Listing'}</p>
+                        <p className="text-xs text-on-surface-variant">
+                          {format(new Date(booking.checkIn), 'MMM d')} - {format(new Date(booking.checkOut), 'MMM d')} • {getInquiryBadgeLabel(booking)}
+                        </p>
+                      </div>
+                      <Badge variant={urgency?.tone === 'danger' ? 'danger' : urgency?.tone === 'warning' ? 'warning' : 'neutral'}>
+                        {urgency?.deadlineKind === 'confirmation_due' ? 'Confirm' : 'Hold'}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm text-on-surface-variant">{deadlineLabel}</p>
+                  </div>
+                );
+              })}
+              {approvedHoldWatchlist.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-outline-variant bg-background/60 p-4 text-sm text-on-surface-variant">
+                  No approved holds are currently close enough to worry about. New approved enquiries will surface here automatically.
+                </div>
+              ) : null}
+              {mostUrgentApprovedHold?.urgency && !mostUrgentApprovedHold.urgency.isExpired ? (
+                <div className="rounded-2xl border border-outline-variant bg-background/60 p-4 text-sm">
+                  <span className="font-semibold">Nearest deadline:</span>{' '}
+                  {mostUrgentApprovedHold.urgency.deadlineKind === 'confirmation_due'
+                    ? 'payment confirmation'
+                    : 'guest payment'} closes{' '}
+                  {formatDistanceToNowStrict(new Date(mostUrgentApprovedHold.urgency.deadlineAt), { addSuffix: true })}.
+                </div>
+              ) : null}
+            </div>
+          </Card>
+
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold flex items-center gap-2">
               <Activity className="w-5 h-5" /> Recent Activity

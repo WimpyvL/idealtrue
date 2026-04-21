@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  getInquiryDeadlineUrgency,
   getHostInquiryBucket,
   getHostInquirySortTimestamp,
   getInquiryDeadlineState,
+  groupHostInquiries,
   isAwaitingGuestPayment,
 } from '../src/lib/inquiry-state.ts';
 
@@ -146,5 +148,88 @@ test('deadline state distinguishes response, payment, review, and expired enquir
       expiresAt: '2026-04-21T10:00:00.000Z',
     }),
     { kind: 'expired', deadlineAt: '2026-04-21T10:00:00.000Z' },
+  );
+});
+
+test('groupHostInquiries keeps each workflow queue in the shared helper layer', () => {
+  const grouped = groupHostInquiries([
+    {
+      ...baseBooking,
+      id: 'needs-response',
+    },
+    {
+      ...baseBooking,
+      id: 'awaiting-payment',
+      inquiryState: 'APPROVED',
+      paymentState: 'INITIATED',
+      paymentUnlockedAt: '2026-04-16T09:00:00.000Z',
+    },
+    {
+      ...baseBooking,
+      id: 'payment-review',
+      inquiryState: 'APPROVED',
+      paymentState: 'INITIATED',
+      paymentSubmittedAt: '2026-04-16T10:00:00.000Z',
+    },
+    {
+      ...baseBooking,
+      id: 'confirmed',
+      inquiryState: 'BOOKED',
+      paymentState: 'COMPLETED',
+      bookedAt: '2026-04-16T11:00:00.000Z',
+      paymentConfirmedAt: '2026-04-16T11:00:00.000Z',
+    },
+  ]);
+
+  assert.deepEqual(grouped.needsResponse.map((booking) => booking.id), ['needs-response']);
+  assert.deepEqual(grouped.awaitingGuestPayment.map((booking) => booking.id), ['awaiting-payment']);
+  assert.deepEqual(grouped.paymentReview.map((booking) => booking.id), ['payment-review']);
+  assert.deepEqual(grouped.confirmed.map((booking) => booking.id), ['confirmed']);
+  assert.deepEqual(grouped.closed, []);
+});
+
+test('deadline urgency escalates approved holds that are nearing expiry', () => {
+  assert.deepEqual(
+    getInquiryDeadlineUrgency(
+      {
+        inquiryState: 'APPROVED',
+        paymentState: 'INITIATED',
+        paymentSubmittedAt: null,
+        paymentConfirmedAt: null,
+        expiresAt: '2026-04-21T18:00:00.000Z',
+      },
+      new Date('2026-04-21T12:00:00.000Z'),
+    ),
+    {
+      tone: 'danger',
+      deadlineKind: 'payment_due',
+      deadlineAt: '2026-04-21T18:00:00.000Z',
+      msRemaining: 21600000,
+      isExpired: false,
+      within24Hours: true,
+      within6Hours: true,
+    },
+  );
+
+  assert.deepEqual(
+    getInquiryDeadlineUrgency(
+      {
+        inquiryState: 'EXPIRED',
+        paymentState: 'INITIATED',
+        paymentSubmittedAt: null,
+        paymentConfirmedAt: null,
+        expiresAt: '2026-04-21T10:00:00.000Z',
+      },
+      new Date('2026-04-21T12:00:00.000Z'),
+    ),
+    {
+      tone: 'danger',
+      deadlineKind: 'expired',
+      deadlineAt: '2026-04-21T10:00:00.000Z',
+      msRemaining: -7200000,
+      isExpired: true,
+      within24Hours: false,
+      within6Hours: false,
+    },
   );
 });

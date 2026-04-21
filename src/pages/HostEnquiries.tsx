@@ -20,10 +20,9 @@ import { Badge } from '../components/ui/badge';
 import { Booking, Listing } from '../types';
 import { formatRand } from '@/lib/currency';
 import {
-  getHostInquiryBucket,
-  getHostInquirySortTimestamp,
   getInquiryBadgeLabel,
   getInquiryDeadlineState,
+  groupHostInquiries,
   isAwaitingGuestPayment,
 } from '@/lib/inquiry-state';
 import { confirmPayment, markInquiryViewed, updateBookingStatus } from '@/lib/platform-client';
@@ -49,21 +48,7 @@ export default function HostEnquiries({
 }) {
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
 
-  const groupedBookings = useMemo(() => {
-    const sorted = [...bookings].sort(
-      (left, right) =>
-        new Date(getHostInquirySortTimestamp(right)).getTime() -
-        new Date(getHostInquirySortTimestamp(left)).getTime(),
-    );
-
-    return {
-      needsResponse: sorted.filter((booking) => getHostInquiryBucket(booking) === 'needs_response'),
-      awaitingGuestPayment: sorted.filter((booking) => getHostInquiryBucket(booking) === 'awaiting_guest_payment'),
-      paymentReview: sorted.filter((booking) => getHostInquiryBucket(booking) === 'payment_review'),
-      confirmed: sorted.filter((booking) => getHostInquiryBucket(booking) === 'confirmed'),
-      closed: sorted.filter((booking) => getHostInquiryBucket(booking) === 'closed'),
-    };
-  }, [bookings]);
+  const groupedBookings = useMemo(() => groupHostInquiries(bookings), [bookings]);
 
   const summaryCards: SummaryCard[] = [
     {

@@ -15,6 +15,26 @@ export type InquiryDeadlineState =
   | { kind: 'response_due' | 'payment_due' | 'confirmation_due' | 'expired'; deadlineAt: string }
   | null;
 
+export type InquiryDeadlineUrgency =
+  | {
+      tone: 'neutral' | 'warning' | 'danger';
+      deadlineKind: NonNullable<InquiryDeadlineState>['kind'];
+      deadlineAt: string;
+      msRemaining: number;
+      isExpired: boolean;
+      within24Hours: boolean;
+      within6Hours: boolean;
+    }
+  | null;
+
+export type HostInquiryGroups<TBooking extends HostBookingSlice> = {
+  needsResponse: TBooking[];
+  awaitingGuestPayment: TBooking[];
+  paymentReview: TBooking[];
+  confirmed: TBooking[];
+  closed: TBooking[];
+};
+
 export function getInquiryDisplayState(booking: BookingStateSlice): InquiryState {
   if (booking.inquiryState === 'APPROVED' && booking.paymentState === 'COMPLETED') {
     return 'BOOKED';
@@ -118,6 +138,49 @@ export function getInquiryDeadlineState(booking: BookingDeadlineSlice): InquiryD
   }
 
   return null;
+}
+
+export function getInquiryDeadlineUrgency(
+  booking: BookingDeadlineSlice,
+  now: Date = new Date(),
+): InquiryDeadlineUrgency {
+  const deadlineState = getInquiryDeadlineState(booking);
+  if (!deadlineState) {
+    return null;
+  }
+
+  const msRemaining = new Date(deadlineState.deadlineAt).getTime() - now.getTime();
+  const isExpired = deadlineState.kind === 'expired' || msRemaining <= 0;
+  const within6Hours = !isExpired && msRemaining <= 6 * 60 * 60 * 1000;
+  const within24Hours = !isExpired && msRemaining <= 24 * 60 * 60 * 1000;
+
+  return {
+    tone: isExpired ? 'danger' : within6Hours ? 'danger' : within24Hours ? 'warning' : 'neutral',
+    deadlineKind: deadlineState.kind,
+    deadlineAt: deadlineState.deadlineAt,
+    msRemaining,
+    isExpired,
+    within24Hours,
+    within6Hours,
+  };
+}
+
+export function groupHostInquiries<TBooking extends HostBookingSlice>(
+  bookings: readonly TBooking[],
+): HostInquiryGroups<TBooking> {
+  const sorted = [...bookings].sort(
+    (left, right) =>
+      new Date(getHostInquirySortTimestamp(right)).getTime() -
+      new Date(getHostInquirySortTimestamp(left)).getTime(),
+  );
+
+  return {
+    needsResponse: sorted.filter((booking) => getHostInquiryBucket(booking) === 'needs_response'),
+    awaitingGuestPayment: sorted.filter((booking) => getHostInquiryBucket(booking) === 'awaiting_guest_payment'),
+    paymentReview: sorted.filter((booking) => getHostInquiryBucket(booking) === 'payment_review'),
+    confirmed: sorted.filter((booking) => getHostInquiryBucket(booking) === 'confirmed'),
+    closed: sorted.filter((booking) => getHostInquiryBucket(booking) === 'closed'),
+  };
 }
 
 export function getHostInquiryBucket(booking: HostBookingSlice): HostInquiryBucket {

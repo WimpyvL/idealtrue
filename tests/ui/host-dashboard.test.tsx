@@ -73,7 +73,11 @@ const listing: Listing = {
   updatedAt: '2026-04-01T10:00:00.000Z',
 };
 
-function makeBooking(id: string, inquiryState: Booking['inquiryState']): Booking {
+function makeBooking(
+  id: string,
+  inquiryState: Booking['inquiryState'],
+  overrides: Partial<Booking> = {},
+): Booking {
   return {
     id,
     listingId: listing.id,
@@ -93,6 +97,10 @@ function makeBooking(id: string, inquiryState: Booking['inquiryState']): Booking
     viewedAt: inquiryState === 'VIEWED' || inquiryState === 'RESPONDED' ? '2026-04-20T09:00:00.000Z' : null,
     respondedAt: inquiryState === 'RESPONDED' ? '2026-04-20T10:00:00.000Z' : null,
     paymentUnlockedAt: inquiryState === 'APPROVED' ? '2026-04-20T11:00:00.000Z' : null,
+    paymentSubmittedAt: null,
+    paymentConfirmedAt: null,
+    expiresAt: null,
+    ...overrides,
   };
 }
 
@@ -143,7 +151,43 @@ describe('HostDashboard', () => {
     await waitFor(() => expect(getMyHostBillingAccountMock).toHaveBeenCalled());
 
     expect(screen.getByRole('heading', { name: 'Needs Response' })).toBeInTheDocument();
-    expect(screen.getByText('4')).toBeInTheDocument();
-    expect(screen.queryByText('3')).not.toBeInTheDocument();
+    expect(screen.getByText('4 guests are still waiting on your decision.')).toBeInTheDocument();
+  });
+
+  it('shows approved holds in dedicated payment cards with urgency cues', async () => {
+    const now = Date.now();
+    const bookings = [
+      makeBooking('payment-open', 'APPROVED', {
+        expiresAt: new Date(now + 20 * 60 * 60 * 1000).toISOString(),
+      }),
+      makeBooking('payment-review', 'APPROVED', {
+        paymentSubmittedAt: '2026-04-21T10:00:00.000Z',
+        paymentProofUrl: 'https://example.com/proof.jpg',
+        paymentReference: 'IDEAL-123',
+        expiresAt: new Date(now + 5 * 60 * 60 * 1000).toISOString(),
+      }),
+    ];
+
+    render(
+      <MemoryRouter>
+        <HostDashboard
+          profile={profile}
+          listings={[listing]}
+          bookings={bookings}
+          onUpgrade={vi.fn()}
+          onChat={vi.fn()}
+          onBookingUpdated={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(getMyHostBillingAccountMock).toHaveBeenCalled());
+
+    expect(screen.getByRole('heading', { name: 'Awaiting Guest Payment' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Payment Confirmation' })).toBeInTheDocument();
+    expect(screen.getByText('1 hold expires within 24 hours.')).toBeInTheDocument();
+    expect(screen.getByText('1 confirmation deadline closes within 24 hours.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Approved Hold Watchlist' })).toBeInTheDocument();
+    expect(screen.getByText(/Nearest deadline:/)).toBeInTheDocument();
   });
 });
