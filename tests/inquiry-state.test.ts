@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  getGuestPaymentStateText,
   getInquiryDeadlineUrgency,
   getHostInquiryBucket,
   getHostInquirySortTimestamp,
@@ -231,5 +232,37 @@ test('deadline urgency escalates approved holds that are nearing expiry', () => 
       within24Hours: false,
       within6Hours: false,
     },
+  );
+});
+
+test('guest payment state copy stays explicit across payment workflow steps', () => {
+  assert.equal(
+    getGuestPaymentStateText({
+      inquiryState: 'APPROVED',
+      paymentState: 'INITIATED',
+      paymentSubmittedAt: null,
+      paymentConfirmedAt: null,
+    }),
+    'Payment unlocked. Submit payment proof before the approval window closes.',
+  );
+
+  assert.equal(
+    getGuestPaymentStateText({
+      inquiryState: 'APPROVED',
+      paymentState: 'INITIATED',
+      paymentSubmittedAt: '2026-04-20T15:00:00.000Z',
+      paymentConfirmedAt: null,
+    }),
+    'Payment proof submitted. Host confirmation is still pending.',
+  );
+
+  assert.equal(
+    getGuestPaymentStateText({
+      inquiryState: 'BOOKED',
+      paymentState: 'COMPLETED',
+      paymentSubmittedAt: '2026-04-20T15:00:00.000Z',
+      paymentConfirmedAt: '2026-04-20T16:00:00.000Z',
+    }),
+    'Payment confirmed. Your stay is booked.',
   );
 });

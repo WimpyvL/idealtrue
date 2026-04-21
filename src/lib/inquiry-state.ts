@@ -97,6 +97,26 @@ export function getInquiryResponseText(booking: BookingStateSlice) {
   }
 }
 
+export function getGuestPaymentStateText(booking: BookingStateSlice) {
+  if (isBookedStay(booking)) {
+    return 'Payment confirmed. Your stay is booked.';
+  }
+
+  if (isAwaitingHostPaymentConfirmation(booking)) {
+    return 'Payment proof submitted. Host confirmation is still pending.';
+  }
+
+  if (canGuestPay(booking)) {
+    return 'Payment unlocked. Submit payment proof before the approval window closes.';
+  }
+
+  if (booking.paymentState === 'FAILED') {
+    return 'Payment failed. Retry with a new proof submission to keep the stay moving.';
+  }
+
+  return getInquiryResponseText(booking);
+}
+
 export function canGuestPay(booking: BookingStateSlice) {
   return booking.inquiryState === 'APPROVED' && booking.paymentState === 'INITIATED' && !booking.paymentSubmittedAt;
 }

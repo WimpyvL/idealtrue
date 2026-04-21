@@ -11,7 +11,7 @@ import {
   canGuestPay,
   getInquiryBadgeLabel,
   getInquiryDeadlineState,
-  getInquiryResponseText,
+  getGuestPaymentStateText,
   isAwaitingHostPaymentConfirmation,
   isBookedStay,
 } from '@/lib/inquiry-state';
@@ -60,6 +60,8 @@ export default function GuestDashboard({
           const statusLabel = getInquiryBadgeLabel(booking);
           const bookingReady = isBookedStay(booking);
           const paymentAwaitingReview = isAwaitingHostPaymentConfirmation(booking);
+          const breakageDeposit = booking.breakageDeposit ?? 0;
+          const fullGuestExposure = booking.totalPrice + breakageDeposit;
           const deadlineState = getInquiryDeadlineState(booking);
           const deadlineCopy = deadlineState
             ? (() => {
@@ -96,22 +98,37 @@ export default function GuestDashboard({
                   <MapPin className="w-4 h-4" />
                   <span>{booking.guests?.adults || 0} Adults, {booking.guests?.children || 0} Children</span>
                 </div>
-                <div className="pt-4 border-t border-outline-variant flex justify-between items-center gap-2">
-                  <div className="flex flex-col">
-                    <span className="font-bold text-lg">{formatRand(booking.totalPrice)}</span>
-                    <span className="text-[10px] text-outline-variant">
-                      {canGuestPay(booking)
-                        ? 'Payment unlocked. Complete payment to confirm the stay.'
-                        : paymentAwaitingReview
-                          ? 'Payment proof submitted. The host still needs to confirm it.'
-                        : getInquiryResponseText(booking)}
-                    </span>
+                <div className="grid gap-3 rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-on-surface-variant">Stay value</p>
+                      <p className="text-base font-semibold text-on-surface">{formatRand(booking.totalPrice)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-on-surface-variant">Breakage deposit</p>
+                      <p className="text-base font-semibold text-on-surface">{formatRand(breakageDeposit)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-on-surface-variant">Full guest exposure</p>
+                      <p className="text-base font-semibold text-on-surface">{formatRand(fullGuestExposure)}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-1 border-t border-outline-variant pt-3">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-on-surface-variant">Payment state</p>
+                    <p className="text-sm text-on-surface">{getGuestPaymentStateText(booking)}</p>
+                    {paymentAwaitingReview && booking.paymentReference && (
+                      <p className="text-xs text-on-surface-variant">
+                        Payment reference: <span className="font-medium text-on-surface">{booking.paymentReference}</span>
+                      </p>
+                    )}
                     {deadlineCopy && (
-                      <span className="text-[10px] text-outline-variant">
+                      <p className="text-xs text-on-surface-variant">
                         {deadlineCopy}
-                      </span>
+                      </p>
                     )}
                   </div>
+                </div>
+                <div className="pt-1 border-t border-outline-variant flex justify-between items-center gap-2">
                   <div className="flex gap-2">
                     <Button size="sm" variant="outline" onClick={() => onChat(booking)}>Message</Button>
                     {canGuestPay(booking) && (
