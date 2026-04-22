@@ -33,6 +33,7 @@ import { setUserKycStatus } from '@/lib/identity-client';
 import { type KycSubmission, listKycSubmissions, reviewKycSubmission } from '@/lib/ops-client';
 import { saveListing } from '@/lib/platform-client';
 import { toListingPayload } from '@/features/admin/dashboard-support';
+import { getErrorMessage } from '@/lib/errors';
 
 type Notify = (options: { title: string; description?: string; variant?: 'default' | 'destructive' }) => void;
 
@@ -69,57 +70,45 @@ export function useAdminDashboardData({ notify, profileId, profileRole }: UseAdm
     setLoading(true);
 
     try {
-      const results = await Promise.allSettled([
-        listAdminUsers(),
-        listAdminListings(),
-        listAdminBookings(),
-        listAdminReviews(),
-        listAdminReferralRewards(),
-        listAdminSubscriptions(),
-        listAdminCheckouts(),
-        listAdminHostBillingAccounts(),
-        listAdminNotifications(),
-        getAdminPlatformSettings(),
-      ]);
+      const requests = [
+        { key: 'users', label: 'Users', essential: true, load: () => listAdminUsers() },
+        { key: 'listings', label: 'Listings', essential: true, load: () => listAdminListings() },
+        { key: 'bookings', label: 'Bookings', essential: true, load: () => listAdminBookings() },
+        { key: 'reviews', label: 'Reviews', essential: false, load: () => listAdminReviews() },
+        { key: 'referrals', label: 'Referrals', essential: false, load: () => listAdminReferralRewards() },
+        { key: 'subscriptions', label: 'Subscriptions', essential: false, load: () => listAdminSubscriptions() },
+        { key: 'checkouts', label: 'Checkouts', essential: false, load: () => listAdminCheckouts() },
+        { key: 'hostBillingAccounts', label: 'Host Billing', essential: false, load: () => listAdminHostBillingAccounts() },
+        { key: 'notifications', label: 'Notifications', essential: false, load: () => listAdminNotifications() },
+        { key: 'settings', label: 'Platform Settings', essential: true, load: () => getAdminPlatformSettings() },
+      ] as const;
 
-      const [
-        usersResult,
-        listingsResult,
-        bookingsResult,
-        reviewsResult,
-        referralsResult,
-        subscriptionsResult,
-        checkoutsResult,
-        hostBillingAccountsResult,
-        notificationsResult,
-        settingsResult,
-      ] = results;
+      const results = await Promise.allSettled(requests.map((request) => request.load()));
+      const resultByKey = Object.fromEntries(
+        requests.map((request, index) => [request.key, results[index]]),
+      ) as Record<(typeof requests)[number]['key'], PromiseSettledResult<unknown>>;
 
       const getValue = <T,>(result: PromiseSettledResult<T>, fallback: T) =>
         result.status === 'fulfilled' ? result.value : fallback;
 
-      const users = getValue(usersResult, []);
-      const listings = getValue(listingsResult, []);
-      const bookings = getValue(bookingsResult, []);
-      const reviews = getValue(reviewsResult, []);
-      const referrals = getValue(referralsResult, []);
-      const subscriptions = getValue(subscriptionsResult, []);
-      const checkouts = getValue(checkoutsResult, []);
-      const hostBillingAccounts = getValue(hostBillingAccountsResult, []);
-      const notifications = getValue(notificationsResult, []);
-      const settings = getValue(settingsResult, null);
+      const users = getValue(resultByKey.users as PromiseSettledResult<UserProfile[]>, []);
+      const listings = getValue(resultByKey.listings as PromiseSettledResult<Listing[]>, []);
+      const bookings = getValue(resultByKey.bookings as PromiseSettledResult<Booking[]>, []);
+      const reviews = getValue(resultByKey.reviews as PromiseSettledResult<Review[]>, []);
+      const referrals = getValue(resultByKey.referrals as PromiseSettledResult<Referral[]>, []);
+      const subscriptions = getValue(resultByKey.subscriptions as PromiseSettledResult<Subscription[]>, []);
+      const checkouts = getValue(resultByKey.checkouts as PromiseSettledResult<AdminCheckout[]>, []);
+      const hostBillingAccounts = getValue(resultByKey.hostBillingAccounts as PromiseSettledResult<AdminHostBillingAccount[]>, []);
+      const notifications = getValue(resultByKey.notifications as PromiseSettledResult<Notification[]>, []);
+      const settings = getValue(resultByKey.settings as PromiseSettledResult<PlatformSettings | null>, null);
 
-      const criticalFailures = [
-        usersResult,
-        listingsResult,
-        bookingsResult,
-        reviewsResult,
-        referralsResult,
-        subscriptionsResult,
-        checkoutsResult,
-        notificationsResult,
-        settingsResult,
-      ].filter((result) => result.status === 'rejected');
+      const failedRequests = requests
+        .map((request, index) => ({ ...request, result: results[index] }))
+        .filter(
+          (entry): entry is (typeof requests)[number] & { result: PromiseRejectedResult } =>
+            entry.result.status === 'rejected',
+        );
+      const essentialFailures = failedRequests.filter((entry) => entry.essential);
 
       setAllUsers(users);
       setAllListings(listings);
@@ -140,12 +129,19 @@ export function useAdminDashboardData({ notify, profileId, profileRole }: UseAdm
         pendingReviews: reviews.filter((review) => review.status === 'pending').length,
       });
 
-      if (criticalFailures.length > 0) {
-        console.error('Admin dashboard loaded with partial failures', criticalFailures);
+      if (failedRequests.length > 0) {
+        console.error(
+          'Admin dashboard loaded with partial failures',
+          failedRequests.map((entry) => ({
+            error: getErrorMessage(entry.result.reason),
+            key: entry.key,
+            label: entry.label,
+          })),
+        );
         notify({
-          title: 'Admin data partially loaded',
-          description: 'Some admin services did not respond, but the dashboard recovered with the data that is available.',
-          variant: 'destructive',
+          title: essentialFailures.length > 0 ? 'Admin data partially loaded' : 'Some admin sections are unavailable',
+          description: `Could not load: ${failedRequests.map((entry) => entry.label).join(', ')}.`,
+          variant: essentialFailures.length > 0 ? 'destructive' : 'default',
         });
       }
     } catch (error) {
