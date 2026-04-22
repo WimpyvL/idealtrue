@@ -1,6 +1,6 @@
 ## Change Log
 
-- Hardened `encore/catalog/api.ts` so public listing reads fail open when host-billing visibility checks cannot query `host_billing_accounts`; the marketplace now keeps serving listings instead of 500ing when billing migrations or billing DB access lag behind.
+- Hardened `encore/catalog/api.ts` so public listing reads fail open when host-billing visibility checks or availability-hydration reads cannot hit their newer tables; the marketplace now keeps serving listings instead of 500ing when billing/catalog migrations lag behind.
 - Refined `src/features/admin/use-admin-dashboard-data.ts` so admin partial-load toasts now name the failing sections and only use destructive severity when essential admin slices fail, instead of the vague generic warning.
 - Fixed Encore cloud deploy blockers in `encore/billing/host-billing-service.ts` and `encore/booking/api.ts` by replacing unsupported cron `endpoint` arrow functions with named async handlers, so backend deploys can compile and ship the newer billing/admin routes.
 - Hardened `src/lib/admin-client.ts` and `src/features/admin/use-admin-dashboard-data.ts` so the admin dashboard still renders when the deployed Encore backend is missing the newer host-billing admin endpoints; the billing panel now degrades safely instead of blanking the whole admin screen after the `idealstay.co.za` cutover.

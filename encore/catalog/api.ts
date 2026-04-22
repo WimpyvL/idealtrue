@@ -425,14 +425,19 @@ function toAvailabilityBlockInput(row: AvailabilityBlockRow): AvailabilityBlockI
 }
 
 async function listAvailabilityBlockInputs(listingId: string) {
-  const rows = await catalogDB.queryAll<AvailabilityBlockRow>`
-    SELECT id, listing_id, source_type, source_id, starts_on::text, ends_on::text, nights, note, created_at, updated_at
-    FROM listing_availability_blocks
-    WHERE listing_id = ${listingId}
-    ORDER BY starts_on ASC, source_type ASC, created_at ASC
-  `;
+  try {
+    const rows = await catalogDB.queryAll<AvailabilityBlockRow>`
+      SELECT id, listing_id, source_type, source_id, starts_on::text, ends_on::text, nights, note, created_at, updated_at
+      FROM listing_availability_blocks
+      WHERE listing_id = ${listingId}
+      ORDER BY starts_on ASC, source_type ASC, created_at ASC
+    `;
 
-  return rows.map(toAvailabilityBlockInput);
+    return rows.map(toAvailabilityBlockInput);
+  } catch (error) {
+    console.warn(`Failed to read availability blocks for listing ${listingId}; falling back to legacy availability.`, error);
+    return [];
+  }
 }
 
 async function insertManualAvailabilityDates(listingId: string, dates: string[]) {
@@ -490,63 +495,68 @@ async function insertManualAvailabilityBlocks(listingId: string, manualBlocks: L
 }
 
 async function ensureListingAvailabilityHydrated(row: ListingRow) {
-  const existingBlocks = await listAvailabilityBlockInputs(row.id);
-  if (existingBlocks.length > 0) {
-    return existingBlocks;
-  }
+  try {
+    const existingBlocks = await listAvailabilityBlockInputs(row.id);
+    if (existingBlocks.length > 0) {
+      return existingBlocks;
+    }
 
-  const bookingRows = await bookingDB.rawQueryAll<BookingAvailabilityRow>(
-    `
-      SELECT id, check_in, check_out, inquiry_state, payment_state
-      FROM bookings
-      WHERE listing_id = $1
-        AND (
-          (inquiry_state = 'BOOKED' AND payment_state = 'COMPLETED')
-          OR (inquiry_state = 'APPROVED' AND payment_state = 'INITIATED')
-        )
-    `,
-    row.id,
-  );
+    const bookingRows = await bookingDB.rawQueryAll<BookingAvailabilityRow>(
+      `
+        SELECT id, check_in, check_out, inquiry_state, payment_state
+        FROM bookings
+        WHERE listing_id = $1
+          AND (
+            (inquiry_state = 'BOOKED' AND payment_state = 'COMPLETED')
+            OR (inquiry_state = 'APPROVED' AND payment_state = 'INITIATED')
+          )
+      `,
+      row.id,
+    );
 
-  if (bookingRows.length === 0 && (row.blocked_dates ?? []).length === 0) {
+    if (bookingRows.length === 0 && (row.blocked_dates ?? []).length === 0) {
+      return [];
+    }
+
+    const bookingEntries: BookingAvailabilitySnapshotItem[] = bookingRows.map((booking) => ({
+      bookingId: booking.id,
+      checkIn: booking.check_in,
+      checkOut: booking.check_out,
+      sourceType: booking.inquiry_state === "BOOKED" ? "BOOKED" : "APPROVED_HOLD",
+    }));
+
+    const bookingNights = new Set(
+      bookingEntries.flatMap((entry) => enumerateAvailabilityNights(entry.checkIn.slice(0, 10), entry.checkOut.slice(0, 10))),
+    );
+    const manualLegacyDates = (row.blocked_dates ?? [])
+      .map(normalizeAvailabilityDateKey)
+      .filter((dateKey) => !bookingNights.has(dateKey));
+
+    if (manualLegacyDates.length > 0) {
+      await insertManualAvailabilityDates(row.id, manualLegacyDates);
+    }
+
+    if (bookingEntries.length > 0) {
+      await replaceBookingAvailabilityBlocks(row.id, bookingEntries);
+    }
+
+    const refreshed = await refreshListingBlockedDatesFromAvailability(row.id);
+    return refreshed.availabilityBlocks.map((block) => ({
+      id: block.id,
+      listingId: block.listingId,
+      sourceType: block.sourceType,
+      sourceId: block.sourceId,
+      startsOn: block.startsOn,
+      endsOn: block.endsOn,
+      nights: block.nights,
+      bookingId: block.bookingId,
+      createdAt: block.createdAt,
+      updatedAt: block.updatedAt,
+    }));
+  } catch (error) {
+    console.warn(`Failed to hydrate availability blocks for listing ${row.id}; falling back to legacy listing payload.`, error);
     return [];
   }
-
-  const bookingEntries: BookingAvailabilitySnapshotItem[] = bookingRows.map((booking) => ({
-    bookingId: booking.id,
-    checkIn: booking.check_in,
-    checkOut: booking.check_out,
-    sourceType: booking.inquiry_state === "BOOKED" ? "BOOKED" : "APPROVED_HOLD",
-  }));
-
-  const bookingNights = new Set(
-    bookingEntries.flatMap((entry) => enumerateAvailabilityNights(entry.checkIn.slice(0, 10), entry.checkOut.slice(0, 10))),
-  );
-  const manualLegacyDates = (row.blocked_dates ?? [])
-    .map(normalizeAvailabilityDateKey)
-    .filter((dateKey) => !bookingNights.has(dateKey));
-
-  if (manualLegacyDates.length > 0) {
-    await insertManualAvailabilityDates(row.id, manualLegacyDates);
-  }
-
-  if (bookingEntries.length > 0) {
-    await replaceBookingAvailabilityBlocks(row.id, bookingEntries);
-  }
-
-  const refreshed = await refreshListingBlockedDatesFromAvailability(row.id);
-  return refreshed.availabilityBlocks.map((block) => ({
-    id: block.id,
-    listingId: block.listingId,
-    sourceType: block.sourceType,
-    sourceId: block.sourceId,
-    startsOn: block.startsOn,
-    endsOn: block.endsOn,
-    nights: block.nights,
-    bookingId: block.bookingId,
-    createdAt: block.createdAt,
-    updatedAt: block.updatedAt,
-  }));
 }
 
 async function listAvailabilityBlocksForListings(listingIds: string[]) {
