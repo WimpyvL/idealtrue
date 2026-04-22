@@ -101,6 +101,19 @@ function isAdminObservabilityEnabled() {
   return env.DEV || env.VITE_ENABLE_ADMIN_OBSERVABILITY === 'true';
 }
 
+function isEncoreEndpointNotFound(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(error.message) as { code?: string; message?: string };
+    return parsed.code === 'not_found' && parsed.message === 'endpoint not found';
+  } catch {
+    return false;
+  }
+}
+
 export async function listAdminUsers() {
   const response = await encoreRequest<{ users: EncoreUser[] }>('/admin/users', {}, { auth: true });
   return response.users.map(mapEncoreUserToProfile);
@@ -211,12 +224,19 @@ export async function listAdminCheckouts(): Promise<AdminCheckout[]> {
 }
 
 export async function listAdminHostBillingAccounts(): Promise<AdminHostBillingAccount[]> {
-  const response = await encoreRequest<{ accounts: AdminHostBillingAccount[] }>(
-    '/admin/billing/host-accounts',
-    {},
-    { auth: true },
-  );
-  return response.accounts;
+  try {
+    const response = await encoreRequest<{ accounts: AdminHostBillingAccount[] }>(
+      '/admin/billing/host-accounts',
+      {},
+      { auth: true },
+    );
+    return response.accounts;
+  } catch (error) {
+    if (isEncoreEndpointNotFound(error)) {
+      return [];
+    }
+    throw error;
+  }
 }
 
 export async function setAdminHostGreylist(params: {
@@ -224,15 +244,22 @@ export async function setAdminHostGreylist(params: {
   greylisted: boolean;
   reason?: string | null;
 }) {
-  const response = await encoreRequest<{ account: AdminHostBillingAccount }>(
-    '/admin/billing/host-accounts/greylist',
-    {
-      method: 'POST',
-      body: JSON.stringify(params),
-    },
-    { auth: true },
-  );
-  return response.account;
+  try {
+    const response = await encoreRequest<{ account: AdminHostBillingAccount }>(
+      '/admin/billing/host-accounts/greylist',
+      {
+        method: 'POST',
+        body: JSON.stringify(params),
+      },
+      { auth: true },
+    );
+    return response.account;
+  } catch (error) {
+    if (isEncoreEndpointNotFound(error)) {
+      throw new Error('The deployed Encore backend does not expose host billing admin endpoints yet.');
+    }
+    throw error;
+  }
 }
 
 export async function listAdminNotifications(): Promise<Notification[]> {

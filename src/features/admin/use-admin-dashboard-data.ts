@@ -69,18 +69,7 @@ export function useAdminDashboardData({ notify, profileId, profileRole }: UseAdm
     setLoading(true);
 
     try {
-      const [
-        users,
-        listings,
-        bookings,
-        reviews,
-        referrals,
-        subscriptions,
-        checkouts,
-        hostBillingAccounts,
-        notifications,
-        settings,
-      ] = await Promise.all([
+      const results = await Promise.allSettled([
         listAdminUsers(),
         listAdminListings(),
         listAdminBookings(),
@@ -92,6 +81,45 @@ export function useAdminDashboardData({ notify, profileId, profileRole }: UseAdm
         listAdminNotifications(),
         getAdminPlatformSettings(),
       ]);
+
+      const [
+        usersResult,
+        listingsResult,
+        bookingsResult,
+        reviewsResult,
+        referralsResult,
+        subscriptionsResult,
+        checkoutsResult,
+        hostBillingAccountsResult,
+        notificationsResult,
+        settingsResult,
+      ] = results;
+
+      const getValue = <T,>(result: PromiseSettledResult<T>, fallback: T) =>
+        result.status === 'fulfilled' ? result.value : fallback;
+
+      const users = getValue(usersResult, []);
+      const listings = getValue(listingsResult, []);
+      const bookings = getValue(bookingsResult, []);
+      const reviews = getValue(reviewsResult, []);
+      const referrals = getValue(referralsResult, []);
+      const subscriptions = getValue(subscriptionsResult, []);
+      const checkouts = getValue(checkoutsResult, []);
+      const hostBillingAccounts = getValue(hostBillingAccountsResult, []);
+      const notifications = getValue(notificationsResult, []);
+      const settings = getValue(settingsResult, null);
+
+      const criticalFailures = [
+        usersResult,
+        listingsResult,
+        bookingsResult,
+        reviewsResult,
+        referralsResult,
+        subscriptionsResult,
+        checkoutsResult,
+        notificationsResult,
+        settingsResult,
+      ].filter((result) => result.status === 'rejected');
 
       setAllUsers(users);
       setAllListings(listings);
@@ -111,6 +139,15 @@ export function useAdminDashboardData({ notify, profileId, profileRole }: UseAdm
         totalEnquiries: bookings.length,
         pendingReviews: reviews.filter((review) => review.status === 'pending').length,
       });
+
+      if (criticalFailures.length > 0) {
+        console.error('Admin dashboard loaded with partial failures', criticalFailures);
+        notify({
+          title: 'Admin data partially loaded',
+          description: 'Some admin services did not respond, but the dashboard recovered with the data that is available.',
+          variant: 'destructive',
+        });
+      }
     } catch (error) {
       console.error('Failed to load admin core data', error);
       notify({ title: 'Admin data failed', description: 'Could not load admin dashboard data.', variant: 'destructive' });

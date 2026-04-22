@@ -1,5 +1,6 @@
 ## Change Log
 
+- Hardened `src/lib/admin-client.ts` and `src/features/admin/use-admin-dashboard-data.ts` so the admin dashboard still renders when the deployed Encore backend is missing the newer host-billing admin endpoints; the billing panel now degrades safely instead of blanking the whole admin screen after the `idealstay.co.za` cutover.
 - Added server-owned enquiry expiry windows in `encore/booking/workflow.ts` and `encore/booking/api.ts`, enforcing 48-hour unresolved-enquiry expiry, 24-hour approval expiry, automatic `EXPIRED` transitions on reads/mutations, and an hourly expiry cron so stale approvals release their `APPROVED_HOLD` inventory.
 - Updated `src/lib/inquiry-state.ts`, `src/pages/HostEnquiries.tsx`, `src/pages/HostDashboard.tsx`, and `src/pages/GuestDashboard.tsx` so host and guest flows show real response/payment/confirmation deadlines and expired-state copy from the canonical booking state instead of vague UI-only messaging.
 - Added coverage in `tests/booking-workflow.test.ts` and `tests/inquiry-state.test.ts`, and wrote the implementation notes to `docs/superpowers/plans/2026-04-20-enquiry-expiry.md` plus `docs/booking-and-enquiry-workflow.md`.
