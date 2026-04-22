@@ -1,5 +1,6 @@
 ## Change Log
 
+- Wired account shutdown paths in `encore/identity/api.ts` and `encore/identity/account-status.ts` so suspending, deactivating, or attempting to delete a user now pauses any active host listings before the account lifecycle action continues, preventing live inventory from surviving restricted accounts.
 - Turned billing greylisting into a real host operations lock by adding a reusable restriction guard in `encore/billing/host-billing*.ts`, enforcing it across host listing mutations in `encore/catalog/api.ts` and host booking actions in `encore/booking/api.ts`, and surfacing the backend error in `src/pages/HostListings.tsx` so greylisted hosts cannot quietly keep reactivating listings or advancing enquiries.
 - Hardened `encore/catalog/api.ts` so public listing reads fail open when host-billing visibility checks or availability-hydration reads cannot hit their newer tables; the marketplace now keeps serving listings instead of 500ing when billing/catalog migrations lag behind.
 - Refined `src/features/admin/use-admin-dashboard-data.ts` so admin partial-load toasts now name the failing sections and only use destructive severity when essential admin slices fail, instead of the vague generic warning.

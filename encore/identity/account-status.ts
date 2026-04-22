@@ -21,3 +21,7 @@ export function normalizeAccountStatusReason(status: AccountStatus, reason?: str
   const trimmed = reason?.trim();
   return trimmed ? trimmed.slice(0, 500) : null;
 }
+
+export function shouldPauseListingsForAccountStatus(status: AccountStatus) {
+  return status === "suspended" || status === "deactivated";
+}

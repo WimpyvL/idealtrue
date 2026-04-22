@@ -18,7 +18,11 @@ import { kycDocumentsBucket } from "../ops/storage";
 import { referralsDB } from "../referrals/db";
 import { reviewsDB } from "../reviews/db";
 import type { AccountStatus, HostPlan, KycStatus, ReferralTier, UserProfile, UserRole } from "../shared/domain";
-import { buildAccountStatusBlockMessage, normalizeAccountStatusReason } from "./account-status";
+import {
+  buildAccountStatusBlockMessage,
+  normalizeAccountStatusReason,
+  shouldPauseListingsForAccountStatus,
+} from "./account-status";
 
 interface SignupParams {
   email: string;
@@ -429,6 +433,16 @@ async function removeUserMedia(existing: UserRow, kycSubmission: UserKycMediaRow
   }
 
   await Promise.all(removals);
+}
+
+async function pauseUserListings(userId: string) {
+  await catalogDB.exec`
+    UPDATE listings
+    SET status = ${"inactive"},
+        updated_at = ${new Date().toISOString()}
+    WHERE host_id = ${userId}
+      AND status = ${"active"}
+  `;
 }
 
 function issueSession(user: UserProfile): SessionResponse {
@@ -1007,6 +1021,9 @@ export const adminSetAccountStatus = api<
     }
 
     const now = new Date().toISOString();
+    if (shouldPauseListingsForAccountStatus(accountStatus)) {
+      await pauseUserListings(userId);
+    }
     await identityDB.exec`
       UPDATE users
       SET account_status = ${accountStatus},
@@ -1062,6 +1079,8 @@ export const adminDeleteUser = api<{ userId: string }, { deleted: true }>(
     if (!existing) {
       throw APIError.notFound("User not found.");
     }
+
+    await pauseUserListings(userId);
 
     const dependencyCounts = await getUserDeleteDependencyCounts(userId);
     const blockers = getUserDeleteBlockers(dependencyCounts);
