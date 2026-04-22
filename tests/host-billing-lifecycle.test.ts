@@ -5,6 +5,8 @@ import {
   computeVoucherWindow,
   deriveBillingTimeline,
   generateVoucherPins,
+  getHostBillingRestrictionMessage,
+  isHostBillingRestricted,
 } from '../encore/billing/host-billing.ts';
 
 test('computeVoucherWindow gives hosts three months free with a seven-day reminder window', () => {
@@ -51,4 +53,17 @@ test('generateVoucherPins produces the requested number of unique onboarding pin
   assert.equal(pins.length, 100);
   assert.equal(new Set(pins).size, 100);
   assert.ok(pins.every((pin) => /^HOST-[A-Z0-9]{10}$/.test(pin)));
+});
+
+test('greylisted billing status is treated as an operational lock with explicit host-facing copy', () => {
+  assert.equal(isHostBillingRestricted('greylisted'), true);
+  assert.equal(isHostBillingRestricted('active'), false);
+  assert.equal(
+    getHostBillingRestrictionMessage('listings'),
+    'Your host account is greylisted. Listing access is paused until billing is resolved.',
+  );
+  assert.equal(
+    getHostBillingRestrictionMessage('bookings'),
+    'Your host account is greylisted. Booking actions are paused until billing is resolved.',
+  );
 });

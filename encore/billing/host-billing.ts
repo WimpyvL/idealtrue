@@ -19,6 +19,8 @@ export interface BillingTimeline {
   nextAction: HostBillingNextAction;
 }
 
+export type HostBillingRestrictedArea = "hosting" | "listings" | "bookings";
+
 function addMonthsIso(input: string, months: number) {
   const date = new Date(input);
   const result = new Date(date);
@@ -76,6 +78,22 @@ export function deriveBillingTimeline(input: BillingTimelineInput, nowIso: strin
     greylistEligible,
     nextAction,
   };
+}
+
+export function isHostBillingRestricted(status: HostBillingStatus | null | undefined) {
+  return status === "greylisted";
+}
+
+export function getHostBillingRestrictionMessage(area: HostBillingRestrictedArea = "hosting") {
+  if (area === "listings") {
+    return "Your host account is greylisted. Listing access is paused until billing is resolved.";
+  }
+
+  if (area === "bookings") {
+    return "Your host account is greylisted. Booking actions are paused until billing is resolved.";
+  }
+
+  return "Your host account is greylisted until billing is resolved.";
 }
 
 function makeDeterministicChunk(seed: number, index: number, alphabet: string) {

@@ -3,7 +3,10 @@ import { api, APIError } from "encore.dev/api";
 import { CronJob } from "encore.dev/cron";
 import { billingDB } from "./db";
 import {
+  getHostBillingRestrictionMessage,
+  isHostBillingRestricted,
   type HostBillingNextAction,
+  type HostBillingRestrictedArea,
   type HostBillingSource,
   type HostBillingStatus,
   computeVoucherWindow,
@@ -211,6 +214,26 @@ export async function getHostBillingAccount(userId: string) {
     throw APIError.internal("Failed to initialize host billing account.");
   }
   return mapBillingAccount(created);
+}
+
+export async function getHostBillingStatus(userId: string): Promise<HostBillingStatus | null> {
+  const row = await billingDB.queryRow<{ billing_status: HostBillingStatus }>`
+    SELECT billing_status
+    FROM host_billing_accounts
+    WHERE user_id = ${userId}
+  `;
+
+  return row?.billing_status ?? null;
+}
+
+export async function assertHostBillingOperationalAccess(
+  userId: string,
+  area: HostBillingRestrictedArea = "hosting",
+) {
+  const billingStatus = await getHostBillingStatus(userId);
+  if (isHostBillingRestricted(billingStatus)) {
+    throw APIError.permissionDenied(getHostBillingRestrictionMessage(area));
+  }
 }
 
 export async function saveHostBillingCard(userId: string, input: SaveBillingCardInput) {

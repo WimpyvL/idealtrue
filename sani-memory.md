@@ -1,5 +1,6 @@
 ## Change Log
 
+- Turned billing greylisting into a real host operations lock by adding a reusable restriction guard in `encore/billing/host-billing*.ts`, enforcing it across host listing mutations in `encore/catalog/api.ts` and host booking actions in `encore/booking/api.ts`, and surfacing the backend error in `src/pages/HostListings.tsx` so greylisted hosts cannot quietly keep reactivating listings or advancing enquiries.
 - Hardened `encore/catalog/api.ts` so public listing reads fail open when host-billing visibility checks or availability-hydration reads cannot hit their newer tables; the marketplace now keeps serving listings instead of 500ing when billing/catalog migrations lag behind.
 - Refined `src/features/admin/use-admin-dashboard-data.ts` so admin partial-load toasts now name the failing sections and only use destructive severity when essential admin slices fail, instead of the vague generic warning.
 - Fixed Encore cloud deploy blockers in `encore/billing/host-billing-service.ts` and `encore/booking/api.ts` by replacing unsupported cron `endpoint` arrow functions with named async handlers, so backend deploys can compile and ship the newer billing/admin routes.

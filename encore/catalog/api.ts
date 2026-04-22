@@ -19,6 +19,7 @@ import { computeHostListingQuota, type HostListingQuota } from "./quota";
 import { getMaxImagesForPlan, supportsListingVideo } from "./host-plan";
 import { requireRole, type AuthData } from "../shared/auth";
 import { billingDB } from "../billing/db";
+import { assertHostBillingOperationalAccess } from "../billing/host-billing-service";
 import { bookingDB } from "../booking/db";
 import { identityDB } from "../identity/db";
 import { notifyListingReviewed } from "../ops/notifications";
@@ -255,6 +256,10 @@ async function readRawBuffer(req: IncomingMessage, maxBytes: number) {
 }
 
 async function assertCanUploadMedia(auth: AuthData, listingId?: string) {
+  if (auth.role === "host") {
+    await assertHostBillingOperationalAccess(auth.userID, "listings");
+  }
+
   const normalizedListingId = normalizeDraftListingId(listingId);
   if (!normalizedListingId) {
     return;
@@ -1031,6 +1036,9 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
     const auth = requireRole("host", "admin", "support");
     const now = new Date().toISOString();
     const isStaffOperator = auth.role === "admin" || auth.role === "support";
+    if (!isStaffOperator) {
+      await assertHostBillingOperationalAccess(auth.userID, "listings");
+    }
     const hostAccess = isStaffOperator ? null : await getHostAccess(auth.userID);
     if (hostAccess) {
       assertListingImageCount(params.images, hostAccess.host_plan);
@@ -1246,6 +1254,9 @@ export const updateListingAvailability = api<UpdateAvailabilityParams, { listing
   async ({ listingId, blockedDates }) => {
     const auth = requireRole("host", "admin", "support");
     const isStaffOperator = auth.role === "admin" || auth.role === "support";
+    if (!isStaffOperator) {
+      await assertHostBillingOperationalAccess(auth.userID, "listings");
+    }
     const existing = await catalogDB.queryRow<ListingRow>`
       SELECT * FROM listings WHERE id = ${listingId}
     `;
@@ -1263,6 +1274,9 @@ export const updateListingAvailabilityBlocks = api<UpdateAvailabilityBlocksParam
   async ({ listingId, manualBlocks }) => {
     const auth = requireRole("host", "admin", "support");
     const isStaffOperator = auth.role === "admin" || auth.role === "support";
+    if (!isStaffOperator) {
+      await assertHostBillingOperationalAccess(auth.userID, "listings");
+    }
     const existing = await catalogDB.queryRow<ListingRow>`
       SELECT * FROM listings WHERE id = ${listingId}
     `;

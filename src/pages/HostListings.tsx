@@ -68,6 +68,11 @@ export default function HostListings({ listings, onListingUpdated, onListingRemo
       onListingUpdated?.({ ...listing, status: newStatus });
     } catch (error) {
       console.error('Failed to update listing status', error);
+      toast({
+        title: 'Listing update failed',
+        description: getErrorMessage(error),
+        variant: 'destructive',
+      });
     } finally {
       setIsUpdating(null);
     }

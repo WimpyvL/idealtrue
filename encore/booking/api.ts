@@ -5,6 +5,7 @@ import { bookingDB } from "./db";
 import { bookingEvidenceBucket } from "./storage";
 import { requireAuth, requireRole } from "../shared/auth";
 import { platformEvents } from "../analytics/events";
+import { assertHostBillingOperationalAccess } from "../billing/host-billing-service";
 import {
   assertListingDateRangeAvailable,
   getListing,
@@ -594,6 +595,8 @@ export async function recordHostInquiryResponseFromMessage(bookingId: string, ac
     return null;
   }
 
+  await assertHostBillingOperationalAccess(actorId, "bookings");
+
   const transitionError = getInquiryStatusTransitionError(existing.inquiry_state, "RESPONDED", "host");
   if (transitionError) {
     return null;
@@ -770,6 +773,9 @@ export const markInquiryViewed = api<{ id: string }, { booking: BookingRecord }>
   async ({ id }) => {
     const auth = requireRole("host", "admin", "support");
     const now = new Date().toISOString();
+    if (auth.role === "host") {
+      await assertHostBillingOperationalAccess(auth.userID, "bookings");
+    }
     const existing = await fetchBookingRowFresh(id, now);
     if (!existing) throw APIError.notFound("Inquiry not found.");
     if (existing.host_id !== auth.userID && !["admin", "support"].includes(auth.role)) {
@@ -799,6 +805,9 @@ export const updateBookingStatus = api<UpdateBookingStatusParams, { booking: Boo
   async (params) => {
     const auth = requireRole("host", "admin", "support");
     const now = new Date().toISOString();
+    if (auth.role === "host") {
+      await assertHostBillingOperationalAccess(auth.userID, "bookings");
+    }
     const existing = await fetchBookingRowFresh(params.id, now);
     if (!existing) throw APIError.notFound("Inquiry not found.");
     if (existing.host_id !== auth.userID && !["admin", "support"].includes(auth.role)) {
@@ -950,6 +959,7 @@ export const confirmPayment = api<ConfirmPaymentParams, { booking: BookingRecord
     if (existing.host_id !== auth.userID) {
       throw APIError.permissionDenied("Only the host can confirm payment for this inquiry.");
     }
+    await assertHostBillingOperationalAccess(auth.userID, "bookings");
     if (!existing.payment_submitted_at) {
       throw APIError.failedPrecondition("The guest has not submitted payment proof yet.");
     }
