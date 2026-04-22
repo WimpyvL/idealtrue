@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { APIError } from "encore.dev/api";
+import { api, APIError } from "encore.dev/api";
 import { CronJob } from "encore.dev/cron";
 import { billingDB } from "./db";
 import {
@@ -559,9 +559,14 @@ export async function processVoucherReminderCycle(nowIso = new Date().toISOStrin
   }
 }
 
+export const runHostBillingReminderCycle = api(
+  {},
+  async () => {
+  await processVoucherReminderCycle();
+  },
+);
+
 export const hostBillingReminderCron = new CronJob("host-billing-reminder-cycle", {
   every: "24h",
-  endpoint: async () => {
-    await processVoucherReminderCycle();
-  },
+  endpoint: runHostBillingReminderCycle,
 });

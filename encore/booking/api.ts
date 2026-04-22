@@ -1003,9 +1003,14 @@ export async function processInquiryExpiryCycle(nowIso = new Date().toISOString(
   }
 }
 
-export const inquiryExpiryCron = new CronJob("inquiry-expiry-cycle", {
-  every: "1h",
-  endpoint: async () => {
+export const runInquiryExpiryCycle = api(
+  {},
+  async () => {
     await processInquiryExpiryCycle();
   },
+);
+
+export const inquiryExpiryCron = new CronJob("inquiry-expiry-cycle", {
+  every: "1h",
+  endpoint: runInquiryExpiryCycle,
 });
