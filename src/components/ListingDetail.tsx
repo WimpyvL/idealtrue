@@ -126,6 +126,11 @@ export default function ListingDetail({
   }, [listing.id, listing.blockedDates]);
 
   const handleDateRangeSelect = (nextRange: DateRange | undefined) => {
+    if (nextRange?.from && nextRange?.to && differenceInDays(nextRange.to, nextRange.from) <= 0) {
+      setDateRange({ from: nextRange.from, to: undefined });
+      return;
+    }
+
     setDateRange(nextRange);
 
     if (nextRange?.from && nextRange?.to) {
@@ -136,6 +141,10 @@ export default function ListingDetail({
   const handleBookClick = async () => {
     if (!dateRange?.from || !dateRange?.to) {
       toast.error("Please select check-in and check-out dates.");
+      return;
+    }
+    if (differenceInDays(dateRange.to, dateRange.from) <= 0) {
+      toast.error("Please choose a check-out date after check-in.");
       return;
     }
     if (isDateBlocked(dateRange.from) || rangeIncludesBlockedDates(dateRange.from, dateRange.to)) {

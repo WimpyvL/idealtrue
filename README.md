@@ -66,6 +66,8 @@ This is now an Encore-first repo, not a Firebase bridge with new paint.
 
 See [`docs/booking-and-enquiry-workflow.md`](/C:/Git%20Repos/IdealTrue/docs/booking-and-enquiry-workflow.md) for the full workflow and operational expectations.
 
+See [`docs/workflow-validation-matrix.md`](/C:/Git%20Repos/IdealTrue/docs/workflow-validation-matrix.md) for the maintained workflow inventory, coverage gaps, fixture contract, and CI acceptance gate.
+
 ## What does not fully route through Encore yet
 
 - KYC document submission still needs a more complete ops workflow around review history and disputes

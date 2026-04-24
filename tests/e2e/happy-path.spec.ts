@@ -70,8 +70,8 @@ test('guest booking request, host approval, and guest notification smoke flow', 
     listingId: 'listing-1',
     guestId: 'guest-1',
     hostId: 'host-1',
-    checkIn: '2026-04-10T00:00:00.000Z',
-    checkOut: '2026-04-13T00:00:00.000Z',
+    checkIn: '2026-05-05T00:00:00.000Z',
+    checkOut: '2026-05-08T00:00:00.000Z',
     adults: 1,
     children: 0,
     totalPrice: 5445,
@@ -211,6 +211,10 @@ test('guest booking request, host approval, and guest notification smoke flow', 
 
   await expect(page.getByText('My Stays')).toBeVisible();
   await page.getByText('Sea Point Stay').first().click();
+  await page.getByRole('button', { name: /Check-in Add date Checkout Add date/ }).click();
+  await page.locator('button[data-day="5/5/2026"]').click();
+  await expect(page.getByText('Now choose your check-out date.')).toBeVisible();
+  await page.locator('button[data-day="5/8/2026"]').click({ force: true });
   await page.getByRole('button', { name: 'Request to Book' }).click();
   await expect(page.getByText('Booking request sent! The host will contact you shortly.')).toBeVisible();
 

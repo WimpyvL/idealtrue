@@ -317,7 +317,7 @@ export default function SignupPage() {
             disabled={
               ((isResetPasswordMode || isSignupMode) && !password.trim()) ||
               (!isResetPasswordMode && !email.trim()) ||
-              (isSignupMode && (!selectedRole || !displayName.trim() || !confirmPassword.trim())) ||
+              (isSignupMode && !isResetPasswordMode && (!selectedRole || !displayName.trim() || !confirmPassword.trim())) ||
               (isResetPasswordMode && !confirmPassword.trim()) ||
               isSubmitting
             }
