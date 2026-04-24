@@ -260,81 +260,57 @@ export default function HostDashboard({
 
       {/* Key Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
-        <Card className="p-6 flex flex-col gap-2 border-l-4 border-l-blue-500">
-          <div className="flex items-center gap-2 text-on-surface-variant">
-            <Calendar className="w-5 h-5 text-blue-500" />
-            <h3 className="font-medium">Total Bookings</h3>
-          </div>
-          <p className="text-3xl font-bold">{localBookings.length}</p>
-        </Card>
-        <Card className="p-6 flex flex-col gap-2 border-l-4 border-l-amber-500">
-          <div className="flex items-center gap-2 text-on-surface-variant">
-            <MessageSquare className="w-5 h-5 text-amber-500" />
-            <h3 className="font-medium">Needs Response</h3>
-          </div>
-          <p className="text-3xl font-bold">{needsResponseBookings.length}</p>
-          <p className="text-xs text-on-surface-variant">
-            {needsResponseBookings.length > 0
-              ? `${needsResponseBookings.length} ${needsResponseBookings.length === 1 ? 'guest is' : 'guests are'} still waiting on your decision.`
-              : 'No live decision queue right now.'}
-          </p>
-        </Card>
-        <Card className={`p-6 flex flex-col gap-2 border-l-4 ${awaitingGuestPaymentTone.border}`}>
-          <div className="flex items-center gap-2 text-on-surface-variant">
-            <CircleDollarSign className={`w-5 h-5 ${awaitingGuestPaymentTone.icon}`} />
-            <h3 className="font-medium">Awaiting Guest Payment</h3>
-          </div>
-          <p className="text-3xl font-bold">{awaitingGuestPaymentBookings.length}</p>
-          <div className="flex items-center gap-2">
-            <Badge variant={awaitingGuestPaymentTone.badge}>
-              {guestPaymentUrgentCount > 0 ? 'Expiring Soon' : 'Approved Hold'}
-            </Badge>
-            <p className="text-xs text-on-surface-variant">
-              {getApprovedHoldHelperText(
-                awaitingGuestPaymentBookings,
-                guestPaymentUrgentCount,
-                'No approved holds are waiting on payment.',
-                'Guest payment is still outstanding on these approved stays.',
-                (count) => `${count} ${count === 1 ? 'hold expires' : 'holds expire'} within 24 hours.`,
-              )}
-            </p>
-          </div>
-        </Card>
-        <Card className={`p-6 flex flex-col gap-2 border-l-4 ${paymentReviewTone.border}`}>
-          <div className="flex items-center gap-2 text-on-surface-variant">
-            <TimerReset className={`w-5 h-5 ${paymentReviewTone.icon}`} />
-            <h3 className="font-medium">Payment Confirmation</h3>
-          </div>
-          <p className="text-3xl font-bold">{paymentReviewBookings.length}</p>
-          <div className="flex items-center gap-2">
-            <Badge variant={paymentReviewTone.badge}>
-              {paymentReviewUrgentCount > 0 ? 'Action Due' : 'Review Queue'}
-            </Badge>
-            <p className="text-xs text-on-surface-variant">
-              {getApprovedHoldHelperText(
-                paymentReviewBookings,
-                paymentReviewUrgentCount,
-                'No payment proofs are waiting on you.',
-                'Proof has been submitted and still needs your confirmation.',
-                (count) => `${count} ${count === 1 ? 'confirmation deadline closes' : 'confirmation deadlines close'} within 24 hours.`,
-              )}
-            </p>
-          </div>
-        </Card>
-        <Card className="p-6 flex flex-col gap-2 border-l-4 border-l-purple-500">
-          <div className="flex items-center gap-2 text-on-surface-variant">
-            <Building2 className="w-5 h-5 text-purple-500" />
-            <h3 className="font-medium">Active Listings</h3>
-          </div>
-          <p className="text-3xl font-bold">{activeListings.length}</p>
-        </Card>
-        <Card className="p-6 flex flex-col gap-2 border-l-4 border-l-green-500">
-          <div className="flex items-center gap-2 text-on-surface-variant">
-            <DollarSign className="w-5 h-5 text-green-500" />
-            <h3 className="font-medium">Total Revenue</h3>
-          </div>
-          <p className="text-3xl font-bold">{formatRand(totalRevenue)}</p>
-        </Card>
+        <HostMetricCard
+          title="Total Bookings"
+          value={localBookings.length}
+          icon={Calendar}
+          accentClassName="border-l-blue-500"
+          iconClassName="text-blue-500"
+          percentage={getMetricPercentage(bookedStayCount, localBookings.length)}
+        />
+        <HostMetricCard
+          title="Needs Response"
+          value={needsResponseBookings.length}
+          icon={MessageSquare}
+          accentClassName="border-l-amber-500"
+          iconClassName="text-amber-500"
+          percentage={getMetricPercentage(needsResponseBookings.length, activeQueueCount)}
+          notificationCount={needsResponseBookings.length}
+        />
+        <HostMetricCard
+          title="Awaiting Guest Payment"
+          value={awaitingGuestPaymentBookings.length}
+          icon={CircleDollarSign}
+          accentClassName={guestPaymentUrgentCount > 0 ? 'border-l-red-500' : 'border-l-slate-400'}
+          iconClassName={guestPaymentUrgentCount > 0 ? 'text-red-500' : 'text-slate-500'}
+          percentage={getMetricPercentage(awaitingGuestPaymentBookings.length, activeQueueCount)}
+          notificationCount={awaitingGuestPaymentBookings.length}
+        />
+        <HostMetricCard
+          title="Payment Confirmation"
+          value={paymentReviewBookings.length}
+          icon={TimerReset}
+          accentClassName={paymentReviewUrgentCount > 0 ? 'border-l-red-500' : 'border-l-slate-400'}
+          iconClassName={paymentReviewUrgentCount > 0 ? 'text-red-500' : 'text-slate-500'}
+          percentage={getMetricPercentage(paymentReviewBookings.length, activeQueueCount)}
+          notificationCount={paymentReviewBookings.length}
+        />
+        <HostMetricCard
+          title="Active Listings"
+          value={activeListings.length}
+          icon={Building2}
+          accentClassName="border-l-purple-500"
+          iconClassName="text-purple-500"
+          percentage={getMetricPercentage(activeListings.length, listings.length)}
+        />
+        <HostMetricCard
+          title="Total Revenue"
+          value={totalRevenue}
+          icon={DollarSign}
+          accentClassName="border-l-green-500"
+          iconClassName="text-green-500"
+          formatValue={formatRand}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

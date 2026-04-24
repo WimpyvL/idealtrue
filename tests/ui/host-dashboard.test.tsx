@@ -151,7 +151,8 @@ describe('HostDashboard', () => {
     await waitFor(() => expect(getMyHostBillingAccountMock).toHaveBeenCalled());
 
     expect(screen.getByRole('heading', { name: 'Needs Response' })).toBeInTheDocument();
-    expect(screen.getByText('4 guests are still waiting on your decision.')).toBeInTheDocument();
+    expect(screen.getByText('100%')).toBeInTheDocument();
+    expect(screen.getByLabelText('4 new items in Needs Response')).toBeInTheDocument();
   });
 
   it('shows approved holds in dedicated payment cards with urgency cues', async () => {
@@ -185,8 +186,9 @@ describe('HostDashboard', () => {
 
     expect(screen.getByRole('heading', { name: 'Awaiting Guest Payment' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Payment Confirmation' })).toBeInTheDocument();
-    expect(screen.getByText('1 hold expires within 24 hours.')).toBeInTheDocument();
-    expect(screen.getByText('1 confirmation deadline closes within 24 hours.')).toBeInTheDocument();
+    expect(screen.getAllByText('50%')).toHaveLength(2);
+    expect(screen.getByLabelText('1 new items in Awaiting Guest Payment')).toBeInTheDocument();
+    expect(screen.getByLabelText('1 new items in Payment Confirmation')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Approved Hold Watchlist' })).toBeInTheDocument();
     expect(screen.getByText(/Nearest deadline:/)).toBeInTheDocument();
   });
