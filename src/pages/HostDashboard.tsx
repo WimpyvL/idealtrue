@@ -15,7 +15,8 @@ import {
   Activity,
   TimerReset,
   CircleDollarSign,
-  AlertTriangle
+  AlertTriangle,
+  type LucideIcon,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
@@ -37,6 +38,66 @@ import {
   isBookedStay,
   isPendingHostDecision,
 } from '@/lib/inquiry-state';
+import { cn } from '@/lib/utils';
+
+function getMetricPercentage(value: number, total: number) {
+  if (total <= 0) {
+    return 0;
+  }
+
+  return Math.round((value / total) * 100);
+}
+
+function HostMetricCard({
+  title,
+  value,
+  icon: Icon,
+  accentClassName,
+  iconClassName,
+  percentage,
+  notificationCount = 0,
+  formatValue = (input) => input.toLocaleString(),
+}: {
+  title: string;
+  value: number;
+  icon: LucideIcon;
+  accentClassName: string;
+  iconClassName: string;
+  percentage?: number;
+  notificationCount?: number;
+  formatValue?: (input: number) => string;
+}) {
+  return (
+    <Card className={cn('relative min-w-0 overflow-hidden border-l-4 p-5', accentClassName)}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-on-surface-variant">
+            {title}
+          </h3>
+          <p className="mt-3 text-4xl font-bold tracking-tight text-on-surface">
+            {formatValue(value)}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {notificationCount > 0 ? (
+            <span
+              aria-label={`${notificationCount} new items in ${title}`}
+              className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-rose-500 ring-4 ring-rose-500/15"
+            />
+          ) : null}
+          <Icon className={cn('h-5 w-5 shrink-0', iconClassName)} />
+        </div>
+      </div>
+      {typeof percentage === 'number' ? (
+        <div className="mt-4">
+          <span className="inline-flex items-center rounded-full bg-surface-container-high px-2.5 py-1 text-[11px] font-semibold text-on-surface-variant">
+            {percentage}%
+          </span>
+        </div>
+      ) : null}
+    </Card>
+  );
+}
 
 export default function HostDashboard({ 
   profile,
@@ -99,6 +160,7 @@ export default function HostDashboard({
   const needsResponseBookings = groupedBookings.needsResponse;
   const awaitingGuestPaymentBookings = groupedBookings.awaitingGuestPayment;
   const paymentReviewBookings = groupedBookings.paymentReview;
+  const bookedStayCount = localBookings.filter(isBookedStay).length;
   const totalRevenue = localBookings
     .filter(isBookedStay)
     .reduce((sum, b) => sum + b.totalPrice, 0);
@@ -132,56 +194,8 @@ export default function HostDashboard({
   const paymentReviewUrgentCount = approvedHoldWatchlist.filter(
     ({ booking, urgency }) => groupedBookings.paymentReview.some((item) => item.id === booking.id) && urgency?.within24Hours,
   ).length;
+  const activeQueueCount = needsResponseBookings.length + awaitingGuestPaymentBookings.length + paymentReviewBookings.length;
   const mostUrgentApprovedHold = approvedHoldWatchlist[0] ?? null;
-
-  function getApprovedHoldCardTone(bookings: Booking[]) {
-    const tones = bookings
-      .map((booking) => getInquiryDeadlineUrgency(booking)?.tone)
-      .filter((tone): tone is 'neutral' | 'warning' | 'danger' => !!tone);
-
-    if (tones.includes('danger')) {
-      return {
-        border: 'border-l-red-500',
-        icon: 'text-red-500',
-        badge: 'danger' as const,
-      };
-    }
-
-    if (tones.includes('warning')) {
-      return {
-        border: 'border-l-amber-500',
-        icon: 'text-amber-500',
-        badge: 'warning' as const,
-      };
-    }
-
-    return {
-      border: 'border-l-slate-400',
-      icon: 'text-slate-500',
-      badge: 'neutral' as const,
-    };
-  }
-
-  function getApprovedHoldHelperText(
-    bookings: Booking[],
-    urgentCount: number,
-    emptyLabel: string,
-    baseLabel: string,
-    urgentLabel: (count: number) => string,
-  ) {
-    if (bookings.length === 0) {
-      return emptyLabel;
-    }
-
-    if (urgentCount > 0) {
-      return urgentLabel(urgentCount);
-    }
-
-    return baseLabel;
-  }
-
-  const awaitingGuestPaymentTone = getApprovedHoldCardTone(awaitingGuestPaymentBookings);
-  const paymentReviewTone = getApprovedHoldCardTone(paymentReviewBookings);
 
   async function handleDeclineBooking(payload: {
     declineReason: Booking['declineReason'];
