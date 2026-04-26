@@ -23,6 +23,95 @@ import { getPlatformLabel, getSocialTemplate, SOCIAL_PLATFORMS, SOCIAL_TEMPLATES
 
 const CREDIT_PACKS = [10, 25, 50];
 
+type IdeaModeId = 'brand_new' | 'content_pillars' | 'start_with_image' | 'custom_idea';
+type GeneratorModeId = 'trending_topics' | 'evergreen_ideas' | 'viral_hooks' | 'surprise_me';
+
+const IDEA_MODES: Array<{
+  id: IdeaModeId;
+  title: string;
+  description: string;
+  templateId: SocialTemplateId;
+  tone: SocialTone;
+}> = [
+  {
+    id: 'brand_new',
+    title: 'Brand new ideas',
+    description: 'Generate fresh post angles from your listing and market positioning.',
+    templateId: 'featured_stay',
+    tone: 'professional',
+  },
+  {
+    id: 'content_pillars',
+    title: 'Your content pillars',
+    description: 'Use repeatable stay themes like family, weekend, luxury, and value.',
+    templateId: 'stay_carousel',
+    tone: 'friendly',
+  },
+  {
+    id: 'start_with_image',
+    title: 'Start with an image',
+    description: 'Build the idea around the selected listing photo and visual pack.',
+    templateId: 'story_pack',
+    tone: 'luxurious',
+  },
+  {
+    id: 'custom_idea',
+    title: 'Custom idea',
+    description: 'Guide the engine with your own hook, campaign, or offer angle.',
+    templateId: 'weekend_escape',
+    tone: 'adventurous',
+  },
+];
+
+const GENERATOR_MODES: Array<{
+  id: GeneratorModeId;
+  kicker: string;
+  title: string;
+  description: string;
+  templateId: SocialTemplateId;
+  tone: SocialTone;
+}> = [
+  {
+    id: 'trending_topics',
+    kicker: 'Trending ideas',
+    title: 'Trending topics for your stay',
+    description: 'Timely angles built for attention and current travel demand.',
+    templateId: 'special_offer',
+    tone: 'urgent',
+  },
+  {
+    id: 'evergreen_ideas',
+    kicker: 'Evergreen ideas',
+    title: 'Reliable posts that never go stale',
+    description: 'Classic hooks for amenities, location, comfort, and guest fit.',
+    templateId: 'featured_stay',
+    tone: 'professional',
+  },
+  {
+    id: 'viral_hooks',
+    kicker: 'Viral hooks',
+    title: 'Click-start intros and scroll-stoppers',
+    description: 'Short, punchy openers for reels, stories, and carousel covers.',
+    templateId: 'story_pack',
+    tone: 'adventurous',
+  },
+  {
+    id: 'surprise_me',
+    kicker: 'Surprise me',
+    title: 'Unexpected angles from listing facts',
+    description: 'Fresh topic combinations when you do not want to overthink it.',
+    templateId: 'lifestyle_escape',
+    tone: 'friendly',
+  },
+];
+
+const CONTENT_TOOLS = [
+  { label: 'New Post Ideas', active: true },
+  { label: 'Quick Templates', active: false },
+  { label: 'Media Collections', active: false },
+  { label: 'Content Calendar', active: false },
+];
+
 function downloadDataUrl(filename: string, dataUrl: string) {
   const link = document.createElement('a');
   link.href = dataUrl;
@@ -43,6 +132,8 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
   const [includePrice, setIncludePrice] = useState(true);
   const [includeSpecialOffer, setIncludeSpecialOffer] = useState(false);
   const [customHeadline, setCustomHeadline] = useState('');
+  const [selectedIdeaMode, setSelectedIdeaMode] = useState<IdeaModeId>('brand_new');
+  const [selectedGeneratorMode, setSelectedGeneratorMode] = useState<GeneratorModeId>('evergreen_ideas');
   const [creativeSourceUrl, setCreativeSourceUrl] = useState<string | null>(null);
   const [generatedCreative, setGeneratedCreative] = useState<GeneratedSocialCreative | null>(null);
   const [drafts, setDrafts] = useState<ContentDraft[]>([]);
@@ -57,6 +148,8 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
 
   const selectedTemplate = useMemo(() => getSocialTemplate(selectedTemplateId), [selectedTemplateId]);
   const selectedDraft = useMemo(() => drafts.find((draft) => draft.id === selectedDraftId) ?? null, [drafts, selectedDraftId]);
+  const selectedIdea = useMemo(() => IDEA_MODES.find((item) => item.id === selectedIdeaMode) ?? IDEA_MODES[0], [selectedIdeaMode]);
+  const selectedGenerator = useMemo(() => GENERATOR_MODES.find((item) => item.id === selectedGeneratorMode) ?? GENERATOR_MODES[0], [selectedGeneratorMode]);
 
   useEffect(() => {
     if (listingIdFromUrl && listings.length > 0) {
@@ -124,6 +217,20 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
   }, [profile, searchParams]);
 
   const contentEnabled = entitlements?.contentStudioEnabled ?? false;
+
+  function applyIdeaMode(modeId: IdeaModeId) {
+    const mode = IDEA_MODES.find((item) => item.id === modeId) ?? IDEA_MODES[0];
+    setSelectedIdeaMode(mode.id);
+    setSelectedTemplateId(mode.templateId);
+    setTone(mode.tone);
+  }
+
+  function applyGeneratorMode(modeId: GeneratorModeId) {
+    const mode = GENERATOR_MODES.find((item) => item.id === modeId) ?? GENERATOR_MODES[0];
+    setSelectedGeneratorMode(mode.id);
+    setSelectedTemplateId(mode.templateId);
+    setTone(mode.tone);
+  }
 
   async function handleGeneratePostSet() {
     if (!selectedListing || !creativeSourceUrl) return;
@@ -203,102 +310,197 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
   }
 
   return (
-    <div className="space-y-8">
-      <header className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight">Content Studio</h1>
-        <p className="text-on-surface-variant">Choose the property, template, platform, and tone. The system builds the post set.</p>
-      </header>
-
-      <Card className="p-6 space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Entitlements</p>
-            <h2 className="text-2xl font-bold">Plan-backed content access</h2>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Button variant="outline" onClick={() => navigate('/pricing?audience=host')}>Manage Plan</Button>
-            {CREDIT_PACKS.map((credits) => (
-              <Button key={credits} variant="outline" onClick={() => createContentCreditsCheckout(credits).then((checkout) => window.location.assign(checkout.redirectUrl)).catch((error) => toast.error(error instanceof Error ? error.message : 'Credit purchase failed.'))}>
-                Buy {credits} credits
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid gap-4 lg:grid-cols-4">
-          <div className="rounded-2xl border border-outline-variant p-4"><p className="text-xs uppercase tracking-[0.2em] text-on-surface-variant">Plan</p><p className="mt-2 text-2xl font-bold capitalize">{entitlements?.plan ?? '...'}</p></div>
-          <div className="rounded-2xl border border-outline-variant p-4"><p className="text-xs uppercase tracking-[0.2em] text-on-surface-variant">Included left</p><p className="mt-2 text-2xl font-bold">{entitlements?.remainingIncludedDrafts ?? '...'}</p></div>
-          <div className="rounded-2xl border border-outline-variant p-4"><p className="text-xs uppercase tracking-[0.2em] text-on-surface-variant">Used this month</p><p className="mt-2 text-2xl font-bold">{entitlements?.usedDraftsThisMonth ?? '...'}</p></div>
-          <div className="rounded-2xl border border-outline-variant p-4"><p className="text-xs uppercase tracking-[0.2em] text-on-surface-variant">Credits</p><p className="mt-2 text-2xl font-bold">{entitlements?.creditBalance ?? '...'}</p></div>
-        </div>
-      </Card>
-
-      <div className="grid gap-6 xl:grid-cols-[300px_1fr]">
-        <Card className="p-5 space-y-3">
-          <div className="flex items-center gap-2"><LayoutTemplate className="w-5 h-5" /><h2 className="text-xl font-bold">Post set setup</h2></div>
-          <p className="text-sm text-on-surface-variant">Hosts do not design here. They only choose the inputs.</p>
-          <div className="space-y-3 max-h-[260px] overflow-y-auto pr-2">
-            {listings.map((listing) => (
-              <button key={listing.id} onClick={() => setSelectedListing(listing)} className={`w-full rounded-2xl border p-3 text-left ${selectedListing?.id === listing.id ? 'border-primary bg-primary/5' : 'border-outline-variant'}`}>
-                <div className="flex items-center gap-3">
-                  <img src={listing.images[0] || `https://picsum.photos/seed/${listing.id}/100/100`} alt="" className="h-16 w-16 rounded-xl object-cover" />
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold">{listing.title}</p>
-                    <p className="truncate text-xs text-on-surface-variant">{listing.location}</p>
-                  </div>
-                </div>
+    <div className="min-w-0 space-y-6 overflow-hidden">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[220px_1fr]">
+        <aside className="min-w-0 rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm">
+          <Button className="h-11 w-full justify-center rounded-lg font-semibold" onClick={handleGeneratePostSet} disabled={!selectedListing || !creativeSourceUrl || isGenerating || !contentEnabled}>
+            {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+            Create Post
+          </Button>
+          <div className="mt-6 space-y-1">
+            <p className="px-3 text-xs font-bold uppercase text-on-surface-variant">Tools</p>
+            {CONTENT_TOOLS.map((item) => (
+              <button
+                key={item.label}
+                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium ${item.active ? 'bg-primary/10 text-primary' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`}
+                type="button"
+              >
+                <span>{item.label}</span>
+                {!item.active ? <span className="text-[10px] uppercase text-on-surface-variant">Soon</span> : null}
               </button>
             ))}
           </div>
-        </Card>
-
-        <Card className="p-6 space-y-5">
-          <div className="grid gap-3 lg:grid-cols-3">
-            {SOCIAL_TEMPLATES.map((template) => (
-              <button key={template.id} onClick={() => setSelectedTemplateId(template.id)} className={`rounded-2xl border p-4 text-left ${selectedTemplateId === template.id ? 'border-primary bg-primary/5' : 'border-outline-variant'}`}>
-                <p className="font-semibold">{template.name}</p>
-                <p className="mt-2 text-sm text-on-surface-variant">{template.shortDescription}</p>
-              </button>
-            ))}
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            {SOCIAL_PLATFORMS.map((item) => (
-              <button key={item.id} disabled={!selectedTemplate.supportedPlatforms.includes(item.id)} onClick={() => setPlatform(item.id)} className={`rounded-xl border px-4 py-2 text-sm font-medium ${platform === item.id ? 'border-primary bg-primary/5 text-primary' : 'border-outline-variant'} ${selectedTemplate.supportedPlatforms.includes(item.id) ? '' : 'opacity-40 cursor-not-allowed'}`}>
-                {item.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {(['professional', 'friendly', 'adventurous', 'luxurious', 'urgent'] as const).map((item) => (
-              <button key={item} onClick={() => setTone(item)} className={`rounded-full px-4 py-2 text-sm font-medium capitalize ${tone === item ? 'bg-gradient-to-r from-slate-900 to-blue-600 text-white' : 'bg-surface-container-low text-on-surface-variant'}`}>
-                {item}
-              </button>
-            ))}
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <label className="rounded-2xl border border-outline-variant p-4 flex items-center justify-between gap-4"><span>Include price</span><input type="checkbox" checked={includePrice} onChange={(event) => setIncludePrice(event.target.checked)} className="h-5 w-5 accent-primary" /></label>
-            <label className={`rounded-2xl border border-outline-variant p-4 flex items-center justify-between gap-4 ${selectedTemplate.supportsSpecialOffer ? '' : 'opacity-50'}`}><span>Include special offer</span><input type="checkbox" checked={includeSpecialOffer} onChange={(event) => setIncludeSpecialOffer(event.target.checked)} disabled={!selectedTemplate.supportsSpecialOffer} className="h-5 w-5 accent-primary" /></label>
-          </div>
-
-          <Input value={customHeadline} onChange={(event) => setCustomHeadline(event.target.value)} placeholder={selectedTemplate.supportsHeadlineOverride ? 'Optional headline override' : 'Template uses system headline'} disabled={!selectedTemplate.supportsHeadlineOverride} />
-
-          {selectedListing?.images?.length ? (
-            <div className="grid grid-cols-3 gap-3">
-              {selectedListing.images.map((imageUrl) => (
-                <button key={imageUrl} onClick={() => { setCreativeSourceUrl(imageUrl); setGeneratedCreative(null); }} className={`overflow-hidden rounded-2xl border ${creativeSourceUrl === imageUrl ? 'border-primary ring-2 ring-primary/20' : 'border-outline-variant'}`}>
-                  <img src={imageUrl} alt="" className="aspect-square w-full object-cover" referrerPolicy="no-referrer" />
+          <div className="mt-6 rounded-lg border border-outline-variant bg-surface-container-low p-3">
+            <p className="text-xs font-bold uppercase text-on-surface-variant">Wallet</p>
+            <p className="mt-2 text-2xl font-bold">{entitlements?.creditBalance ?? '...'}</p>
+            <p className="text-xs text-on-surface-variant">Credits available</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {CREDIT_PACKS.map((credits) => (
+                <button
+                  key={credits}
+                  className="rounded-md border border-outline-variant bg-surface-container-lowest px-2 py-1 text-xs font-semibold hover:border-primary hover:text-primary"
+                  onClick={() => createContentCreditsCheckout(credits).then((checkout) => window.location.assign(checkout.redirectUrl)).catch((error) => toast.error(error instanceof Error ? error.message : 'Credit purchase failed.'))}
+                  type="button"
+                >
+                  +{credits}
                 </button>
               ))}
             </div>
-          ) : null}
+          </div>
+        </aside>
 
-          <Button className="h-14 rounded-xl text-lg font-bold" disabled={!selectedListing || !creativeSourceUrl || isGenerating || !contentEnabled} onClick={handleGeneratePostSet}>
-            {isGenerating ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" />Building post set...</> : <><Sparkles className="mr-2 h-5 w-5" />Generate Post Set</>}
-          </Button>
-        </Card>
+        <div className="min-w-0 space-y-6">
+          <header className="flex min-w-0 flex-col gap-4 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase text-primary">Content Studio</p>
+              <h1 className="mt-1 break-words text-2xl font-bold tracking-tight sm:text-3xl">Get inspired for {selectedListing?.title ?? 'your next stay'}</h1>
+              <p className="mt-1 text-sm text-on-surface-variant">Choose the channel, idea source, and output type. The engine builds the draft and visual pack.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-lg bg-primary/10 px-3 py-2 text-sm font-semibold text-primary">
+                {entitlements?.remainingIncludedDrafts ?? '...'} included left
+              </span>
+              <Button variant="outline" onClick={() => navigate('/pricing?audience=host')}>Manage Plan</Button>
+            </div>
+          </header>
+
+          <div className="flex min-w-0 max-w-full gap-3 overflow-x-auto pb-1">
+            {SOCIAL_PLATFORMS.map((item) => {
+              const isSupported = selectedTemplate.supportedPlatforms.includes(item.id);
+              return (
+                <button
+                  key={item.id}
+                  disabled={!isSupported}
+                  onClick={() => setPlatform(item.id)}
+                  className={`flex min-w-fit items-center gap-2 rounded-full border bg-surface-container-lowest px-4 py-3 text-sm font-semibold shadow-sm transition ${platform === item.id ? 'border-primary text-primary ring-2 ring-primary/15' : 'border-outline-variant text-on-surface'} ${isSupported ? 'hover:border-primary' : 'cursor-not-allowed opacity-40'}`}
+                  type="button"
+                >
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-container-low text-xs font-bold">{item.label.slice(0, 2)}</span>
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <Card className="min-w-0 overflow-hidden rounded-xl border-outline-variant bg-surface-container-lowest p-0">
+            <div className="border-b border-outline-variant px-6 py-5">
+              <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <h2 className="text-xl font-bold">AI Content Generator</h2>
+                  <p className="mt-1 text-sm text-on-surface-variant">Pick a property, then choose how the engine should brainstorm.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className="rounded-lg bg-surface-container-low px-3 py-2 text-sm font-semibold capitalize">{entitlements?.plan ?? '...'}</span>
+                  <span className="rounded-lg bg-surface-container-low px-3 py-2 text-sm font-semibold">{entitlements?.usedDraftsThisMonth ?? '...'} used this month</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid min-w-0 gap-0 lg:grid-cols-[0.92fr_1.08fr]">
+              <section className="min-w-0 border-b border-outline-variant p-6 lg:border-b-0 lg:border-r">
+                <div className="mb-4 flex items-center gap-2">
+                  <LayoutTemplate className="h-5 w-5 text-primary" />
+                  <div>
+                    <h3 className="font-bold">Start with a sniff of an idea</h3>
+                    <p className="text-sm text-on-surface-variant">{selectedIdea.description}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {IDEA_MODES.map((mode) => (
+                    <button
+                      key={mode.id}
+                      onClick={() => applyIdeaMode(mode.id)}
+                      className={`flex w-full gap-3 rounded-lg border p-4 text-left transition ${selectedIdeaMode === mode.id ? 'border-primary bg-primary/5 ring-2 ring-primary/10' : 'border-outline-variant hover:border-primary/60'}`}
+                      type="button"
+                    >
+                      <span className={`mt-1 h-3 w-3 rounded-full border ${selectedIdeaMode === mode.id ? 'border-primary bg-primary' : 'border-outline-variant'}`} />
+                      <span>
+                        <span className="block font-semibold">{mode.title}: {selectedListing?.type ?? 'Holiday Rental Property'}</span>
+                        <span className="mt-1 block text-sm text-on-surface-variant">{mode.description}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-5 space-y-3">
+                  <select
+                    className="h-11 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 text-sm font-medium"
+                    value={selectedListing?.id ?? ''}
+                    onChange={(event) => setSelectedListing(listings.find((listing) => listing.id === event.target.value) ?? null)}
+                  >
+                    {listings.map((listing) => (
+                      <option key={listing.id} value={listing.id}>{listing.title}</option>
+                    ))}
+                  </select>
+
+                  <Input
+                    value={customHeadline}
+                    onChange={(event) => setCustomHeadline(event.target.value)}
+                    placeholder={selectedTemplate.supportsHeadlineOverride ? 'Optional campaign hook or headline' : 'This output type uses a system headline'}
+                    disabled={!selectedTemplate.supportsHeadlineOverride}
+                  />
+                </div>
+              </section>
+
+              <section className="min-w-0 p-6">
+                <div className="mb-4 flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-primary" />
+                  <div>
+                    <h3 className="font-bold">Choose what to generate</h3>
+                    <p className="text-sm text-on-surface-variant">{selectedGenerator.description}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {GENERATOR_MODES.map((mode) => (
+                    <button
+                      key={mode.id}
+                      onClick={() => applyGeneratorMode(mode.id)}
+                      className={`grid w-full grid-cols-[auto_1fr] gap-4 rounded-lg border p-4 text-left transition ${selectedGeneratorMode === mode.id ? 'border-primary bg-primary/5 ring-2 ring-primary/10' : 'border-outline-variant hover:border-primary/60'}`}
+                      type="button"
+                    >
+                      <span className={`mt-1 h-3 w-3 rounded-full border ${selectedGeneratorMode === mode.id ? 'border-primary bg-primary' : 'border-outline-variant'}`} />
+                      <span>
+                        <span className="block text-xs font-bold uppercase text-primary">{mode.kicker}</span>
+                        <span className="mt-1 block font-semibold">{mode.title}</span>
+                        <span className="mt-1 block text-sm text-on-surface-variant">{mode.description}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                  <label className="flex items-center justify-between gap-4 rounded-lg border border-outline-variant p-4">
+                    <span className="font-medium">Include price</span>
+                    <input type="checkbox" checked={includePrice} onChange={(event) => setIncludePrice(event.target.checked)} className="h-5 w-5 accent-primary" />
+                  </label>
+                  <label className={`flex items-center justify-between gap-4 rounded-lg border border-outline-variant p-4 ${selectedTemplate.supportsSpecialOffer ? '' : 'opacity-50'}`}>
+                    <span className="font-medium">Include special offer</span>
+                    <input type="checkbox" checked={includeSpecialOffer} onChange={(event) => setIncludeSpecialOffer(event.target.checked)} disabled={!selectedTemplate.supportsSpecialOffer} className="h-5 w-5 accent-primary" />
+                  </label>
+                </div>
+
+                {selectedListing?.images?.length ? (
+                  <div className="mt-5 grid grid-cols-4 gap-3">
+                    {selectedListing.images.slice(0, 4).map((imageUrl) => (
+                      <button key={imageUrl} onClick={() => { setCreativeSourceUrl(imageUrl); setGeneratedCreative(null); }} className={`overflow-hidden rounded-lg border ${creativeSourceUrl === imageUrl ? 'border-primary ring-2 ring-primary/20' : 'border-outline-variant'}`} type="button">
+                        <img src={imageUrl} alt="" className="aspect-square w-full object-cover" referrerPolicy="no-referrer" />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-on-surface-variant">Selected: {selectedTemplate.name} · {tone} · {getPlatformLabel(platform)}</p>
+                  <Button className="h-12 rounded-lg px-6 font-bold" aria-label="Generate Post Set" disabled={!selectedListing || !creativeSourceUrl || isGenerating || !contentEnabled} onClick={handleGeneratePostSet}>
+                    {isGenerating ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" />Building...</> : <><Sparkles className="mr-2 h-5 w-5" />Generate Post Set · 1 Credit</>}
+                  </Button>
+                </div>
+              </section>
+            </div>
+          </Card>
+        </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
