@@ -5,7 +5,7 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { User, MessageSquare, CalendarDays } from 'lucide-react';
 import { format } from 'date-fns';
-import { getInquiryBadgeLabel, isOpenHostInquiry, isBookedStay } from '@/lib/inquiry-state';
+import { getInquiryBadgeLabel, getMessagingProcessContext, isOpenHostInquiry, isBookedStay } from '@/lib/inquiry-state';
 
 export default function HostInbox({ 
   bookings, 
@@ -29,6 +29,7 @@ export default function HostInbox({
         {activeBookings.map(booking => {
           const listing = listings.find(l => l.id === booking.listingId);
           const statusLabel = getInquiryBadgeLabel(booking);
+          const processContext = getMessagingProcessContext(booking, 'host');
           return (
             <Card key={booking.id} className="p-6">
               <div className="flex flex-col md:flex-row gap-6 justify-between items-start md:items-center">
@@ -43,6 +44,12 @@ export default function HostInbox({
                   </div>
                   
                   <h3 className="font-bold text-xl">{listing?.title || 'Unknown Listing'}</h3>
+                  <div className="rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 text-sm">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                      {processContext.stageLabel}
+                    </p>
+                    <p className="mt-1 font-medium text-on-surface">{processContext.nextStepLabel}</p>
+                  </div>
                   
                   <div className="flex items-center gap-4 text-on-surface-variant text-sm">
                     <div className="flex items-center gap-1">

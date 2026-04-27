@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Booking, Listing, Message } from '@/types';
-import { X, Send, Info, Home, MapPin, CreditCard, CheckCircle2, Loader2 } from 'lucide-react';
+import { X, Send, Info, Home, MapPin, CreditCard, CheckCircle2, Loader2, HelpCircle, Clock3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { listMessages, sendMessage as sendPlatformMessage } from '@/lib/messaging-client';
+import { getGuestInquiryDeadlineText, getHostInquiryDeadlineText, getMessagingProcessContext } from '@/lib/inquiry-state';
 
 interface ChatModalProps {
   booking: Booking;
@@ -23,6 +24,8 @@ export default function ChatModal({ booking, listing, currentUserId, onClose }: 
 
   const isHost = currentUserId === booking.hostId;
   const otherPartyId = isHost ? booking.guestId : booking.hostId;
+  const messagingContext = getMessagingProcessContext(booking, isHost ? 'host' : 'guest');
+  const deadlineText = isHost ? getHostInquiryDeadlineText(booking) : getGuestInquiryDeadlineText(booking);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,14 +79,21 @@ export default function ChatModal({ booking, listing, currentUserId, onClose }: 
     }
   };
 
-  const suggestions = isHost ? [
-    { label: 'Send House Rules', icon: Home, text: "Here are the house rules for your stay. Please let me know if you have any questions.", type: 'house_rules' },
-    { label: 'Send Directions', icon: MapPin, text: "Here are the directions to the property. Looking forward to your arrival!", type: 'directions' },
-    { label: 'Payment Info', icon: CreditCard, text: "Please find the payment details for your booking. Let me know once settled.", type: 'payment_info' },
-  ] : [
-    { label: 'Confirm Check-in', icon: CheckCircle2, text: "I have successfully checked in! Everything looks great.", type: 'checkin' },
-    { label: 'Confirm Checkout', icon: CheckCircle2, text: "I have checked out. Thank you for the wonderful stay!", type: 'checkout' },
-  ];
+  const getSuggestionIcon = (suggestionType: Message['suggestionType']) => {
+    switch (suggestionType) {
+      case 'house_rules':
+        return Home;
+      case 'directions':
+        return MapPin;
+      case 'payment_info':
+        return CreditCard;
+      case 'checkin':
+      case 'checkout':
+        return CheckCircle2;
+      default:
+        return HelpCircle;
+    }
+  };
 
   return (
     <div className="flex flex-col h-[600px] w-full max-w-2xl bg-surface-container-lowest rounded-3xl shadow-2xl overflow-hidden border border-outline-variant">
@@ -101,6 +111,25 @@ export default function ChatModal({ booking, listing, currentUserId, onClose }: 
         <button onClick={onClose} className="p-2 hover:bg-surface-container-high rounded-full transition-colors">
           <X className="w-5 h-5" />
         </button>
+      </div>
+
+      <div
+        className={cn(
+          'border-b border-outline-variant px-4 py-3 text-sm',
+          messagingContext.tone === 'warning' && 'bg-amber-50 text-amber-950',
+          messagingContext.tone === 'success' && 'bg-emerald-50 text-emerald-950',
+          messagingContext.tone === 'closed' && 'bg-slate-100 text-slate-700',
+          messagingContext.tone === 'neutral' && 'bg-primary/5 text-on-surface',
+        )}
+      >
+        <div className="flex items-start gap-3">
+          <Clock3 className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="min-w-0 space-y-1">
+            <p className="text-xs font-bold uppercase tracking-wider">{messagingContext.stageLabel}</p>
+            <p className="font-medium leading-snug">{messagingContext.nextStepLabel}</p>
+            <p className="text-xs leading-relaxed opacity-80">{deadlineText ?? messagingContext.stageDescription}</p>
+          </div>
+        </div>
       </div>
 
       {/* Messages Area */}
@@ -158,16 +187,25 @@ export default function ChatModal({ booking, listing, currentUserId, onClose }: 
 
       {/* Suggestions */}
       <div className="px-4 py-2 flex gap-2 overflow-x-auto no-scrollbar border-t border-outline-variant bg-surface-container-low">
-        {suggestions.map((s) => (
+        {messagingContext.quickActions.map((s) => {
+          const Icon = getSuggestionIcon(s.suggestionType);
+          return (
           <button
             key={s.label}
-            onClick={() => sendMessage(s.text, false, s.type as Message['suggestionType'])}
-            className="flex items-center gap-2 whitespace-nowrap bg-surface-container-lowest border border-outline-variant px-3 py-1.5 rounded-full text-[11px] font-bold hover:bg-primary/5 hover:border-primary transition-all group"
+            onClick={() => sendMessage(s.text, false, s.suggestionType)}
+            disabled={isSending}
+            className={cn(
+              'flex items-center gap-2 whitespace-nowrap border px-3 py-1.5 rounded-full text-[11px] font-bold transition-all group disabled:cursor-not-allowed disabled:opacity-60',
+              s.priority === 'primary'
+                ? 'bg-primary text-on-primary border-primary hover:bg-primary/90'
+                : 'bg-surface-container-lowest border-outline-variant hover:bg-primary/5 hover:border-primary',
+            )}
           >
-            <s.icon className="w-3 h-3 text-primary group-hover:scale-110 transition-transform" />
+            <Icon className={cn('w-3 h-3 transition-transform group-hover:scale-110', s.priority === 'primary' ? 'text-on-primary' : 'text-primary')} />
             {s.label}
           </button>
-        ))}
+          );
+        })}
       </div>
 
       {/* Input Area */}

@@ -8,7 +8,7 @@ import { platformEvents } from "../analytics/events";
 import { getBookingById, recordHostInquiryResponseFromMessage } from "../booking/api";
 import { getListing } from "../catalog/api";
 import { notifyMessageReceived } from "../ops/notifications";
-import type { MessageRecord } from "../shared/domain";
+import type { MessageRecord, MessageSuggestionType } from "../shared/domain";
 
 type MessageRow = {
   id: string;
@@ -17,7 +17,7 @@ type MessageRow = {
   receiver_id: string;
   text: string;
   is_system: boolean;
-  suggestion_type: "checkin" | "checkout" | "payment_info" | "directions" | "house_rules" | null;
+  suggestion_type: MessageSuggestionType | null;
   attachment_url: string | null;
   created_at: string;
 };
@@ -27,7 +27,7 @@ interface SendMessageParams {
   receiverId: string;
   text: string;
   isSystem?: boolean;
-  suggestionType?: "checkin" | "checkout" | "payment_info" | "directions" | "house_rules" | null;
+  suggestionType?: MessageSuggestionType | null;
   attachmentUrl?: string | null;
 }
 

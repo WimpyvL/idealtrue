@@ -9,6 +9,7 @@ import {
   getHostInquiryBucket,
   getHostInquirySortTimestamp,
   getInquiryDeadlineState,
+  getMessagingProcessContext,
   groupHostInquiries,
   isAwaitingGuestPayment,
 } from '../src/lib/inquiry-state.ts';
@@ -349,4 +350,77 @@ test('shared deadline copy stays operationally explicit for host and guest cards
     ),
     'Expired 2 hours ago. Any approval hold on these nights has already been released.',
   );
+});
+
+test('messaging process context gives host decision actions before approval', () => {
+  const context = getMessagingProcessContext(
+    {
+      ...baseBooking,
+      inquiryState: 'PENDING',
+      paymentState: 'UNPAID',
+      paymentReference: null,
+      paymentInstructions: null,
+    },
+    'host',
+  );
+
+  assert.equal(context.stageLabel, 'Host decision needed');
+  assert.equal(context.tone, 'warning');
+  assert.equal(context.quickActions[0].label, 'Ask arrival detail');
+  assert.equal(context.quickActions.some((action) => action.suggestionType === 'house_rules'), true);
+});
+
+test('messaging process context changes guest quick actions after approval', () => {
+  const context = getMessagingProcessContext(
+    {
+      ...baseBooking,
+      inquiryState: 'APPROVED',
+      paymentState: 'INITIATED',
+      paymentUnlockedAt: '2026-04-20T11:00:00.000Z',
+      paymentReference: 'IDEAL-123',
+      paymentInstructions: 'Pay the host account',
+    },
+    'guest',
+  );
+
+  assert.equal(context.stageLabel, 'Payment needed');
+  assert.equal(context.nextStepLabel, 'Submit payment proof before the hold expires.');
+  assert.deepEqual(
+    context.quickActions.map((action) => action.label),
+    ['Confirm payment details', 'Proof coming', 'Need help paying'],
+  );
+});
+
+test('messaging process context moves confirmed stays into stay coordination', () => {
+  const hostContext = getMessagingProcessContext(
+    {
+      ...baseBooking,
+      inquiryState: 'BOOKED',
+      paymentState: 'COMPLETED',
+      paymentSubmittedAt: '2026-04-20T15:00:00.000Z',
+      paymentConfirmedAt: '2026-04-20T16:00:00.000Z',
+      bookedAt: '2026-04-20T16:00:00.000Z',
+      paymentReference: null,
+      paymentInstructions: null,
+    },
+    'host',
+  );
+  const guestContext = getMessagingProcessContext(
+    {
+      ...baseBooking,
+      inquiryState: 'BOOKED',
+      paymentState: 'COMPLETED',
+      paymentSubmittedAt: '2026-04-20T15:00:00.000Z',
+      paymentConfirmedAt: '2026-04-20T16:00:00.000Z',
+      bookedAt: '2026-04-20T16:00:00.000Z',
+      paymentReference: null,
+      paymentInstructions: null,
+    },
+    'guest',
+  );
+
+  assert.equal(hostContext.stageLabel, 'Stay confirmed');
+  assert.equal(hostContext.quickActions[0].suggestionType, 'directions');
+  assert.equal(guestContext.stageLabel, 'Stay confirmed');
+  assert.equal(guestContext.quickActions[0].suggestionType, 'checkin');
 });

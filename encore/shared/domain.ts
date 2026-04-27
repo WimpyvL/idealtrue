@@ -156,6 +156,8 @@ export interface InquiryLedgerEventRecord {
   timestamp: string;
 }
 
+export type MessageSuggestionType = "checkin" | "checkout" | "payment_info" | "directions" | "house_rules";
+
 export interface MessageRecord {
   id: string;
   bookingId: string;
@@ -163,7 +165,7 @@ export interface MessageRecord {
   receiverId: string;
   text: string;
   isSystem?: boolean;
-  suggestionType?: "checkin" | "checkout" | "payment_info" | "directions" | "house_rules" | null;
+  suggestionType?: MessageSuggestionType | null;
   attachmentUrl?: string | null;
   createdAt: string;
 }

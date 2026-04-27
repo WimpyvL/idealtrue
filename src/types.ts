@@ -15,6 +15,7 @@ export type InquiryDeclineReason =
 export type InquiryState = 'PENDING' | 'VIEWED' | 'RESPONDED' | 'APPROVED' | 'DECLINED' | 'EXPIRED' | 'BOOKED';
 export type PaymentState = 'UNPAID' | 'INITIATED' | 'COMPLETED' | 'FAILED';
 export type AvailabilityBlockSource = 'MANUAL' | 'APPROVED_HOLD' | 'BOOKED';
+export type MessageSuggestionType = 'checkin' | 'checkout' | 'payment_info' | 'directions' | 'house_rules';
 
 export interface HostBillingAccount {
   userId: string;
@@ -258,7 +259,7 @@ export interface Message {
   receiverId: string;
   text: string;
   isSystem?: boolean;
-  suggestionType?: 'checkin' | 'checkout' | 'payment_info' | 'directions' | 'house_rules';
+  suggestionType?: MessageSuggestionType;
   attachmentUrl?: string;
   createdAt: string;
 }

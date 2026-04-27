@@ -1,6 +1,6 @@
 import { formatDistanceStrict } from 'date-fns';
 
-import type { Booking, InquiryDeclineReason, InquiryState } from '@/types';
+import type { Booking, InquiryDeclineReason, InquiryState, MessageSuggestionType } from '@/types';
 
 type BookingStateSlice = Pick<
   Booking,
@@ -8,6 +8,8 @@ type BookingStateSlice = Pick<
 >;
 type HostBookingSlice = BookingStateSlice & Pick<Booking, 'createdAt' | 'viewedAt' | 'respondedAt' | 'paymentUnlockedAt' | 'bookedAt' | 'expiresAt'>;
 type BookingDeadlineSlice = BookingStateSlice & Pick<Booking, 'expiresAt'>;
+type MessagingBookingSlice = BookingDeadlineSlice &
+  Pick<Booking, 'checkIn' | 'checkOut' | 'paymentReference' | 'paymentInstructions'>;
 
 export const inquiryDeclineReasonOptions: Array<{
   value: InquiryDeclineReason;
@@ -63,6 +65,23 @@ export type InquiryDeadlineUrgency =
       within6Hours: boolean;
     }
   | null;
+
+export type MessagingParticipantRole = 'host' | 'guest';
+
+export type MessagingQuickAction = {
+  label: string;
+  text: string;
+  suggestionType?: MessageSuggestionType;
+  priority: 'primary' | 'secondary';
+};
+
+export type MessagingProcessContext = {
+  stageLabel: string;
+  stageDescription: string;
+  nextStepLabel: string;
+  tone: 'neutral' | 'warning' | 'success' | 'closed';
+  quickActions: MessagingQuickAction[];
+};
 
 export type HostInquiryGroups<TBooking extends HostBookingSlice> = {
   needsResponse: TBooking[];
@@ -178,6 +197,294 @@ export function getGuestPaymentStateText(booking: BookingStateSlice) {
   }
 
   return getInquiryResponseText(booking);
+}
+
+export function getMessagingProcessContext(
+  booking: MessagingBookingSlice,
+  role: MessagingParticipantRole,
+): MessagingProcessContext {
+  if (role === 'host') {
+    return getHostMessagingProcessContext(booking);
+  }
+
+  return getGuestMessagingProcessContext(booking);
+}
+
+function getHostMessagingProcessContext(booking: MessagingBookingSlice): MessagingProcessContext {
+  if (isPendingHostDecision(booking)) {
+    return {
+      stageLabel: 'Host decision needed',
+      stageDescription: 'The guest is waiting for you to move this enquiry forward.',
+      nextStepLabel: 'Approve, decline, or ask one clear question before the response window closes.',
+      tone: 'warning',
+      quickActions: [
+        {
+          label: 'Ask arrival detail',
+          text: 'Before I make a decision, can you confirm your expected arrival time and any special requirements for the stay?',
+          priority: 'primary',
+        },
+        {
+          label: 'Send House Rules',
+          text: 'Here are the house rules for your stay. Please review them and let me know if you have any questions.',
+          suggestionType: 'house_rules',
+          priority: 'secondary',
+        },
+        {
+          label: 'Dates look workable',
+          text: 'Thanks for the enquiry. Your dates and guest count look workable from my side. I will update the enquiry shortly.',
+          priority: 'secondary',
+        },
+      ],
+    };
+  }
+
+  if (isAwaitingHostPaymentConfirmation(booking)) {
+    return {
+      stageLabel: 'Payment proof under review',
+      stageDescription: 'The guest has submitted proof. The stay is not booked until you confirm payment.',
+      nextStepLabel: 'Check the payment proof, then confirm payment from the enquiry workflow.',
+      tone: 'warning',
+      quickActions: [
+        {
+          label: 'Proof received',
+          text: 'Thanks, I have received your payment proof and I am checking it now. I will confirm the booking once payment is verified.',
+          priority: 'primary',
+        },
+        {
+          label: 'Need clearer proof',
+          text: 'I can see your payment proof, but I need a clearer copy or payment reference before I can confirm the booking.',
+          priority: 'secondary',
+        },
+        {
+          label: 'Payment Info',
+          text: buildPaymentInstructionText(booking),
+          suggestionType: 'payment_info',
+          priority: 'secondary',
+        },
+      ],
+    };
+  }
+
+  if (isAwaitingGuestPayment(booking)) {
+    return {
+      stageLabel: 'Waiting for guest payment',
+      stageDescription: 'The dates are held, but the guest still needs to submit payment proof.',
+      nextStepLabel: 'Keep the guest focused on the payment window and reference details.',
+      tone: 'neutral',
+      quickActions: [
+        {
+          label: 'Payment Info',
+          text: buildPaymentInstructionText(booking),
+          suggestionType: 'payment_info',
+          priority: 'primary',
+        },
+        {
+          label: 'Payment reminder',
+          text: 'Your enquiry is approved and the dates are held. Please submit payment proof before the payment window closes so I can confirm the booking.',
+          suggestionType: 'payment_info',
+          priority: 'secondary',
+        },
+        {
+          label: 'Offer help',
+          text: 'Let me know if anything is unclear with the payment details or booking reference.',
+          priority: 'secondary',
+        },
+      ],
+    };
+  }
+
+  if (isBookedStay(booking)) {
+    return {
+      stageLabel: 'Stay confirmed',
+      stageDescription: 'Payment is confirmed. Messaging should now support arrival, stay, and checkout coordination.',
+      nextStepLabel: 'Share the practical arrival details and keep the guest prepared.',
+      tone: 'success',
+      quickActions: [
+        {
+          label: 'Send Directions',
+          text: 'Here are the directions to the property. Looking forward to your arrival.',
+          suggestionType: 'directions',
+          priority: 'primary',
+        },
+        {
+          label: 'Send House Rules',
+          text: 'Here are the house rules for your stay. Please let me know if you have any questions before arrival.',
+          suggestionType: 'house_rules',
+          priority: 'secondary',
+        },
+        {
+          label: 'Check-in note',
+          text: 'Your stay is confirmed. Please send your expected arrival time when you have it, and I will make sure check-in is ready.',
+          priority: 'secondary',
+        },
+      ],
+    };
+  }
+
+  return {
+    stageLabel: booking.inquiryState === 'EXPIRED' ? 'Enquiry expired' : 'Conversation closed',
+    stageDescription: 'This enquiry is no longer active, so messages should only clarify what happened or offer a new path.',
+    nextStepLabel: 'Avoid payment or arrival instructions unless a new enquiry is created.',
+    tone: 'closed',
+    quickActions: [
+      {
+        label: 'Offer new dates',
+        text: 'This enquiry is no longer active. If you would like, send me new dates and I can help check availability.',
+        priority: 'primary',
+      },
+      {
+        label: 'Explain status',
+        text: getInquiryResponseText(booking),
+        priority: 'secondary',
+      },
+    ],
+  };
+}
+
+function getGuestMessagingProcessContext(booking: MessagingBookingSlice): MessagingProcessContext {
+  if (isPendingHostDecision(booking)) {
+    return {
+      stageLabel: 'Waiting for host response',
+      stageDescription: 'The host still needs to approve, decline, or respond to this enquiry.',
+      nextStepLabel: 'Send only useful context that helps the host decide.',
+      tone: 'neutral',
+      quickActions: [
+        {
+          label: 'Share arrival time',
+          text: 'My expected arrival time is flexible. Let me know what works best for the property.',
+          priority: 'primary',
+        },
+        {
+          label: 'Ask for update',
+          text: 'Just checking whether you need any other details from me before deciding on this enquiry.',
+          priority: 'secondary',
+        },
+        {
+          label: 'Confirm guest count',
+          text: 'Confirming the guest count on my side is correct for this enquiry.',
+          priority: 'secondary',
+        },
+      ],
+    };
+  }
+
+  if (isAwaitingGuestPayment(booking)) {
+    return {
+      stageLabel: 'Payment needed',
+      stageDescription: 'The host approved the enquiry and the dates are held until the payment window closes.',
+      nextStepLabel: 'Submit payment proof before the hold expires.',
+      tone: 'warning',
+      quickActions: [
+        {
+          label: 'Confirm payment details',
+          text: 'Thanks, I am ready to pay. Please confirm the payment details and reference before I submit proof.',
+          suggestionType: 'payment_info',
+          priority: 'primary',
+        },
+        {
+          label: 'Proof coming',
+          text: 'I am arranging payment now and will upload proof shortly.',
+          priority: 'secondary',
+        },
+        {
+          label: 'Need help paying',
+          text: 'I need help with the payment instructions before I can submit proof.',
+          suggestionType: 'payment_info',
+          priority: 'secondary',
+        },
+      ],
+    };
+  }
+
+  if (isAwaitingHostPaymentConfirmation(booking)) {
+    return {
+      stageLabel: 'Host confirming payment',
+      stageDescription: 'Your proof is submitted. The host still needs to verify it before the stay becomes booked.',
+      nextStepLabel: 'Keep the host focused on the submitted proof and reference.',
+      tone: 'neutral',
+      quickActions: [
+        {
+          label: 'Reference sent',
+          text: booking.paymentReference
+            ? `I submitted payment proof with reference ${booking.paymentReference}. Please let me know if you need anything else.`
+            : 'I submitted payment proof. Please let me know if you need anything else to confirm the booking.',
+          priority: 'primary',
+        },
+        {
+          label: 'Ask confirmation ETA',
+          text: 'Could you let me know when you expect to confirm the payment?',
+          priority: 'secondary',
+        },
+      ],
+    };
+  }
+
+  if (isBookedStay(booking)) {
+    return {
+      stageLabel: 'Stay confirmed',
+      stageDescription: 'The booking is confirmed. Messaging should now coordinate check-in, stay support, and checkout.',
+      nextStepLabel: 'Use practical stay updates, not enquiry/payment questions.',
+      tone: 'success',
+      quickActions: [
+        {
+          label: 'Confirm Check-in',
+          text: 'I have successfully checked in. Everything looks good.',
+          suggestionType: 'checkin',
+          priority: 'primary',
+        },
+        {
+          label: 'Ask directions',
+          text: 'Please send the directions and check-in instructions when you can.',
+          suggestionType: 'directions',
+          priority: 'secondary',
+        },
+        {
+          label: 'Confirm Checkout',
+          text: 'I have checked out. Thank you for the stay.',
+          suggestionType: 'checkout',
+          priority: 'secondary',
+        },
+      ],
+    };
+  }
+
+  return {
+    stageLabel: booking.inquiryState === 'EXPIRED' ? 'Enquiry expired' : 'Conversation closed',
+    stageDescription: getInquiryResponseText(booking),
+    nextStepLabel: 'Create a new enquiry if you still want to stay at this property.',
+    tone: 'closed',
+    quickActions: [
+      {
+        label: 'Ask about new dates',
+        text: 'This enquiry is no longer active. Are there alternative dates available for a new enquiry?',
+        priority: 'primary',
+      },
+      {
+        label: 'Ask what happened',
+        text: 'Can you clarify why this enquiry is no longer active?',
+        priority: 'secondary',
+      },
+    ],
+  };
+}
+
+function buildPaymentInstructionText(booking: Pick<Booking, 'paymentInstructions' | 'paymentReference'>) {
+  const instructions = booking.paymentInstructions?.trim();
+  const reference = booking.paymentReference?.trim();
+
+  if (instructions && reference) {
+    return `Please use these payment details: ${instructions} Use reference ${reference}, then submit proof so I can confirm the booking.`;
+  }
+
+  if (instructions) {
+    return `Please use these payment details: ${instructions} Then submit proof so I can confirm the booking.`;
+  }
+
+  if (reference) {
+    return `Please use payment reference ${reference}, then submit proof so I can confirm the booking.`;
+  }
+
+  return 'Please use the payment details attached to this enquiry, then submit proof so I can confirm the booking.';
 }
 
 export function getHostInquiryDeadlineText(booking: BookingDeadlineSlice, now: Date = new Date()) {
