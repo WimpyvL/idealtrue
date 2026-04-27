@@ -1,5 +1,6 @@
 ## Change Log
 
+- Moved the Content Studio side-rail controls out of `src/pages/SocialDashboard.tsx` into a compact Studio Tools dropdown, expanded the Social Media group in `src/components/HostLayout.tsx` with the Content Studio tool entries, and added UI coverage in `tests/ui/social-dashboard.test.tsx` so the dropdown keeps Create Post, tools, and wallet access.
 - Made messaging process-aware by adding role-specific booking-stage context and quick actions in `src/lib/inquiry-state.ts`, wiring `src/components/ChatModal.tsx` and `src/pages/HostInbox.tsx` to show the current host/guest workflow step, and aligning message suggestion typing across `src/types.ts`, `encore/shared/domain.ts`, and `encore/messaging/api.ts`.
 - Added `tests/inquiry-state.test.ts` coverage for host decision, guest payment, and confirmed-stay messaging action contracts so chat suggestions stay tied to real booking state instead of static role-only buttons.
 - Established `docs/workflow-validation-matrix.md` as the source-of-truth workflow checklist, tying routes, Encore services/endpoints, current tests, gaps, fixture requirements, priority expansion, async/provider workflows, and CI gates to each product workflow; linked it from `README.md`.

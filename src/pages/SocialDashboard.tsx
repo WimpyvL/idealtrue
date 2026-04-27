@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CalendarDays, CheckCircle2, Copy, Download, LayoutTemplate, Loader2, Send, Sparkles } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ChevronDown, Copy, Download, LayoutTemplate, Loader2, Send, Sparkles, WalletCards } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { toast } from 'sonner';
 import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { useAuth } from '../contexts/AuthContext';
 import { Listing } from '../types';
 import {
@@ -311,48 +312,58 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
 
   return (
     <div className="min-w-0 space-y-6 overflow-hidden">
-      <div className="grid min-w-0 gap-6 xl:grid-cols-[220px_1fr]">
-        <aside className="min-w-0 rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm">
-          <Button className="h-11 w-full justify-center rounded-lg font-semibold" onClick={handleGeneratePostSet} disabled={!selectedListing || !creativeSourceUrl || isGenerating || !contentEnabled}>
-            {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-            Create Post
-          </Button>
-          <div className="mt-6 space-y-1">
-            <p className="px-3 text-xs font-bold uppercase text-on-surface-variant">Tools</p>
-            {CONTENT_TOOLS.map((item) => (
-              <button
-                key={item.label}
-                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium ${item.active ? 'bg-primary/10 text-primary' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`}
-                type="button"
-              >
-                <span>{item.label}</span>
-                {!item.active ? <span className="text-[10px] uppercase text-on-surface-variant">Soon</span> : null}
-              </button>
-            ))}
-          </div>
-          <div className="mt-6 rounded-lg border border-outline-variant bg-surface-container-low p-3">
-            <p className="text-xs font-bold uppercase text-on-surface-variant">Wallet</p>
-            <p className="mt-2 text-2xl font-bold">{entitlements?.creditBalance ?? '...'}</p>
-            <p className="text-xs text-on-surface-variant">Credits available</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {CREDIT_PACKS.map((credits) => (
-                <button
-                  key={credits}
-                  className="rounded-md border border-outline-variant bg-surface-container-lowest px-2 py-1 text-xs font-semibold hover:border-primary hover:text-primary"
-                  onClick={() => createContentCreditsCheckout(credits).then((checkout) => window.location.assign(checkout.redirectUrl)).catch((error) => toast.error(error instanceof Error ? error.message : 'Credit purchase failed.'))}
-                  type="button"
-                >
-                  +{credits}
-                </button>
-              ))}
-            </div>
-          </div>
-        </aside>
-
-        <div className="min-w-0 space-y-6">
+      <div className="min-w-0 space-y-6">
           <header className="flex min-w-0 flex-col gap-4 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
-              <p className="text-xs font-bold uppercase text-primary">Content Studio</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-bold uppercase text-primary">Content Studio</p>
+                <Popover>
+                  <PopoverTrigger className="inline-flex h-8 items-center rounded-full border border-outline-variant bg-surface px-3 text-xs font-semibold transition-colors hover:bg-surface-container-low">
+                    Studio Tools <ChevronDown className="ml-1 h-3.5 w-3.5" />
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-80 p-3">
+                    <Button className="h-10 w-full justify-center rounded-lg font-semibold" onClick={handleGeneratePostSet} disabled={!selectedListing || !creativeSourceUrl || isGenerating || !contentEnabled}>
+                      {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                      Create Post
+                    </Button>
+
+                    <div className="space-y-1">
+                      <p className="px-2 text-xs font-bold uppercase text-on-surface-variant">Tools</p>
+                      {CONTENT_TOOLS.map((item) => (
+                        <button
+                          key={item.label}
+                          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium ${item.active ? 'bg-primary/10 text-primary' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`}
+                          type="button"
+                        >
+                          <span>{item.label}</span>
+                          {!item.active ? <span className="text-[10px] uppercase text-on-surface-variant">Soon</span> : null}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="rounded-lg border border-outline-variant bg-surface-container-low p-3">
+                      <div className="flex items-center gap-2">
+                        <WalletCards className="h-4 w-4 text-primary" />
+                        <p className="text-xs font-bold uppercase text-on-surface-variant">Wallet</p>
+                      </div>
+                      <p className="mt-2 text-2xl font-bold">{entitlements?.creditBalance ?? '...'}</p>
+                      <p className="text-xs text-on-surface-variant">Credits available</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {CREDIT_PACKS.map((credits) => (
+                          <button
+                            key={credits}
+                            className="rounded-md border border-outline-variant bg-surface-container-lowest px-2 py-1 text-xs font-semibold hover:border-primary hover:text-primary"
+                            onClick={() => createContentCreditsCheckout(credits).then((checkout) => window.location.assign(checkout.redirectUrl)).catch((error) => toast.error(error instanceof Error ? error.message : 'Credit purchase failed.'))}
+                            type="button"
+                          >
+                            +{credits}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
               <h1 className="mt-1 break-words text-2xl font-bold tracking-tight sm:text-3xl">Get inspired for {selectedListing?.title ?? 'your next stay'}</h1>
               <p className="mt-1 text-sm text-on-surface-variant">Choose the channel, idea source, and output type. The engine builds the draft and visual pack.</p>
             </div>
@@ -500,7 +511,6 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
               </section>
             </div>
           </Card>
-        </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">

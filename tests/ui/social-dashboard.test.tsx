@@ -213,4 +213,25 @@ describe('SocialDashboard', () => {
       scheduledFor: expect.stringMatching(/^2026-05-01T/),
     }));
   });
+
+  it('keeps the content tools and wallet inside the studio tools dropdown', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <SocialDashboard listings={[listing]} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(getContentEntitlementsMock).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: /studio tools/i }));
+
+    expect(screen.getByRole('button', { name: /create post/i })).toBeInTheDocument();
+    expect(screen.getByText('New Post Ideas')).toBeInTheDocument();
+    expect(screen.getByText('Quick Templates')).toBeInTheDocument();
+    expect(screen.getByText('Media Collections')).toBeInTheDocument();
+    expect(screen.getByText('Content Calendar')).toBeInTheDocument();
+    expect(screen.getByText('Wallet')).toBeInTheDocument();
+    expect(screen.getByText('Credits available')).toBeInTheDocument();
+  });
 });

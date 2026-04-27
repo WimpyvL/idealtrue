@@ -16,7 +16,9 @@ import {
   Share2,
   Sparkles,
   CalendarDays,
-  UserCircle2
+  UserCircle2,
+  LayoutTemplate,
+  Images
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
@@ -56,6 +58,10 @@ export default function HostLayout() {
       icon: Share2,
       items: [
         { name: 'Content Studio', path: '/host/social', icon: Sparkles },
+        { name: 'New Post Ideas', path: '/host/social', icon: Sparkles },
+        { name: 'Quick Templates', path: '/host/social', icon: LayoutTemplate, soon: true },
+        { name: 'Media Collections', path: '/host/social', icon: Images, soon: true },
+        { name: 'Content Calendar', path: '/host/social', icon: CalendarDays, soon: true },
       ]
     },
     {
@@ -126,7 +132,7 @@ export default function HostLayout() {
                   <div className="pl-9 pr-2 space-y-1 mt-1">
                     {group.items.map((item) => {
                       const Icon = item.icon;
-                      const isActive = location.pathname === item.path;
+                      const isActive = location.pathname === item.path && !item.soon;
                       return (
                         <Link 
                           key={item.name}
@@ -138,7 +144,9 @@ export default function HostLayout() {
                               : "text-on-surface-variant hover:bg-surface-container-lowest hover:text-on-surface"
                           )}
                         >
-                          <Icon className="w-4 h-4" /> {item.name}
+                          <Icon className="w-4 h-4" />
+                          <span className="min-w-0 flex-1">{item.name}</span>
+                          {item.soon ? <span className="text-[9px] font-bold uppercase text-on-surface-variant">Soon</span> : null}
                         </Link>
                       );
                     })}
