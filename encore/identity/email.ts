@@ -8,8 +8,30 @@ const allowAuthEmailLogFallback = process.env.IDEAL_STAY_ALLOW_AUTH_EMAIL_LOG ==
 
 type AuthEmailKind = "verify_email" | "reset_password";
 
+function readConfiguredSecret(secretValue: () => string, name: string) {
+  try {
+    return secretValue().trim();
+  } catch (error) {
+    if (error instanceof Error && error.message === `secret ${name} is not set`) {
+      return "";
+    }
+    throw error;
+  }
+}
+
 function getAppUrl() {
-  return idealStayAppUrl() || "http://localhost:3000";
+  const configuredUrl = readConfiguredSecret(idealStayAppUrl, "IDEAL_STAY_APP_URL");
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+
+  if (allowAuthEmailLogFallback) {
+    return "http://localhost:3000";
+  }
+
+  throw new Error(
+    "Auth email app URL is not configured. Set IDEAL_STAY_APP_URL so verification and reset links point at the frontend.",
+  );
 }
 
 function renderEmail(kind: AuthEmailKind, link: string, displayName: string) {
@@ -60,8 +82,9 @@ export async function sendAuthEmail(params: {
   const link = `${appUrl}${path}`;
   const rendered = renderEmail(params.kind, link, params.displayName);
 
-  const apiKey = resendApiKey();
-  const from = authEmailFrom();
+  const apiKey = readConfiguredSecret(resendApiKey, "RESEND_API_KEY");
+  const from = readConfiguredSecret(authEmailFrom, "AUTH_EMAIL_FROM");
+  const replyTo = readConfiguredSecret(authEmailReplyTo, "AUTH_EMAIL_REPLY_TO");
   if (!apiKey || !from) {
     if (!allowAuthEmailLogFallback) {
       throw new Error(
@@ -84,7 +107,7 @@ export async function sendAuthEmail(params: {
       subject: rendered.subject,
       html: rendered.html,
       text: rendered.text,
-      reply_to: authEmailReplyTo() || undefined,
+      reply_to: replyTo || undefined,
     }),
   });
 
