@@ -11,6 +11,7 @@ import { motion } from 'motion/react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { requestPasswordReset, resetPasswordWithToken, verifyEmailToken } from '@/lib/identity-client';
+import { getSafeAuthReturnPath } from '@/lib/booking-auth-intent';
 
 export default function SignupPage() {
   const navigate = useNavigate();
@@ -19,6 +20,7 @@ export default function SignupPage() {
   const [mode, setMode] = useState<'signup' | 'signin'>('signup');
   const urlMode = searchParams.get('mode');
   const actionToken = searchParams.get('token') || '';
+  const safeReturnPath = getSafeAuthReturnPath(searchParams.get('returnTo'));
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -139,13 +141,13 @@ export default function SignupPage() {
           referredByCode: refCode,
         });
         toast.success('Account created. Check your email to verify your address.');
-        navigate(profile.role === 'host' ? '/host' : '/');
+        navigate(safeReturnPath ?? (profile.role === 'host' ? '/host' : '/'));
       } else {
         const profile = await signIn({
           email: email.trim(),
           password,
         });
-        navigate(profile.role === 'host' ? '/host' : '/');
+        navigate(safeReturnPath ?? (profile.role === 'host' ? '/host' : '/'));
       }
     } catch (error) {
       console.error('Auth error:', error);

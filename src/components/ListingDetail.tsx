@@ -13,17 +13,20 @@ import { DateRange } from 'react-day-picker';
 import { listListingReviews } from '@/lib/platform-client';
 import { formatRand } from '@/lib/currency';
 import { isListingNightBlocked, stayOverlapsListingAvailability } from '@/lib/listing-availability';
+import type { BookingIntent } from '@/lib/booking-auth-intent';
 
 export default function ListingDetail({ 
   listing, 
   onClose, 
   onBook,
-  currentUserId
+  currentUserId,
+  initialBookingIntent,
 }: { 
   listing: Listing, 
   onClose: () => void, 
   onBook: (bookingData: { checkIn: Date, checkOut: Date, adults: number, children: number, totalPrice: number, breakageDeposit?: number | null }) => Promise<void> | void,
-  currentUserId?: string
+  currentUserId?: string,
+  initialBookingIntent?: BookingIntent | null,
 }) {
   const isDateBlocked = (date: Date) => isListingNightBlocked(listing, date);
   const rangeIncludesBlockedDates = (from?: Date, to?: Date) => stayOverlapsListingAvailability(listing, from, to);
@@ -68,6 +71,19 @@ export default function ListingDetail({
   useEffect(() => {
     setSelectedImageIndex(0);
   }, [listing.id]);
+
+  useEffect(() => {
+    if (!initialBookingIntent) {
+      return;
+    }
+
+    setDateRange({
+      from: initialBookingIntent.checkIn,
+      to: initialBookingIntent.checkOut,
+    });
+    setAdults(Math.min(listing.adults, Math.max(1, initialBookingIntent.adults)));
+    setChildren(Math.min(listing.children, Math.max(0, initialBookingIntent.children)));
+  }, [initialBookingIntent, listing.adults, listing.children, listing.id]);
 
   const handleSummarizeReviews = async () => {
     if (reviews.length === 0) return;

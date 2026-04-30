@@ -16,6 +16,12 @@ const HostEnquiries = lazy(() => import('@/pages/HostEnquiries'));
 const HostInbox = lazy(() => import('@/pages/HostInbox'));
 const HostListings = lazy(() => import('@/pages/HostListings'));
 const HostReports = lazy(() => import('@/pages/HostReports'));
+const CancellationPolicy = lazy(() => import('@/pages/legal/CancellationPolicy'));
+const GuestAgreement = lazy(() => import('@/pages/legal/GuestAgreement'));
+const HostAgreement = lazy(() => import('@/pages/legal/HostAgreement'));
+const LiabilityWaiver = lazy(() => import('@/pages/legal/LiabilityWaiver'));
+const PrivacyPolicy = lazy(() => import('@/pages/legal/PrivacyPolicy'));
+const TermsOfService = lazy(() => import('@/pages/legal/TermsOfService'));
 const PricingPage = lazy(() => import('@/pages/PricingPage'));
 const ReferralView = lazy(() => import('@/pages/ReferralView'));
 const SignupPage = lazy(() => import('@/pages/SignupPage'));
@@ -126,6 +132,12 @@ export default function AppRoutes({
         <Route path="/account" element={<RequireAuthRoute profile={profile}><AccountPage /></RequireAuthRoute>} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/pricing" element={<PricingPage onBack={() => navigate('/host')} />} />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
+        <Route path="/terms-of-service" element={<TermsOfService />} />
+        <Route path="/host-agreement" element={<HostAgreement />} />
+        <Route path="/guest-agreement" element={<GuestAgreement />} />
+        <Route path="/liability-waiver" element={<LiabilityWaiver />} />
+        <Route path="/cancellation-policy" element={<CancellationPolicy />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Suspense>

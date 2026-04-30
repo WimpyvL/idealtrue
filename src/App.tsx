@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Toaster, toast } from 'sonner';
 import { useLocation, useNavigate } from 'react-router-dom';
 import AppNavigation from './components/AppNavigation';
+import AppFooter from './components/AppFooter';
 import BrandLogo from './components/BrandLogo';
 import AppRoutes from './components/AppRoutes';
 import ListingDetail from './components/ListingDetail';
@@ -13,6 +14,7 @@ import { NotificationProvider } from './context/NotificationContext';
 import { useAuth } from './contexts/AuthContext';
 import { useAppShellState } from './hooks/use-app-shell-state';
 import { usePlatformData } from './hooks/use-platform-data';
+import { buildBookingAuthPath, clearBookingIntentParams, parseBookingIntent } from './lib/booking-auth-intent';
 import { createBooking, submitPaymentProof } from './lib/platform-client';
 import { cn } from './lib/utils';
 
@@ -47,12 +49,17 @@ function AppContent() {
 
   const isAdmin = useMemo(() => profile?.role === 'admin', [profile]);
   const isAdminAccount = useMemo(() => !!profile?.isAdmin, [profile]);
-  const isHostRoute = location.pathname.startsWith('/host');
-  const isAdminRoute = location.pathname.startsWith('/admin');
+  const isHostRoute = location.pathname === '/host' || location.pathname.startsWith('/host/');
+  const isAdminRoute = location.pathname === '/admin' || location.pathname.startsWith('/admin/');
+  const shouldShowPublicFooter = !isHostRoute && !isAdminRoute;
   const selectedListingIdFromUrl = useMemo(() => {
     if (location.pathname !== '/') return null;
     return new URLSearchParams(location.search).get('listingId');
   }, [location.pathname, location.search]);
+  const selectedBookingIntentFromUrl = useMemo(() => {
+    if (location.pathname !== '/' || !selectedListingIdFromUrl) return null;
+    return parseBookingIntent(location.search);
+  }, [location.pathname, location.search, selectedListingIdFromUrl]);
 
   useEffect(() => {
     if (!selectedListingIdFromUrl) {
@@ -130,7 +137,7 @@ function AppContent() {
   const handleListingDetailClose = () => {
     setSelectedListingForDetail(null);
     if (location.pathname === '/' && selectedListingIdFromUrl) {
-      const searchParams = new URLSearchParams(location.search);
+      const searchParams = clearBookingIntentParams(location.search);
       searchParams.delete('listingId');
       navigate({ pathname: '/', search: searchParams.toString() ? `?${searchParams.toString()}` : '' }, { replace: true });
     }
@@ -183,6 +190,7 @@ function AppContent() {
           referrals={referrals}
         />
       </main>
+      {shouldShowPublicFooter && <AppFooter />}
 
       <PaymentProofDialog
         booking={bookingForPaymentProof}
@@ -223,9 +231,16 @@ function AppContent() {
                 listing={selectedListingForDetail}
                 onClose={handleListingDetailClose}
                 currentUserId={user?.id}
+                initialBookingIntent={selectedBookingIntentFromUrl}
                 onBook={async (bookingData) => {
                   if (!user) {
-                    navigate('/signup');
+                    navigate(buildBookingAuthPath({
+                      listingId: selectedListingForDetail.id,
+                      checkIn: bookingData.checkIn,
+                      checkOut: bookingData.checkOut,
+                      adults: bookingData.adults,
+                      children: bookingData.children,
+                    }));
                     return;
                   }
 

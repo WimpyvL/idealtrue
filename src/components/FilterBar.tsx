@@ -71,28 +71,28 @@ export default function FilterBar({ activeCategory, onFilterChange, onOpenFilter
         "sticky top-16 z-20 transition-all duration-300 ease-in-out",
         isCollapsed
           ? "bg-transparent py-2"
-          : "bg-surface/95 backdrop-blur-md border-b border-outline-variant py-4 pb-2"
+          : "bg-transparent py-3 pb-2"
       )}
     >
-      <div className="container mx-auto px-2 flex flex-col gap-2">
+      <div className="container mx-auto px-1 flex flex-col gap-2">
         {/* Main Categories Row */}
         <div
           className={cn(
             "overflow-x-auto no-scrollbar flex items-center transition-all duration-300 mx-auto",
             isCollapsed
               ? "bg-surface/90 backdrop-blur-md border border-outline-variant shadow-lg rounded-full px-2 py-0.5 gap-0.5 max-w-[95vw]"
-              : "w-full pb-1 gap-1 md:gap-2 justify-start md:justify-center"
+              : "w-full gap-1.5 md:gap-2 justify-start md:justify-center"
           )}
         >
           {/* Filters Button */}
           {!isCollapsed && (
-            <div className="flex items-center pr-1 md:pr-4 border-r border-outline-variant mr-0.5 md:mr-2 shrink-0">
+            <div className="flex items-center pr-1 md:pr-3 mr-0.5 md:mr-1 shrink-0">
               <button
                 onClick={onOpenFilters}
                 className={cn(
-                  "flex items-center justify-center gap-1 rounded-xl border border-outline-variant hover:border-primary transition-all font-semibold whitespace-nowrap relative",
+                  "flex items-center justify-center gap-1 rounded-full border border-outline-variant/60 bg-surface-bright/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_8px_24px_rgba(18,28,42,0.06)] backdrop-blur-md hover:border-primary transition-all font-semibold whitespace-nowrap relative",
                   isCollapsed ? "p-1.5" : "px-2 py-1 md:px-4 md:py-2 text-[10px] md:text-xs",
-                  activeFiltersCount > 0 ? "border-primary bg-primary/10" : "bg-surface"
+                  activeFiltersCount > 0 ? "border-primary bg-primary/10" : ""
                 )}
               >
                 <SlidersHorizontal className={cn("w-3.5 h-3.5", !isCollapsed && "md:w-3.5 md:h-3.5")} />
@@ -109,7 +109,7 @@ export default function FilterBar({ activeCategory, onFilterChange, onOpenFilter
           <button
             onClick={() => { setSelectedCategory("all"); setActiveSubCategory(null); onFilterChange("all"); }}
             className={cn(
-              "flex flex-col items-center cursor-pointer rounded-full relative shrink-0 transition-all duration-150",
+              "flex flex-col items-center cursor-pointer rounded-full relative shrink-0 transition-all duration-150 backdrop-blur-md",
               isCollapsed ? "min-w-[35px] p-1" : "min-w-[50px] md:min-w-[64px] p-1 md:p-2 gap-0.5 md:gap-2",
             selectedCategory === "all" ? "text-primary" : "text-on-surface-variant hover:text-on-surface"
           )}
@@ -119,7 +119,7 @@ export default function FilterBar({ activeCategory, onFilterChange, onOpenFilter
                 layoutId="activeFilter"
                 className={cn(
                   "absolute inset-0 rounded-full",
-                  isCollapsed ? "bg-primary/10" : "bg-surface-container-low"
+                  isCollapsed ? "bg-primary/10" : "bg-surface-bright/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_8px_20px_rgba(8,168,200,0.14)] ring-1 ring-primary/15"
                 )}
                 transition={smoothTransition}
               />
@@ -137,7 +137,7 @@ export default function FilterBar({ activeCategory, onFilterChange, onOpenFilter
                 key={category.id}
                 onClick={() => handleCategoryClick(category.id)}
                 className={cn(
-                  "flex flex-col items-center cursor-pointer rounded-full relative shrink-0 transition-all duration-200 group",
+                  "flex flex-col items-center cursor-pointer rounded-full relative shrink-0 transition-all duration-200 group backdrop-blur-md",
                   isCollapsed ? "min-w-[35px] p-1" : "min-w-[50px] md:min-w-[72px] p-1 md:p-2 gap-0.5 md:gap-2",
                 selectedCategory === category.id
                     ? "text-primary"
@@ -151,7 +151,7 @@ export default function FilterBar({ activeCategory, onFilterChange, onOpenFilter
                       "absolute inset-0 rounded-full",
                       isCollapsed
                         ? "bg-primary/10"
-                        : "bg-primary/5"
+                        : "bg-surface-bright/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_8px_20px_rgba(8,168,200,0.14)] ring-1 ring-primary/15"
                     )}
                     transition={smoothTransition}
                   />

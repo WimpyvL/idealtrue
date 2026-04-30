@@ -48,8 +48,8 @@ export default function AppNavigation({
       <nav className="sticky top-0 z-50 bg-surface-variant/60 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
-            <div className="flex items-center cursor-pointer" onClick={() => navigate('/')} aria-label="Go to Ideal Stay home">
-              <BrandLogo variant="inline" size="md" priority className="h-10 sm:h-12" />
+            <div className="flex h-16 items-center cursor-pointer" onClick={() => navigate('/')} aria-label="Go to Ideal Stay home">
+              <BrandLogo variant="inline" size="md" priority className="h-12 max-h-14 sm:h-14" />
             </div>
 
             <div className="hidden md:flex items-center gap-6">
