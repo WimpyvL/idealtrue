@@ -141,7 +141,9 @@ test('signup, email verification, and signin use the account lifecycle routes', 
   expect(calls.find((call) => call.path === '/auth/verify-email')?.body).toEqual({ token: 'verify-token-1' });
 
   await page.getByRole('button', { name: 'Back to sign in' }).click();
-  await page.locator('main').getByRole('button', { name: 'Sign in' }).click();
+  await expect(page).toHaveURL(/\/signup\?mode=signin$/);
+  await expect(page.getByRole('heading', { name: 'Sign in to Ideal Stay' })).toBeVisible();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).first().click();
   await page.getByPlaceholder('you@example.com').fill('new-guest@example.com');
   await page.locator('input[type="password"]').first().fill('password123');
   await page.locator('form').getByRole('button', { name: /Sign in/ }).click();
@@ -157,7 +159,7 @@ test('password reset request and token reset stay on the auth workflow', async (
   const calls = await installAuthWorkflowRoutes(page);
 
   await page.goto('/signup');
-  await page.locator('main').getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).first().click();
   await page.getByPlaceholder('you@example.com').fill('new-guest@example.com');
   await page.getByRole('button', { name: 'Email me a password reset link' }).click();
 
@@ -173,9 +175,20 @@ test('password reset request and token reset stay on the auth workflow', async (
   await page.locator('form').getByRole('button', { name: /Update password/ }).click();
 
   await expect(page.getByText('Password updated. You can sign in now.')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Join Ideal Stay' })).toBeVisible();
+  await expect(page).toHaveURL(/\/signup\?mode=signin$/);
+  await expect(page.getByRole('heading', { name: 'Sign in to Ideal Stay' })).toBeVisible();
   expect(calls.find((call) => call.path === '/auth/reset-password')?.body).toEqual({
     token: 'reset-token-1',
     password: 'new-password123',
   });
+});
+
+test('direct signin URL opens the login panel instead of the account creation panel', async ({ page }) => {
+  await installAuthWorkflowRoutes(page);
+
+  await page.goto('/signup?mode=signin');
+
+  await expect(page.getByRole('heading', { name: 'Sign in to Ideal Stay' })).toBeVisible();
+  await expect(page.getByPlaceholder('Your full name')).toHaveCount(0);
+  await expect(page.locator('form').getByRole('button', { name: /Sign in/ })).toBeVisible();
 });

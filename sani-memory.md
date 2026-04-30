@@ -1,5 +1,6 @@
 ## Change Log
 
+- Fixed the auth entry flow so `/signup?mode=signin`, header/mobile Sign In actions, verify-email success, and reset-password success all land on the real sign-in panel while preserving referral params during signup/signin toggles; covered it in `tests/e2e/auth-account.spec.ts`.
 - Fixed auth email dispatch in `encore/identity/email.ts` so missing optional Encore secrets no longer abort verification/reset email sends before Resend is called, while missing required delivery/app URL config now fails with explicit errors.
 - Moved the Content Studio side-rail controls out of `src/pages/SocialDashboard.tsx` into a compact Studio Tools dropdown, expanded the Social Media group in `src/components/HostLayout.tsx` with the Content Studio tool entries, and added UI coverage in `tests/ui/social-dashboard.test.tsx` so the dropdown keeps Create Post, tools, and wallet access.
 - Made messaging process-aware by adding role-specific booking-stage context and quick actions in `src/lib/inquiry-state.ts`, wiring `src/components/ChatModal.tsx` and `src/pages/HostInbox.tsx` to show the current host/guest workflow step, and aligning message suggestion typing across `src/types.ts`, `encore/shared/domain.ts`, and `encore/messaging/api.ts`.

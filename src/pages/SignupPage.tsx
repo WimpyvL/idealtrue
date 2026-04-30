@@ -33,11 +33,28 @@ export default function SignupPage() {
   const isVerifyEmailMode = urlMode === 'verify-email' && !!actionToken;
   const isForgotPasswordMode = mode === 'signin' && !isResetPasswordMode && !isVerifyEmailMode;
 
+  useEffect(() => {
+    if (isResetPasswordMode || isVerifyEmailMode) return;
+    setMode(urlMode === 'signin' ? 'signin' : 'signup');
+  }, [isResetPasswordMode, isVerifyEmailMode, urlMode]);
+
   const passwordActionTitle = useMemo(() => {
     if (isVerifyEmailMode) return 'Verify your email';
     if (isResetPasswordMode) return 'Set a new password';
     return isSignupMode ? 'Join Ideal Stay' : 'Sign in to Ideal Stay';
   }, [isResetPasswordMode, isSignupMode, isVerifyEmailMode]);
+
+  const getAuthModePath = (nextMode: 'signup' | 'signin') => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('token');
+    if (nextMode === 'signin') {
+      nextParams.set('mode', 'signin');
+    } else {
+      nextParams.delete('mode');
+    }
+    const query = nextParams.toString();
+    return query ? `/signup?${query}` : '/signup';
+  };
 
   useEffect(() => {
     if (!isVerifyEmailMode || verificationState !== 'idle') return;
@@ -93,7 +110,7 @@ export default function SignupPage() {
       try {
         await resetPasswordWithToken({ token: actionToken, password });
         toast.success('Password updated. You can sign in now.');
-        navigate('/signup');
+        navigate('/signup?mode=signin');
       } catch (error) {
         console.error('Reset password error:', error);
         toast.error(error instanceof Error ? error.message : 'Password reset failed.');
@@ -156,7 +173,7 @@ export default function SignupPage() {
                   : 'That verification link is invalid or expired.'}
             </p>
           </div>
-          <Button onClick={() => navigate('/signup')} className="w-full h-12 rounded-2xl font-bold">
+          <Button onClick={() => navigate('/signup?mode=signin')} className="w-full h-12 rounded-2xl font-bold">
             Back to sign in
           </Button>
         </Card>
@@ -187,7 +204,7 @@ export default function SignupPage() {
               'px-5 py-2 rounded-xl text-sm font-semibold transition-colors',
               isSignupMode ? 'bg-[#08a8c8] text-white' : 'text-on-surface-variant hover:text-on-surface',
             )}
-            onClick={() => setMode('signup')}
+            onClick={() => navigate(getAuthModePath('signup'))}
           >
             Create account
           </button>
@@ -197,7 +214,7 @@ export default function SignupPage() {
               'px-5 py-2 rounded-xl text-sm font-semibold transition-colors',
               !isSignupMode ? 'bg-[#08a8c8] text-white' : 'text-on-surface-variant hover:text-on-surface',
             )}
-            onClick={() => setMode('signin')}
+            onClick={() => navigate(getAuthModePath('signin'))}
           >
             Sign in
           </button>
@@ -345,9 +362,21 @@ export default function SignupPage() {
                 </button>
               ) : null}
               <p className="text-sm text-on-surface-variant">
-                {isSignupMode
-                  ? 'Already have an account? Switch to sign in.'
-                  : 'Need an account? Switch to create account.'}
+                {isSignupMode ? (
+                  <>
+                    Already have an account?{' '}
+                    <button type="button" className="font-semibold text-[#08a8c8]" onClick={() => navigate(getAuthModePath('signin'))}>
+                      Switch to sign in.
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    Need an account?{' '}
+                    <button type="button" className="font-semibold text-[#08a8c8]" onClick={() => navigate(getAuthModePath('signup'))}>
+                      Switch to create account.
+                    </button>
+                  </>
+                )}
               </p>
             </>
           )}

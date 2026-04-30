@@ -103,7 +103,7 @@ export default function AppNavigation({
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" onClick={() => navigate('/signup')}>Sign In</Button>
+                  <Button variant="ghost" onClick={() => navigate('/signup?mode=signin')}>Sign In</Button>
                   <Button onClick={() => navigate('/signup')} className="bg-[#08a8c8] hover:bg-[#08a8c8]/90 shadow-[#08a8c8]/20">Sign Up</Button>
                 </div>
               )}
@@ -143,7 +143,7 @@ export default function AppNavigation({
                 </>
               ) : (
                 <>
-                  <button onClick={() => { onCloseMenu(); navigate('/signup'); }} className="text-2xl font-bold">Sign In</button>
+                  <button onClick={() => { onCloseMenu(); navigate('/signup?mode=signin'); }} className="text-2xl font-bold">Sign In</button>
                   <button onClick={() => { onCloseMenu(); navigate('/signup'); }} className="text-2xl font-bold text-[#08a8c8]">Sign Up</button>
                 </>
               )}
