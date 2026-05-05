@@ -121,6 +121,23 @@ function downloadDataUrl(filename: string, dataUrl: string) {
   link.click();
 }
 
+function getDraftLifecycleDate(draft: ContentDraft) {
+  if (draft.status === 'published') return draft.publishedAt ?? null;
+  if (draft.status === 'scheduled') return draft.scheduledFor ?? null;
+  return null;
+}
+
+function formatDraftLifecycleDate(draft: ContentDraft) {
+  const lifecycleDate = getDraftLifecycleDate(draft);
+  return lifecycleDate ? new Date(lifecycleDate).toLocaleString() : 'No distribution date set';
+}
+
+function getDraftStatusLabel(draft: ContentDraft) {
+  if (draft.status === 'published') return 'Published';
+  if (draft.status === 'scheduled') return 'Scheduled';
+  return 'Draft';
+}
+
 export default function SocialDashboard({ listings }: { listings: Listing[] }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -154,6 +171,7 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
   const selectedDraft = useMemo(() => drafts.find((draft) => draft.id === selectedDraftId) ?? null, [drafts, selectedDraftId]);
   const selectedIdea = useMemo(() => IDEA_MODES.find((item) => item.id === selectedIdeaMode) ?? IDEA_MODES[0], [selectedIdeaMode]);
   const selectedGenerator = useMemo(() => GENERATOR_MODES.find((item) => item.id === selectedGeneratorMode) ?? GENERATOR_MODES[0], [selectedGeneratorMode]);
+  const canScheduleDraft = Boolean(entitlements?.canSchedule && scheduleAt && !Number.isNaN(new Date(scheduleAt).getTime()));
 
   useEffect(() => {
     const tool = searchParams.get('tool') as ContentToolId | null;
@@ -533,13 +551,14 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
                         onClick={() => setSelectedDraftId(draft.id)}
                         className={`w-full rounded-lg border p-4 text-left transition ${selectedDraftId === draft.id ? 'border-primary bg-primary/5' : 'border-outline-variant hover:border-primary/60'}`}
                         type="button"
+                        aria-label={`Open ${getDraftStatusLabel(draft).toLowerCase()} draft for ${draft.listingTitle}`}
                       >
                         <span className="flex items-center justify-between gap-3">
                           <span className="font-semibold">{draft.listingTitle}</span>
-                          <span className="text-xs uppercase tracking-[0.18em] text-on-surface-variant">{draft.status}</span>
+                          <span className="text-xs uppercase tracking-[0.18em] text-on-surface-variant">{getDraftStatusLabel(draft)}</span>
                         </span>
                         <span className="mt-1 block text-sm text-on-surface-variant">
-                          {draft.scheduledFor ? new Date(draft.scheduledFor).toLocaleString() : draft.publishedAt ? new Date(draft.publishedAt).toLocaleString() : 'No distribution date set'}
+                          {formatDraftLifecycleDate(draft)}
                         </span>
                       </button>
                     ))}
@@ -669,10 +688,16 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
 
           <div className="space-y-3 max-h-[240px] overflow-y-auto pr-2">
             {drafts.map((draft) => (
-              <button key={draft.id} onClick={() => setSelectedDraftId(draft.id)} className={`w-full rounded-2xl border p-4 text-left ${selectedDraftId === draft.id ? 'border-primary bg-primary/5' : 'border-outline-variant'}`}>
+              <button
+                key={draft.id}
+                onClick={() => setSelectedDraftId(draft.id)}
+                className={`w-full rounded-2xl border p-4 text-left ${selectedDraftId === draft.id ? 'border-primary bg-primary/5' : 'border-outline-variant'}`}
+                aria-label={`Edit ${getDraftStatusLabel(draft).toLowerCase()} draft for ${draft.listingTitle}`}
+                type="button"
+              >
                 <div className="flex items-center justify-between gap-3">
                   <div><p className="font-semibold">{draft.listingTitle}</p><p className="text-xs text-on-surface-variant">{draft.templateName} • {getPlatformLabel(draft.platform)} • {draft.tone}</p></div>
-                  <span className="text-xs uppercase tracking-[0.18em] text-on-surface-variant">{draft.status}</span>
+                  <span className="text-xs uppercase tracking-[0.18em] text-on-surface-variant">{getDraftStatusLabel(draft)}</span>
                 </div>
               </button>
             ))}
@@ -688,7 +713,7 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
                 </div>
                 <Button variant="outline" disabled={isSavingDraft} onClick={() => handleSaveDraft('draft')}>{isSavingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Draft'}</Button>
                 <div className="flex gap-3">
-                  <Button variant="outline" disabled={!scheduleAt || !entitlements?.canSchedule || isSavingDraft} onClick={() => handleSaveDraft('scheduled')}><Send className="mr-2 h-4 w-4" />Schedule</Button>
+                  <Button variant="outline" disabled={!canScheduleDraft || isSavingDraft} onClick={() => handleSaveDraft('scheduled')}><Send className="mr-2 h-4 w-4" />Schedule</Button>
                   <Button disabled={isSavingDraft} onClick={() => handleSaveDraft('published')}>Publish Logged</Button>
                 </div>
               </div>

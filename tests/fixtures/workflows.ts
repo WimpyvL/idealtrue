@@ -756,8 +756,8 @@ export const workflowCoverageMatrix = [
     notificationEffects: ['credit purchase or draft status notifications when enabled'],
     externalBoundaries: ['AI providers', 'future social APIs', 'content credit checkout'],
     fixtureKeys: ['draft content', 'scheduled content'],
-      currentCoverage: ['tests/social-template-engine.test.ts', 'tests/ai-client.test.ts', 'tests/text-generation.test.ts', 'tests/workflow-client-contracts.test.ts', 'tests/content-entitlements.test.ts', 'tests/ui/social-dashboard.test.tsx'],
-      requiredNextCoverage: ['tests/e2e/content-studio.spec.ts', 'content credit checkout/webhook test'],
+      currentCoverage: ['tests/social-template-engine.test.ts', 'tests/ai-client.test.ts', 'tests/text-generation.test.ts', 'tests/workflow-client-contracts.test.ts', 'tests/content-entitlements.test.ts', 'tests/ui/social-dashboard.test.tsx', 'tests/e2e/content-studio.spec.ts'],
+      requiredNextCoverage: ['content credit checkout/webhook test'],
   },
   {
     workflow: 'Messaging and attachment upload',
