@@ -1,0 +1,35 @@
+%% (|/) Klaasvaakie
+flowchart TD
+  yocoReturn["Yoco redirects back to Ideal Stay"]
+  url{"Return URL contains"}
+  paymentId["payment_id + billing_status\nCurrent standard"]
+  checkoutId["checkout_id + billing_status\nLegacy compatibility"]
+  pricing["/pricing handles subscription + managed_hosting"]
+  social["/host/social handles content_credits"]
+  statusNew["GET /billing/payments/:paymentId?billingStatus=..."]
+  statusOld["GET /billing/checkouts/:checkoutId"]
+  reconcileIntent["reconcilePendingPaymentIntent()"]
+  reconcileLegacy["reconcilePendingCheckout()"]
+  paid{"status paid?"}
+  success["Refresh profile/entitlements\nShow success\nNavigate as needed"]
+  pending["Poll or tell user webhook is still confirming"]
+  fail["Show cancelled/failed message"]
+
+  yocoReturn --> url
+  url -- payment_id --> paymentId
+  url -- checkout_id --> checkoutId
+  paymentId --> pricing
+  paymentId --> social
+  checkoutId --> pricing
+  checkoutId --> social
+  pricing --> statusNew
+  social --> statusNew
+  pricing --> statusOld
+  social --> statusOld
+  statusNew --> reconcileIntent
+  statusOld --> reconcileLegacy
+  reconcileIntent --> paid
+  reconcileLegacy --> paid
+  paid -- yes --> success
+  paid -- pending --> pending
+  paid -- cancelled or failed --> fail

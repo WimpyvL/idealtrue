@@ -1,0 +1,24 @@
+%% (|/) Klaasvaakie
+flowchart TD
+  start["POST /billing/payments"]
+  auth{"User role is\nhost or admin?"}
+  purpose{"purpose"}
+  sub["subscription\nRequires plan + billingInterval\nAmount from HOST_PLANS"]
+  setup["host_billing_setup\nRequires no card currently on file\nAmount R2"]
+  managed["managed_hosting\nAmount R650"]
+  credits["content_credits\nRequires positive credits\nAmount from credit pack pricing"]
+  intent["createBillingPaymentIntent()\nInsert billing_payment_intents row"]
+  reject["Reject with APIError"]
+
+  start --> auth
+  auth -- no --> reject
+  auth -- yes --> purpose
+  purpose -- subscription --> sub
+  purpose -- host_billing_setup --> setup
+  purpose -- managed_hosting --> managed
+  purpose -- content_credits --> credits
+  purpose -- unsupported --> reject
+  sub --> intent
+  setup --> intent
+  managed --> intent
+  credits --> intent

@@ -1,0 +1,17 @@
+%% (|/) Klaasvaakie
+flowchart LR
+  mode["YOCO_PAYMENT_MODE\nDefault currently: test"]
+  testKey["YOCO_TEST_SECRET_KEY"]
+  liveKey["YOCO_SECRET_KEY"]
+  webhookSecret["YOCO_WEBHOOK_SECRET"]
+  appUrl["IDEAL_STAY_APP_URL"]
+  viteMode["VITE_YOCO_PAYMENT_MODE\nPricing test banner only"]
+  checkout["createYocoCheckout()"]
+  webhook["verifyYocoWebhookSignature()"]
+  urls["Return URLs\n/pricing or /host/social or /account"]
+
+  mode -- test --> testKey --> checkout
+  mode -- live --> liveKey --> checkout
+  webhookSecret --> webhook
+  appUrl --> urls --> checkout
+  viteMode --> banner["Visible pricing warning\nNo backend authority"]

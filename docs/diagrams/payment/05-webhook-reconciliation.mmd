@@ -1,0 +1,26 @@
+%% (|/) Klaasvaakie
+sequenceDiagram
+  autonumber
+  participant Yoco as Yoco
+  participant Webhook as POST /billing/webhooks/yoco
+  participant Sig as verifyYocoWebhookSignature()
+  participant Events as billing_webhook_events
+  participant Intent as billing_payment_intents
+  participant Legacy as billing_checkout_sessions
+  participant Fulfill as fulfilSuccessfulPaymentIntent()
+
+  Yoco->>Webhook: webhook-id + webhook-timestamp + webhook-signature + raw JSON
+  Webhook->>Sig: Verify signature over webhook id, timestamp, raw body
+  Sig-->>Webhook: valid or reject
+  Webhook->>Events: Insert event unless duplicate
+  Webhook->>Intent: Find by metadata.paymentIntentId, payload.metadata.checkoutId, provider_checkout_id, or order id
+  alt payment intent found
+    Webhook->>Fulfill: paid / failed / cancelled outcome
+  else no payment intent found
+    Webhook->>Legacy: Try old billing_checkout_sessions lookup
+    Webhook->>Fulfill: Fulfill legacy session if matched
+  else no match
+    Webhook-->>Yoco: 202 ignored
+  end
+  Webhook->>Events: processed_at = now
+  Webhook-->>Yoco: 200 ok

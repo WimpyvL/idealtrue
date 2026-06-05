@@ -255,7 +255,7 @@ export function buildContentCreditsPurchasedNotification(params: {
 
 export function buildCheckoutStatusChangedNotification(params: {
   userId: string;
-  checkoutType: "subscription" | "content_credits" | "host_billing_setup";
+  checkoutType: "subscription" | "content_credits" | "host_billing_setup" | "managed_hosting";
   status: "failed" | "cancelled";
   hostPlan?: string | null;
   creditQuantity?: number | null;
@@ -265,7 +265,9 @@ export function buildCheckoutStatusChangedNotification(params: {
       ? `${params.hostPlan ?? "selected"} plan subscription`
       : params.checkoutType === "content_credits"
         ? `${params.creditQuantity ?? "selected"} content credit purchase`
-        : "billing setup verification";
+        : params.checkoutType === "managed_hosting"
+          ? "managed hosting payment"
+          : "billing setup verification";
 
   return {
     title: params.status === "failed" ? "Payment failed" : "Payment cancelled",
@@ -280,6 +282,8 @@ export function buildCheckoutStatusChangedNotification(params: {
         ? "/pricing"
         : params.checkoutType === "content_credits"
           ? "/host/social"
+          : params.checkoutType === "managed_hosting"
+            ? "/pricing"
           : "/host",
   };
 }

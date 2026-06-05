@@ -1,0 +1,24 @@
+%% (|/) Klaasvaakie
+flowchart TD
+  paid["Payment intent outcome = paid"]
+  purpose{"intent.purpose"}
+
+  sub["subscription"]
+  subActions["Cancel active subscriptions\nInsert active subscription\nUpdate identity.users.host_plan\nsyncPaidBillingAccount(card_on_file=true)\nPublish subscription.changed\nReward referral conversion\nNotify subscription activated"]
+
+  setup["host_billing_setup"]
+  setupActions["markHostBillingSetupComplete()\nSet provider-backed card on file\nUpdate host billing account"]
+
+  managed["managed_hosting"]
+  managedActions["identity.users.management_mode = managed\nhost_billing_accounts = premium / paid / active / card_on_file=true\nPublish managed_hosting.paid"]
+
+  credits["content_credits"]
+  creditActions["Ensure wallet\nAdd credits to content_credit_wallets\nInsert content_credit_ledger credit_purchase\nNotify content credits purchased"]
+
+  mark["billing_payment_intents.status = paid\nprovider_payment_id set\npaid_at set"]
+
+  paid --> purpose
+  purpose -- subscription --> sub --> subActions --> mark
+  purpose -- host_billing_setup --> setup --> setupActions --> mark
+  purpose -- managed_hosting --> managed --> managedActions --> mark
+  purpose -- content_credits --> credits --> creditActions --> mark

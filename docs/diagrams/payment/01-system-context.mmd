@@ -1,0 +1,23 @@
+%% (|/) Klaasvaakie
+flowchart LR
+  host["Host or admin user"]
+  pricing["Pricing page\n/src/pages/PricingPage.tsx"]
+  social["Content Studio\n/src/pages/SocialDashboard.tsx"]
+  client["Billing client\n/src/lib/billing-client.ts"]
+  proxy["Same-origin Encore proxy"]
+  billing["Encore billing service\n/encore/billing/api.ts"]
+  yoco["Yoco Checkout API\nhttps://payments.yoco.com/api/checkouts"]
+  db[("billing-db")]
+  identity[("identity-db")]
+  ops["Ops notifications"]
+
+  host --> pricing
+  host --> social
+  pricing --> client
+  social --> client
+  client --> proxy
+  proxy --> billing
+  billing --> db
+  billing --> yoco
+  billing --> identity
+  billing --> ops

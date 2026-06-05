@@ -3,7 +3,7 @@ import { createHmac } from 'node:crypto';
 import test, { afterEach } from 'node:test';
 
 import { DEFAULT_ENCORE_API_URL } from '../src/lib/encore-client';
-import { classifyYocoWebhookOutcome } from '../encore/billing/webhook-classification.ts';
+import { classifyYocoWebhookOutcome, resolveYocoWebhookCheckoutId } from '../encore/billing/webhook-classification.ts';
 import { parseYocoSigningSecret, verifyYocoWebhookSignatureValue } from '../encore/billing/yoco-signature.ts';
 import {
   createManagedHostingCheckout,
@@ -253,4 +253,20 @@ test('Yoco webhook signature verification uses webhook id, timestamp, and raw bo
     }),
     false,
   );
+});
+
+test('Yoco Checkout payment webhooks expose the checkout id inside payload metadata', () => {
+  const event = {
+    id: 'evt-payment-succeeded-1',
+    type: 'payment.succeeded',
+    payload: {
+      id: 'pay_123',
+      status: 'succeeded',
+      metadata: {
+        checkoutId: 'ch_checkout_123',
+      },
+    },
+  };
+
+  assert.equal(resolveYocoWebhookCheckoutId(event), 'ch_checkout_123');
 });

@@ -183,7 +183,7 @@ export async function notifyContentCreditsPurchased(params: {
 
 export async function notifyCheckoutStatusChanged(params: {
   userId: string;
-  checkoutType: "subscription" | "content_credits" | "host_billing_setup";
+  checkoutType: "subscription" | "content_credits" | "host_billing_setup" | "managed_hosting";
   status: "failed" | "cancelled";
   hostPlan?: string | null;
   creditQuantity?: number | null;

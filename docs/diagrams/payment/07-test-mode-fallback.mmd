@@ -1,0 +1,22 @@
+%% (|/) Klaasvaakie
+flowchart TD
+  status["GET /billing/payments/:paymentId?billingStatus=success"]
+  pending{"Intent still pending?"}
+  webhook{"Successful webhook exists?"}
+  mode{"provider_mode"}
+  live["live mode\nNo return-only fulfillment\nNeed webhook/provider proof"]
+  test["test mode + billingStatus=success\nAllowed fallback fulfillment"]
+  yocoOrder{"provider_order_id exists?"}
+  orderLookup["fetchYocoOrder()\ncompleted => paid\ncancelled => cancelled"]
+  stillPending["Return pending"]
+  fulfill["fulfilSuccessfulPaymentIntent()"]
+
+  status --> pending
+  pending -- no --> stillPending
+  pending -- yes --> webhook
+  webhook -- yes --> fulfill
+  webhook -- no --> mode
+  mode -- test --> test --> fulfill
+  mode -- live --> live --> yocoOrder
+  yocoOrder -- yes --> orderLookup --> fulfill
+  yocoOrder -- no --> stillPending

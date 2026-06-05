@@ -32,3 +32,20 @@ export function classifyYocoWebhookOutcome(eventType?: string | null, payloadSta
 
   return "ignored";
 }
+
+export type YocoWebhookCheckoutReferenceEvent = {
+  id?: string;
+  payload?: {
+    id?: string;
+    metadata?: Record<string, unknown>;
+  };
+};
+
+export function resolveYocoWebhookCheckoutId(event: YocoWebhookCheckoutReferenceEvent) {
+  const metadataCheckoutId = event.payload?.metadata?.checkoutId;
+  if (typeof metadataCheckoutId === "string" && metadataCheckoutId.trim()) {
+    return metadataCheckoutId.trim();
+  }
+
+  return event.payload?.id ?? event.id ?? null;
+}

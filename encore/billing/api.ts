@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { billingDB } from "./db";
 import { generateListingDraftWithFallback } from "./gemini";
-import { classifyYocoWebhookOutcome } from "./webhook-classification";
+import { classifyYocoWebhookOutcome, resolveYocoWebhookCheckoutId } from "./webhook-classification";
 import { toMinorUnits } from "./pricing";
 import { catalogDB } from "../catalog/db";
 import { identityDB } from "../identity/db";
@@ -223,6 +223,17 @@ type PaymentIntentRow = {
   paid_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type FulfillableBillingSession = {
+  id: string;
+  user_id: string;
+  type: CheckoutType;
+  status: CheckoutStatus;
+  amount: number;
+  host_plan: HostPlan | null;
+  billing_interval: BillingInterval | null;
+  credit_quantity: number | null;
 };
 
 type WebhookEventRow = {
@@ -1002,7 +1013,7 @@ function resolveProviderMetadata(event: YocoWebhookEvent) {
 }
 
 function resolveProviderCheckoutId(event: YocoWebhookEvent) {
-  return event.payload?.id ?? event.id ?? null;
+  return resolveYocoWebhookCheckoutId(event);
 }
 
 function resolveProviderOrderId(event: YocoWebhookEvent) {
@@ -1156,6 +1167,7 @@ async function findSuccessfulWebhookForPaymentIntent(intent: PaymentIntentRow): 
     WHERE provider = ${"yoco"}
       AND (
         payload #>> '{payload,metadata,paymentIntentId}' = ${intent.id}
+        OR (${intent.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,metadata,checkoutId}' = ${intent.provider_checkout_id ?? null})
         OR (${intent.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,id}' = ${intent.provider_checkout_id ?? null})
       )
     ORDER BY received_at DESC
@@ -1180,6 +1192,7 @@ async function findSuccessfulWebhookForCheckout(session: CheckoutSessionRow): Pr
     WHERE provider = ${"yoco"}
       AND (
         payload #>> '{payload,metadata,checkoutId}' = ${session.id}
+        OR (${session.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,metadata,checkoutId}' = ${session.provider_checkout_id ?? null})
         OR (${session.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,id}' = ${session.provider_checkout_id ?? null})
       )
     ORDER BY received_at DESC
