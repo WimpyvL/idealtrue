@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import test, { afterEach } from 'node:test';
 
 import { DEFAULT_ENCORE_API_URL } from '../src/lib/encore-client';
+import { classifyYocoWebhookOutcome } from '../encore/billing/webhook-classification.ts';
+import { parseYocoSigningSecret, verifyYocoWebhookSignatureValue } from '../encore/billing/yoco-signature.ts';
 import {
   createManagedHostingCheckout,
   getBillingPaymentStatus,
@@ -203,4 +206,51 @@ test('payment status client forwards return billing status for test-mode reconci
 
   assert.equal(status.status, 'paid');
   assert.equal(fetchCalls[0]?.url, `${DEFAULT_ENCORE_API_URL}/billing/payments/payment-subscription-1?billingStatus=success`);
+});
+
+test('accepted Yoco webhook events classify into fulfilment-safe billing outcomes', () => {
+  assert.equal(classifyYocoWebhookOutcome('payment.created', 'pending'), 'ignored');
+  assert.equal(classifyYocoWebhookOutcome('order.completed', 'completed'), 'paid');
+  assert.equal(classifyYocoWebhookOutcome('order.cancelled', 'cancelled'), 'cancelled');
+  assert.equal(classifyYocoWebhookOutcome('payment.refunded', 'refunded'), 'failed');
+});
+
+test('Yoco webhook signature verification uses webhook id, timestamp, and raw body exactly', () => {
+  const rawBody = JSON.stringify({
+    id: 'evt-order-completed-1',
+    type: 'order.completed',
+    payload: {
+      id: 'checkout-123',
+      status: 'completed',
+      metadata: { paymentIntentId: 'payment-123' },
+    },
+  });
+  const webhookId = 'wh_123';
+  const webhookTimestamp = `${Math.floor(Date.now() / 1000)}`;
+  const secret = `whsec_${Buffer.from('ideal-stay-yoco-webhook-secret').toString('base64')}`;
+  const signature = createHmac('sha256', parseYocoSigningSecret(secret))
+    .update(`${webhookId}.${webhookTimestamp}.${rawBody}`)
+    .digest('base64');
+
+  assert.equal(
+    verifyYocoWebhookSignatureValue({
+      rawBody,
+      signature: `v1,${signature}`,
+      webhookId,
+      webhookTimestamp,
+      signingSecret: secret,
+    }),
+    true,
+  );
+
+  assert.equal(
+    verifyYocoWebhookSignatureValue({
+      rawBody: `${rawBody} `,
+      signature: `v1,${signature}`,
+      webhookId,
+      webhookTimestamp,
+      signingSecret: secret,
+    }),
+    false,
+  );
 });

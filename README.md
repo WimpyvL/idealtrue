@@ -1,13 +1,37 @@
 # Ideal Stay
 
-Ideal Stay is a South Africa-focused accommodation marketplace and host workspace. The repo now has two clear halves:
+Ideal Stay is a proprietary South African accommodation marketplace and host operations platform.
 
-- a React/Vite frontend in the root
-- an Encore TypeScript backend in [`encore`](/C:/Git%20Repos/IdealTrue/encore)
+It is owned by Klaasvaakie. This repository is private commercial software. No open-source license is granted.
 
-This is no longer a Gemini template repo, and it is no longer pretending Firebase should own the product. The frontend now runs against Encore-backed services, PostgreSQL databases, buckets, and typed API boundaries.
+Author signature: (|/) Klaasvaakie
 
-## Current architecture
+## Ownership And License
+
+Copyright (c) 2026 Klaasvaakie. All rights reserved.
+
+The source code, product design, workflows, documentation, brand assets, data models, deployment configuration, and related materials in this repository are proprietary property of Klaasvaakie unless a file explicitly states otherwise.
+
+You may not copy, modify, publish, distribute, sublicense, sell, host, deploy, reverse engineer, train models on, or create derivative works from this repository or any part of it without prior written permission from Klaasvaakie.
+
+Access to this repository does not transfer ownership, grant an implied license, or create permission to use the work outside the approved Ideal Stay project context.
+
+Third-party dependencies remain governed by their own licenses. Those dependency licenses do not grant any rights to the Ideal Stay application code, brand, product logic, or proprietary materials.
+
+See [`LICENSE`](/C:/Git%20Repos/IdealTrue/LICENSE) for the binding repository license notice.
+
+## Product Scope
+
+Ideal Stay combines a public accommodation marketplace with a private host and admin workspace:
+
+- guest discovery, enquiries, booking requests, payment-state visibility, and stay history
+- host listing management, availability operations, enquiry workflows, billing state, and content tooling
+- admin workflows for users, listings, KYC, bookings, billing visibility, notifications, and platform settings
+- Encore-backed identity, catalog, booking, billing, messaging, referrals, reviews, ops, and analytics services
+
+The project is Encore-first. Firebase template leftovers are not the architecture. The durable system of record is the Encore backend with PostgreSQL, buckets, typed service boundaries, and operational APIs.
+
+## Architecture
 
 ### Frontend
 
@@ -15,151 +39,36 @@ This is no longer a Gemini template repo, and it is no longer pretending Firebas
 - TypeScript
 - Vite
 - Tailwind CSS v4
+- same-origin API proxy for Encore calls
+- HttpOnly cookie-backed auth session handling
 
 ### Backend
 
 - Encore TypeScript app in [`encore`](/C:/Git%20Repos/IdealTrue/encore)
-- Service split across `identity`, `catalog`, `booking`, `billing`, `messaging`, `referrals`, `reviews`, `ops`, and `analytics`
-- Multiple provisioned SQL databases
-- Provisioned buckets for listing media, chat attachments, KYC docs, and moderation evidence
-- Pub/Sub topic for platform domain events
+- services: `identity`, `catalog`, `booking`, `billing`, `messaging`, `referrals`, `reviews`, `ops`, and `analytics`
+- provisioned SQL databases
+- buckets for listing media, chat attachments, KYC documents, and moderation evidence
+- Pub/Sub domain events for platform workflows
 
-### Realtime notes
+## Critical Runtime Contracts
 
-- notification delivery currently uses backend-backed polling through the same-origin Encore proxy
-- read state is persisted per user in Encore, so notifications stay consistent across devices
-- the durable source of truth for bookings, listings, identity, KYC, reviews, referrals, notifications, and admin workflows is Encore
+Production and preview environments must set `ENCORE_API_URL`. Local development may fall back to `http://127.0.0.1:4000`.
 
-This is now an Encore-first repo, not a Firebase bridge with new paint.
+Production-like builds fail closed when `ENCORE_API_URL` is missing or points at the wrong Encore environment.
 
-## What already routes through Encore
-
-- session sync and profile resolution
-- local session bootstrap and account creation
-- password signup and password login
-- Google sign-in through Google Identity Services
-- email verification and password reset flows
-- profile updates and role changes
-- public listing reads
-- host listing reads
-- listing create/update
-- booking creation
-- guest/host booking reads
-- referral reward history reads
-- listing reviews read/write
-- referral leaderboard reads
-- admin reads and writes for users, bookings, listings, reviews, referrals, subscriptions, notifications, and platform settings
-- listing media uploads through Encore bucket URLs
-- profile photo uploads through Encore bucket URLs
-- KYC submission review, audit-backed submission/review history, and secure asset previews through Encore ops APIs
-- booking payment dispute escalation history and booking ops summaries through Encore booking APIs
-- subscription upgrades and downgrades through Encore billing APIs
-- content studio entitlements, monthly included usage, credit top-ups, and saved drafts through Encore billing APIs
-
-## Booking and availability rules
-
-- listing availability now uses a durable ledger of availability blocks, not just a fragile `blocked_dates` array
-- host manual blocks, approved enquiry holds, and confirmed booked stays are tracked separately in Encore `catalog`
-- manual host blocks are now stored as interval records with optional notes, not just flat date arrays
-- stay dates are end-exclusive for occupancy logic, so checkout day is not treated as a blocked overnight
-- the frontend uses shared availability logic in [`src/lib/listing-availability.ts`](/C:/Git%20Repos/IdealTrue/src/lib/listing-availability.ts) so explore filtering and booking validation stay consistent
-- the host enquiries screen is now treated as a workflow board with `Needs Response`, `Awaiting Guest Payment`, `Awaiting Payment Confirmation`, `Confirmed Stays`, and `Closed Loop` buckets
-- booking ops summary data now comes from Encore for the latest actor, latest workflow movement, active deadline, and open dispute count
-- the host dashboard watchlist now prefers those same backend booking ops summaries when ordering urgent approved holds and surfacing open disputes
-- the frontend now has typed booking dispute and booking ops summary clients instead of ad hoc route calls
-- payment confirmation is now visibly blocked in the host enquiries UI while an open dispute is still attached to the inquiry
-- the host availability calendar now supports bulk range actions, notes on manual block intervals, selected-day inspection, and backend summary tracking instead of only single-day toggles
-
-See [`docs/booking-and-enquiry-workflow.md`](/C:/Git%20Repos/IdealTrue/docs/booking-and-enquiry-workflow.md) for the full workflow and operational expectations.
-
-See [`docs/workflow-validation-matrix.md`](/C:/Git%20Repos/IdealTrue/docs/workflow-validation-matrix.md) for the maintained workflow inventory, coverage gaps, fixture contract, and CI acceptance gate.
-
-## What does not fully route through Encore yet
-
-- KYC document submission now records audit-backed submission/review history, but disputes and richer ops case management are still missing
-- stay-payment coordination now has a lightweight dispute escalation trail and backend ops summary metadata, but off-platform payment operations still need fuller case handling, refund automation, assignee workflow, and SLA tooling
-- billing/subscriptions are scaffolded on the backend but not commercially complete
-- AI content engine still needs real social publishing integrations beyond draft scheduling and publish tracking
-- generated Encore frontend clients are still blocked, so the frontend uses a manual request client
-
-## Local development
-
-### Prerequisites
-
-- Node.js 20+
-- npm
-- Encore CLI installed and authenticated if you want to run the backend locally
-
-### Install frontend dependencies
-
-```bash
-npm install
-```
-
-### Install backend dependencies
-
-```bash
-cd encore
-npm install
-```
-
-### Run frontend
-
-```bash
-npm run dev
-```
-
-The frontend runs at [http://localhost:3000](http://localhost:3000).
-
-### Backend notes
-
-The local dev proxy defaults to `http://127.0.0.1:4000` only in local development.
-
-If you want to be explicit in your local env file, set:
-
-```bash
-ENCORE_API_URL=http://127.0.0.1:4000
-VITE_GOOGLE_CLIENT_ID=your-google-web-client-id.apps.googleusercontent.com
-```
-
-Preview and production must set `ENCORE_API_URL` explicitly. They fail closed if the variable is missing, and production-like environments refuse to start if the value points at the staging Encore host.
-
-Dev login is now opt-in only and should never be enabled in a shared environment:
+Dev login is opt-in only:
 
 ```bash
 IDEAL_STAY_ENABLE_DEV_LOGIN=true
 ```
 
-The demo seed script defaults to local and refuses to hit a non-local API target unless you opt in:
+Remote demo seeding is blocked unless explicitly allowed:
 
 ```bash
 IDEAL_STAY_ALLOW_REMOTE_SEED=true
 ```
 
-For shared preview or staging environments, the same script can now create disposable guest and host smoke accounts through the real auth flow, then use an existing admin account to normalize passwords, host plans, KYC state, and demo listings:
-
-### Yoco test mode
-
-Use the backend `YOCO_PAYMENT_MODE=test` setting together with `YOCO_TEST_SECRET_KEY` to exercise the checkout flow without charging a real card.
-
-If you want the public pricing page to show an obvious test-mode warning while you are working, set `VITE_YOCO_PAYMENT_MODE=test` in the frontend environment as well. Flip both flags back to live when you are finished testing.
-
-For Yoco checkout testing, Yoco’s developer docs currently list the successful test card as `4111 1111 1111 1111`. Use any future expiry date and any 3-digit CVC.
-
-Test transactions are isolated from live sales data and should be used for subscription checkout verification before switching back to live mode.
-
-```bash
-IDEAL_STAY_API_URL=https://your-encore-host \
-IDEAL_STAY_ALLOW_REMOTE_SEED=true \
-IDEAL_STAY_SEED_ADMIN_EMAIL=admin@example.com \
-IDEAL_STAY_SEED_ADMIN_PASSWORD=admin-password \
-IDEAL_STAY_DEMO_PASSWORD='IdealStayDemo123!' \
-npm run seed:demo
-```
-
-That shared-environment path does not mint a new admin. It expects one existing admin login, then provisions disposable smoke users and listing data around it.
-
-Backend auth email delivery is optional in local/dev but should be configured in any serious environment:
+Auth email delivery is optional only for local/dev. Serious environments should configure:
 
 - `RESEND_API_KEY`
 - `AUTH_EMAIL_FROM`
@@ -167,41 +76,60 @@ Backend auth email delivery is optional in local/dev but should be configured in
 - `IDEAL_STAY_APP_URL`
 - `GOOGLE_OAUTH_CLIENT_ID`
 
-Google sign-in now expects the same Google web client id in two places:
+Google sign-in requires the same web client id in:
 
 - frontend env: `VITE_GOOGLE_CLIENT_ID`
 - Encore backend config/secret: `GOOGLE_OAUTH_CLIENT_ID`
 
-Do not commit the downloaded Google OAuth client secret JSON into the repo. The frontend only needs the client id string, and the backend verifies Google ID tokens against that same client id.
+Do not commit Google OAuth client secret JSON files, provider secrets, API keys, webhook secrets, or production credentials.
 
-The Encore app typechecks cleanly, but there are two environment caveats in the current machine state:
+## Payments
 
-- `encore gen client` still fails because Encore client generation is rejecting the current auth metadata shape
-- local `encore run` / `encore test` can fail if the local Encore daemon is unhealthy
+Yoco payment handling is server-owned. New paid flows use the standard backend billing payment endpoint and provider status/webhook reconciliation.
 
-That is why the frontend currently uses a manual fetch client in [`src/lib/encore-client.ts`](/C:/Git%20Repos/IdealTrue/src/lib/encore-client.ts) instead of a generated one.
+Use test mode only when deliberately verifying checkout behavior:
 
-## Production env contract
+```bash
+YOCO_PAYMENT_MODE=test
+YOCO_TEST_SECRET_KEY=your-yoco-test-secret
+VITE_YOCO_PAYMENT_MODE=test
+```
 
-These are the important runtime expectations now:
+Flip all payment-mode flags back to live before production validation. Mixed test/live payment state is an operational footgun.
 
-- `ENCORE_API_URL`
-  Required for preview and production.
-  Optional only for local dev, where the proxy falls back to `http://127.0.0.1:4000`.
-- auth runs through the same-origin proxy and is stored in an HttpOnly cookie.
-- proxy logs are structured and include request id, upstream path, status, and duration.
-- proxy logs never include bearer tokens or cookie contents.
-- production and preview builds run a config guard that rejects missing `ENCORE_API_URL` and any staging Encore host reference.
-- frontend builds also run a bundle-budget check so large JS regressions fail the build instead of sneaking through.
+## Local Development
+
+Install frontend dependencies:
+
+```bash
+npm install
+```
+
+Install backend dependencies:
+
+```bash
+cd encore
+npm install
+```
+
+Run the frontend:
+
+```bash
+npm run dev
+```
+
+The frontend runs at [http://localhost:3000](http://localhost:3000).
+
+Run the Encore backend locally when needed:
+
+```bash
+cd encore
+encore run
+```
 
 ## Verification
 
-The repo currently has two separate verification layers:
-
-- `npm run test` and `npm run test:e2e` prove local rules, client contracts, and UI workflows.
-- the Playwright specs under `tests/e2e` currently mock `/api/encore/**`, so they should be treated as frontend workflow coverage, not proof that a live Encore environment is healthy.
-
-The baseline local verification commands are:
+Baseline local checks:
 
 ```bash
 npm run lint
@@ -212,7 +140,9 @@ cd encore
 npx tsc --noEmit
 ```
 
-Before calling a preview or production deployment launch-ready, run the shared-environment seed if you need disposable smoke users, then run the live smoke check against the deployed frontend host so the same-origin proxy, session cookie flow, public listing reads, and real role-based access are verified in a real environment:
+The Playwright specs under `tests/e2e` mock `/api/encore/**`, so they prove frontend workflow behavior, not live backend health.
+
+Before calling preview or production ready, seed disposable smoke users if needed and run the live smoke gate against the deployed frontend:
 
 ```bash
 IDEAL_STAY_API_URL=https://your-encore-host \
@@ -233,21 +163,17 @@ IDEAL_STAY_SMOKE_ADMIN_PASSWORD=admin-password \
 npm run smoke:live
 ```
 
-The smoke runner also supports an optional throwaway signup probe through `IDEAL_STAY_SMOKE_SIGNUP_*` environment variables when you want to validate account creation in a shared test environment.
-
-If you want the main test command to include the live environment gate in CI or a release checklist, set:
+To wire live smoke into a release gate:
 
 ```bash
 IDEAL_STAY_RUN_LIVE_SMOKE=true
 ```
 
-### GitHub Actions staging workflow
+## GitHub Actions
 
-The repo now includes `.github/workflows/staging-smoke.yml`.
+The staging smoke workflow lives at `.github/workflows/staging-smoke.yml`.
 
-It runs on pushes to `main` that touch app, test, script, or Encore files, on a nightly schedule at `03:17 UTC`, and through `workflow_dispatch` with an optional `run_seed` toggle.
-
-Set these repository secrets before relying on it:
+Required repository secrets:
 
 - `ENCORE_API_URL`
 - `IDEAL_STAY_SEED_ADMIN_EMAIL`
@@ -257,19 +183,19 @@ Set these repository secrets before relying on it:
 - `IDEAL_STAY_SMOKE_ADMIN_EMAIL`
 - `IDEAL_STAY_SMOKE_ADMIN_PASSWORD`
 
-The workflow now does four important things before it ever touches the live smoke path:
+The workflow validates staging smoke configuration, runs local test gates, typechecks the Encore backend, optionally seeds demo data, then runs the live smoke check.
 
-- runs `npm run check:staging-smoke-env` so missing secrets and bad URLs fail early
-- runs frontend unit/UI tests plus the mocked Playwright pack
-- installs Encore backend dependencies and typechecks the backend separately
-- uploads Playwright artifacts from CI so browser failures are inspectable instead of opaque
+## Workflow Documentation
 
-After that it optionally runs `seed:demo`, then runs `smoke:live` against the deployed frontend host.
+- [`docs/booking-and-enquiry-workflow.md`](/C:/Git%20Repos/IdealTrue/docs/booking-and-enquiry-workflow.md)
+- [`docs/workflow-validation-matrix.md`](/C:/Git%20Repos/IdealTrue/docs/workflow-validation-matrix.md)
+- [`docs/developer-handoff.md`](/C:/Git%20Repos/IdealTrue/docs/developer-handoff.md)
+- [`docs/encore-deployment.md`](/C:/Git%20Repos/IdealTrue/docs/encore-deployment.md)
 
-## Immediate next engineering work
+## Current Engineering Priorities
 
-1. Extend stay-payment operations beyond the current dispute trail and ops summary with assignee workflow, SLA handling, and refund orchestration.
-2. Tighten KYC ops workflows beyond audit-backed history and simple approve/reject.
-3. Add real payment provider integration for subscriptions and content-credit purchases.
-4. Ship actual social platform publishing integrations on top of the new content draft workflow.
-5. Solve the Encore auth metadata shape so generated frontend clients can replace the manual fetch bridge.
+1. Extend stay-payment operations with assignee workflow, SLA handling, and refund orchestration.
+2. Tighten KYC operations beyond simple approve/reject. Current KYC has audit-backed submission/review history, but disputes and richer ops case management are still missing.
+3. Keep billing/payment reconciliation boring, auditable, and server-owned.
+4. Ship real social publishing integrations on top of the content draft workflow.
+5. Replace the manual frontend Encore bridge only when generated clients are unblocked.

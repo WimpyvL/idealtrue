@@ -34,6 +34,35 @@ const requiredWorkflows = [
   'Referrals and leaderboard',
   'Admin moderation and platform settings',
   'Trip planner and AI-assisted planning',
+  'Legal documentation and public policy pages',
+] as const;
+
+const primaryRouteEntries = [
+  '/',
+  '/host',
+  '/host/inbox',
+  '/host/quick-replies',
+  '/host/enquiries',
+  '/host/listings',
+  '/host/availability',
+  '/host/reports',
+  '/host/social',
+  '/host/referrals',
+  '/host/create-listing',
+  '/host/edit-listing/:id',
+  '/admin',
+  '/planner',
+  '/guest',
+  '/referral',
+  '/account',
+  '/signup',
+  '/pricing',
+  '/privacy',
+  '/terms-of-service',
+  '/host-agreement',
+  '/guest-agreement',
+  '/liability-waiver',
+  '/cancellation-policy',
 ] as const;
 
 test('workflow coverage registry includes every source-of-truth workflow exactly once', () => {
@@ -133,4 +162,26 @@ test('workflow inventory document stays synchronized with the executable registr
   for (const workflow of workflowCoverageMatrix) {
     assert.match(doc, new RegExp(workflow.workflow.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `${workflow.workflow} is missing from docs/workflow-validation-matrix.md`);
   }
+});
+
+test('primary app routes are owned by at least one workflow', () => {
+  const documentedEntryPoints = new Set(workflowCoverageMatrix.flatMap((workflow) => workflow.entryPoints));
+  const missing = primaryRouteEntries.filter((route) => !documentedEntryPoints.has(route));
+
+  assert.deepEqual(missing, []);
+});
+
+test('workflow documentation does not describe obsolete billing checkout endpoints', () => {
+  const docPath = join(repoRoot, 'docs', 'workflow-validation-matrix.md');
+  const doc = readFileSync(docPath, 'utf8');
+  const staleTerms = [
+    'createSubscriptionCheckout',
+    'createHostBillingSetupCheckout',
+    'createContentCreditsCheckout',
+    '/billing/subscriptions/checkout',
+    '/billing/content/checkout',
+  ];
+
+  const hits = staleTerms.filter((term) => doc.includes(term));
+  assert.deepEqual(hits, []);
 });

@@ -1,38 +1,46 @@
-# Empty Encore TS Template
+# Ideal Stay Encore Backend
 
-## Developing locally
+This is the proprietary Encore TypeScript backend for Ideal Stay.
 
-When you have [installed Encore](https://encore.dev/docs/ts/install), you can create a new Encore application and clone this example with this command.
+Copyright (c) 2026 Klaasvaakie. All rights reserved.
+
+Author signature: (|/) Klaasvaakie
+
+No open-source license is granted. See the root [`LICENSE`](/C:/Git%20Repos/IdealTrue/LICENSE) file before using, copying, deploying, or sharing this code.
+
+## Scope
+
+The backend owns the durable platform state for:
+
+- identity and auth session verification
+- catalog and listing availability
+- booking and enquiry workflows
+- billing, payment intents, provider reconciliation, and host billing state
+- messaging, referrals, reviews, operations, notifications, and analytics
+- protected media, KYC documents, moderation evidence, and related buckets
+
+## Local Development
+
+Install dependencies:
 
 ```bash
-encore app create my-app-name --example=ts/empty
+npm install
 ```
 
-## Running locally
+Run the backend:
+
 ```bash
 encore run
 ```
 
-While `encore run` is running, open <http://localhost:9400/> to view Encore's [local developer dashboard](https://encore.dev/docs/ts/observability/dev-dash).
-
-## Deployment
-
-Deploy your application to a staging environment in Encore's free development cloud:
+Typecheck:
 
 ```bash
-git add -A .
-git commit -m 'Commit message'
-git push encore
+npx tsc --noEmit
 ```
 
-Then head over to the [Cloud Dashboard](https://app.encore.dev) to monitor your deployment and find your production URL.
+## Operational Notes
 
-From there you can also connect your own AWS or GCP account to use for deployment.
+Do not commit provider secrets, webhook secrets, API keys, local credentials, or exported dashboard config.
 
-Now off you go into the clouds!
-
-## Testing
-
-```bash
-encore test
-```
+Payment behavior must stay server-owned and auditable. Frontend purchase surfaces should enter through the standard billing payment contract, while provider status changes reconcile through backend-owned status reads and webhooks.

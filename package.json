@@ -2,6 +2,8 @@
   "name": "ideal-stay",
   "private": true,
   "version": "0.0.0",
+  "license": "UNLICENSED",
+  "author": "Klaasvaakie",
   "type": "module",
   "scripts": {
     "dev": "tsx --eval \"import { join } from 'node:path'; import { pathToFileURL } from 'node:url'; import(pathToFileURL(join(process.cwd().replace(/^\\\\\\\\\\?\\\\/, ''), 'server.ts')).href);\"",

@@ -1,6 +1,6 @@
 import { APIError } from "encore.dev/api";
 import { secret } from "encore.dev/config";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { extractPrimaryYocoSignature, verifyYocoWebhookSignatureValue } from "./yoco-signature";
 
 export const yocoSecretKey = secret<"YOCO_SECRET_KEY">("YOCO_SECRET_KEY");
 export const yocoTestSecretKey = secret<"YOCO_TEST_SECRET_KEY">("YOCO_TEST_SECRET_KEY");
@@ -131,19 +131,6 @@ export async function fetchYocoOrder(orderId: string): Promise<YocoOrderResponse
   return response.json() as Promise<YocoOrderResponse>;
 }
 
-function extractPrimarySignature(signatureHeader: string) {
-  return signatureHeader
-    .split(/\s+/)
-    .map((part) => part.trim())
-    .find((part) => part.startsWith("v1,"))
-    ?.slice(3);
-}
-
-function parseSigningSecret(rawSecret: string) {
-  const encoded = rawSecret.startsWith("whsec_") ? rawSecret.slice("whsec_".length) : rawSecret;
-  return Buffer.from(encoded, "base64");
-}
-
 export function verifyYocoWebhookSignature(params: {
   rawBody: string;
   signature?: string;
@@ -168,24 +155,18 @@ export function verifyYocoWebhookSignature(params: {
     throw APIError.permissionDenied("Yoco webhook timestamp is outside the replay window.");
   }
 
-  const primarySignature = extractPrimarySignature(params.signature);
+  const primarySignature = extractPrimaryYocoSignature(params.signature);
   if (!primarySignature) {
     throw APIError.permissionDenied("Yoco webhook signature is malformed.");
   }
 
-  const signedContent = `${params.webhookId}.${params.webhookTimestamp}.${params.rawBody}`;
-  const expected = createHmac("sha256", parseSigningSecret(signingSecret))
-    .update(signedContent)
-    .digest("base64");
-  const received = primarySignature.trim();
-
-  const expectedBuffer = Buffer.from(expected, "utf8");
-  const receivedBuffer = Buffer.from(received, "utf8");
-
-  if (
-    expectedBuffer.length !== receivedBuffer.length ||
-    !timingSafeEqual(expectedBuffer, receivedBuffer)
-  ) {
+  if (!verifyYocoWebhookSignatureValue({
+    rawBody: params.rawBody,
+    signature: params.signature,
+    webhookId: params.webhookId,
+    webhookTimestamp: params.webhookTimestamp,
+    signingSecret,
+  })) {
     throw APIError.permissionDenied("Invalid Yoco webhook signature.");
   }
 }

@@ -1,0 +1,31 @@
+Proprietary License Notice
+
+Copyright (c) 2026 Klaasvaakie. All rights reserved.
+
+Author signature: (|/) Klaasvaakie
+
+This repository and all source code, documentation, product design, workflows,
+brand assets, database schemas, configuration, deployment scripts, tests, and
+related materials are proprietary property of Klaasvaakie unless a file
+explicitly states otherwise.
+
+No license is granted by possession of, access to, or review of this repository.
+Without prior written permission from Klaasvaakie, you may not:
+
+- copy, reproduce, or redistribute any part of this repository;
+- modify, adapt, translate, or create derivative works from it;
+- publish, disclose, sublicense, sell, lease, host, deploy, or commercially use it;
+- reverse engineer, decompile, extract, or reuse its product logic or architecture;
+- use it to train, tune, evaluate, or improve machine learning or AI systems;
+- remove, obscure, or alter ownership, authorship, or proprietary notices.
+
+Any authorized access is limited to the specific Ideal Stay project purpose for
+which access was granted. All other rights are reserved.
+
+Third-party packages, libraries, fonts, tools, and services referenced by this
+project remain governed by their own licenses. Those third-party licenses apply
+only to their respective third-party materials and do not license the proprietary
+Ideal Stay codebase, product, brand, workflows, documentation, or assets.
+
+If you received this repository without written authorization, you must stop
+using it, delete all copies, and notify the owner.

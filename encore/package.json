@@ -3,7 +3,8 @@
   "private": true,
   "version": "0.0.1",
   "description": "Ideal Stay Encore backend",
-  "license": "MPL-2.0",
+  "license": "UNLICENSED",
+  "author": "Klaasvaakie",
   "type": "module",
   "devDependencies": {
     "@types/node": "^20.5.7",
