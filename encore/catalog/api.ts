@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { catalogDB } from "./db";
 import {
+  bookingTimestampToAvailabilityDateKey,
   buildBlockedDatesFromAvailability,
   buildIntervalsFromDateKeys,
   buildManualBlockedDates,
@@ -530,15 +531,15 @@ interface UpdateAvailabilityBlocksParams {
 
 interface BookingAvailabilitySnapshotItem {
   bookingId: string;
-  checkIn: string;
-  checkOut: string;
+  checkIn: Date | string;
+  checkOut: Date | string;
   sourceType: Extract<AvailabilityBlockSource, "APPROVED_HOLD" | "BOOKED">;
 }
 
 type BookingAvailabilityRow = {
   id: string;
-  check_in: string;
-  check_out: string;
+  check_in: Date | string;
+  check_out: Date | string;
   inquiry_state: "APPROVED" | "BOOKED";
   payment_state: "INITIATED" | "COMPLETED";
 };
@@ -663,7 +664,12 @@ async function ensureListingAvailabilityHydrated(row: ListingRow) {
     }));
 
     const bookingNights = new Set(
-      bookingEntries.flatMap((entry) => enumerateAvailabilityNights(entry.checkIn.slice(0, 10), entry.checkOut.slice(0, 10))),
+      bookingEntries.flatMap((entry) =>
+        enumerateAvailabilityNights(
+          bookingTimestampToAvailabilityDateKey(entry.checkIn),
+          bookingTimestampToAvailabilityDateKey(entry.checkOut),
+        ),
+      ),
     );
     const manualLegacyDates = (row.blocked_dates ?? [])
       .map(normalizeAvailabilityDateKey)
@@ -1049,8 +1055,8 @@ export async function replaceBookingAvailabilityBlocks(listingId: string, entrie
   }
 
   const normalizedEntries = entries.flatMap((entry) => {
-    const checkIn = normalizeAvailabilityDateKey(entry.checkIn.slice(0, 10));
-    const checkOut = normalizeAvailabilityDateKey(entry.checkOut.slice(0, 10));
+    const checkIn = bookingTimestampToAvailabilityDateKey(entry.checkIn);
+    const checkOut = bookingTimestampToAvailabilityDateKey(entry.checkOut);
     const nights = enumerateAvailabilityNights(checkIn, checkOut);
 
     // (|/) Klaasvaakie - tolerate malformed zero-night rows during sync so host approval does not crash with a 500.

@@ -19,4 +19,6 @@ test('marketplace listing hydration refreshes booking blocks even when manual bl
     /replaceBookingAvailabilityBlocks\(row\.id, bookingEntries\)/,
     'hydration must refresh booking-owned availability blocks for marketplace reads',
   );
+  assert.equal(functionBody.includes('.checkIn.slice('), false, 'booking timestamps can be Date objects and must not use string slicing');
+  assert.equal(functionBody.includes('.checkOut.slice('), false, 'booking timestamps can be Date objects and must not use string slicing');
 });

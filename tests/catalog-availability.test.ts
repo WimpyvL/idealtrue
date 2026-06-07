@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  bookingTimestampToAvailabilityDateKey,
   buildBlockedDatesFromAvailability,
   buildManualBlockedDates,
   buildSingleNightInterval,
@@ -14,6 +15,18 @@ test('enumerateAvailabilityNights returns stay nights and excludes checkout day'
     enumerateAvailabilityNights('2026-04-20', '2026-04-23'),
     ['2026-04-20', '2026-04-21', '2026-04-22'],
   );
+});
+
+test('bookingTimestampToAvailabilityDateKey preserves South African occupancy dates from UTC timestamps', () => {
+  assert.equal(
+    bookingTimestampToAvailabilityDateKey(new Date('2026-05-31T22:00:00.000Z')),
+    '2026-06-01',
+  );
+  assert.equal(
+    bookingTimestampToAvailabilityDateKey('2026-06-09T22:00:00.000Z'),
+    '2026-06-10',
+  );
+  assert.equal(bookingTimestampToAvailabilityDateKey('2026-06-07'), '2026-06-07');
 });
 
 test('buildSingleNightInterval converts a manual date into a one-night block', () => {
@@ -104,5 +117,30 @@ test('mergeLegacyBlockedDatesWithBookingNights preserves legacy blocks while add
       ],
     ),
     ['2026-07-10', '2026-07-12', '2026-07-14', '2026-07-15'],
+  );
+});
+
+test('mergeLegacyBlockedDatesWithBookingNights accepts database Date objects without shifting booked nights', () => {
+  assert.deepEqual(
+    mergeLegacyBlockedDatesWithBookingNights(
+      [],
+      [
+        {
+          checkIn: new Date('2026-05-31T22:00:00.000Z'),
+          checkOut: new Date('2026-06-09T22:00:00.000Z'),
+        },
+      ],
+    ),
+    [
+      '2026-06-01',
+      '2026-06-02',
+      '2026-06-03',
+      '2026-06-04',
+      '2026-06-05',
+      '2026-06-06',
+      '2026-06-07',
+      '2026-06-08',
+      '2026-06-09',
+    ],
   );
 });

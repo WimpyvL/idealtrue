@@ -1,5 +1,13 @@
 import type { AvailabilityBlockSource, ListingAvailabilityBlockRecord } from "../shared/domain";
 
+const LISTING_AVAILABILITY_TIME_ZONE = "Africa/Johannesburg";
+const LISTING_AVAILABILITY_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: LISTING_AVAILABILITY_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
 export interface AvailabilityBlockInput {
   id: string;
   listingId: string;
@@ -34,6 +42,28 @@ export function normalizeAvailabilityDateKey(value: string) {
   }
   const parsed = toUtcDateOnly(normalized);
   return parsed.toISOString().slice(0, 10);
+}
+
+export function bookingTimestampToAvailabilityDateKey(value: Date | string) {
+  if (value instanceof Date) {
+    const parts = LISTING_AVAILABILITY_DATE_FORMATTER.formatToParts(value);
+    const year = parts.find((part) => part.type === "year")?.value;
+    const month = parts.find((part) => part.type === "month")?.value;
+    const day = parts.find((part) => part.type === "day")?.value;
+    return normalizeAvailabilityDateKey(`${year}-${month}-${day}`);
+  }
+
+  const trimmed = `${value}`.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed.slice(0, 10)) && !trimmed.includes("T")) {
+    return normalizeAvailabilityDateKey(trimmed);
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return normalizeAvailabilityDateKey(trimmed);
+  }
+
+  return bookingTimestampToAvailabilityDateKey(parsed);
 }
 
 export function enumerateAvailabilityNights(startInclusive: string, endExclusive: string) {
@@ -114,11 +144,14 @@ export function buildBlockedDatesFromAvailability(blocks: Pick<AvailabilityBlock
 
 export function mergeLegacyBlockedDatesWithBookingNights(
   blockedDates: string[] | undefined,
-  bookingStays: Array<{ checkIn: string; checkOut: string }>,
+  bookingStays: Array<{ checkIn: Date | string; checkOut: Date | string }>,
 ) {
   const normalizedBlockedDates = (blockedDates ?? []).map(normalizeAvailabilityDateKey);
   const bookingNights = bookingStays.flatMap((stay) =>
-    enumerateAvailabilityNights(stay.checkIn.slice(0, 10), stay.checkOut.slice(0, 10)),
+    enumerateAvailabilityNights(
+      bookingTimestampToAvailabilityDateKey(stay.checkIn),
+      bookingTimestampToAvailabilityDateKey(stay.checkOut),
+    ),
   );
 
   return Array.from(new Set([...normalizedBlockedDates, ...bookingNights])).sort();
