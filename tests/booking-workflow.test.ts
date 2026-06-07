@@ -5,6 +5,7 @@ import {
   bookingOverlapsBlockedDates,
   computeInquiryExpiresAt,
   computeBookingTotalPrice,
+  computeDiscountedNightlyRate,
   getInquiryStatusTransitionError,
   getPaymentProofSubmissionError,
   getPaymentStateTransitionError,
@@ -19,6 +20,22 @@ test('computeBookingTotalPrice uses nightly pricing only for valid stays', () =>
   );
 
   assert.equal(total, 1500 * 3);
+});
+
+test('computeBookingTotalPrice applies listing discounts to the server-owned total', () => {
+  const total = computeBookingTotalPrice(
+    1800,
+    new Date('2026-04-10T00:00:00.000Z'),
+    new Date('2026-04-13T00:00:00.000Z'),
+    10,
+  );
+
+  assert.equal(total, 1620 * 3);
+});
+
+test('computeDiscountedNightlyRate clamps invalid discount inputs', () => {
+  assert.equal(computeDiscountedNightlyRate(1000, -10), 1000);
+  assert.equal(computeDiscountedNightlyRate(1000, 125), 0);
 });
 
 test('bookingOverlapsBlockedDates catches blocked nights inside the requested stay', () => {

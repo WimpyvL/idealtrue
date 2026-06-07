@@ -1,4 +1,5 @@
-import React, { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useForm } from 'react-hook-form';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -14,6 +15,13 @@ import { requestPasswordReset, resetPasswordWithToken, verifyEmailToken } from '
 import { getSafeAuthReturnPath } from '@/lib/booking-auth-intent';
 import { getGoogleClientId, loadGoogleIdentityScript } from '@/lib/google-identity';
 
+interface SignupFormValues {
+  email: string;
+  displayName: string;
+  password: string;
+  confirmPassword: string;
+}
+
 export default function SignupPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -25,10 +33,6 @@ export default function SignupPage() {
   const safeReturnPath = getSafeAuthReturnPath(searchParams.get('returnTo'));
   const authIntent = searchParams.get('intent');
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
-  const [email, setEmail] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const [isVerifyingEmail, setIsVerifyingEmail] = useState(false);
@@ -37,6 +41,18 @@ export default function SignupPage() {
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
   const googleClientId = getGoogleClientId();
   const googleAuthConfigured = Boolean(googleClientId);
+  const { handleSubmit: handleFormSubmit, register, watch } = useForm<SignupFormValues>({
+    defaultValues: {
+      email: '',
+      displayName: '',
+      password: '',
+      confirmPassword: '',
+    },
+  });
+  const email = watch('email');
+  const displayName = watch('displayName');
+  const password = watch('password');
+  const confirmPassword = watch('confirmPassword');
 
   const authMode: 'signup' | 'signin' = urlMode === 'signin' ? 'signin' : 'signup';
   const isSignupMode = authMode === 'signup';
@@ -181,10 +197,11 @@ export default function SignupPage() {
   }, [isResetPasswordMode, isSignupMode, isVerifyEmailMode, requestedRole, selectedRole]);
 
   const handlePasswordResetRequest = async () => {
-    if (!email.trim()) return;
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) return;
     setIsSubmitting(true);
     try {
-      await requestPasswordReset(email.trim());
+      await requestPasswordReset(trimmedEmail);
       toast.success('If that account exists, a reset link has been sent.');
     } catch (error) {
       console.error('Password reset request error:', error);
@@ -194,17 +211,17 @@ export default function SignupPage() {
     }
   };
 
-  const handleSubmit = async (event?: FormEvent<HTMLFormElement>) => {
-    event?.preventDefault();
-
+  const handleSubmit = async (values: SignupFormValues) => {
+    const trimmedEmail = values.email.trim();
+    const trimmedDisplayName = values.displayName.trim();
     if (isResetPasswordMode) {
-      if (!password.trim() || password !== confirmPassword) {
+      if (!values.password.trim() || values.password !== values.confirmPassword) {
         toast.error('Passwords do not match.');
         return;
       }
       setIsSubmitting(true);
       try {
-        await resetPasswordWithToken({ token: actionToken, password });
+        await resetPasswordWithToken({ token: actionToken, password: values.password });
         toast.success('Password updated. You can sign in now.');
         navigate('/signup?mode=signin');
       } catch (error) {
@@ -216,9 +233,9 @@ export default function SignupPage() {
       return;
     }
 
-    if (!email.trim() || !password.trim()) return;
-    if (isSignupMode && (!selectedRole || !displayName.trim())) return;
-    if (isSignupMode && password !== confirmPassword) {
+    if (!trimmedEmail || !values.password.trim()) return;
+    if (isSignupMode && (!selectedRole || !trimmedDisplayName)) return;
+    if (isSignupMode && values.password !== values.confirmPassword) {
       toast.error('Passwords do not match.');
       return;
     }
@@ -228,9 +245,9 @@ export default function SignupPage() {
       if (isSignupMode) {
         const refCode = searchParams.get('ref');
         const { profile, verificationEmailStatus } = await signUp({
-          email: email.trim(),
-          displayName: displayName.trim(),
-          password,
+          email: trimmedEmail,
+          displayName: trimmedDisplayName,
+          password: values.password,
           role: selectedRole!,
           managementMode: selectedManagementMode,
           referredByCode: refCode,
@@ -243,8 +260,8 @@ export default function SignupPage() {
         navigate(safeReturnPath ?? (profile.role === 'host' ? '/host' : '/'));
       } else {
         const profile = await signIn({
-          email: email.trim(),
-          password,
+          email: trimmedEmail,
+          password: values.password,
         });
         navigate(safeReturnPath ?? (profile.role === 'host' ? '/host' : '/'));
       }
@@ -342,14 +359,13 @@ export default function SignupPage() {
         </div>
         )}
 
-        <form className="space-y-8" onSubmit={handleSubmit}>
+        <form className="space-y-8" onSubmit={handleFormSubmit(handleSubmit)}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 text-left">
           {isSignupMode && !isResetPasswordMode && (
             <div className="space-y-2">
               <label className="text-sm font-semibold text-on-surface">Full name</label>
               <Input
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
+                {...register('displayName')}
                 placeholder="Your full name"
                 autoComplete="name"
               />
@@ -359,8 +375,7 @@ export default function SignupPage() {
             <label className="text-sm font-semibold text-on-surface">Email address</label>
             <Input
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              {...register('email')}
               placeholder="you@example.com"
               autoComplete="email"
             />
@@ -369,8 +384,7 @@ export default function SignupPage() {
             <label className="text-sm font-semibold text-on-surface">Password</label>
             <Input
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              {...register('password')}
               placeholder={isResetPasswordMode || isSignupMode ? 'Create a password' : 'Enter your password'}
               autoComplete={isResetPasswordMode || isSignupMode ? 'new-password' : 'current-password'}
             />
@@ -380,8 +394,7 @@ export default function SignupPage() {
               <label className="text-sm font-semibold text-on-surface">Confirm password</label>
               <Input
                 type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                {...register('confirmPassword')}
                 placeholder="Repeat your password"
                 autoComplete="new-password"
               />

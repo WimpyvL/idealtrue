@@ -14,6 +14,7 @@ import { stayOverlapsListingAvailability } from '@/lib/listing-availability';
 import { useAuth } from '@/contexts/AuthContext';
 import { buildPlannerAuthPath } from '@/lib/booking-auth-intent';
 import { toast } from 'sonner';
+import { getListingNightlyRate } from '@/lib/listing-pricing';
 
 const DEFAULT_LISTING_FILTERS: ListingFilters = {
   minPrice: "",
@@ -69,7 +70,8 @@ export default function ExploreView({ listings, onBook }: { listings: Listing[],
 
       const minP = filters.minPrice ? parseInt(filters.minPrice) : 0;
       const maxP = filters.maxPrice ? parseInt(filters.maxPrice) : Infinity;
-      const matchesPrice = listing.pricePerNight >= minP && listing.pricePerNight <= maxP;
+      const nightlyRate = getListingNightlyRate(listing);
+      const matchesPrice = nightlyRate >= minP && nightlyRate <= maxP;
 
       const requestedGuests = searchFilters.guests || 0;
       const matchesGuests = requestedGuests <= 1 || (listing.adults + listing.children) >= requestedGuests;

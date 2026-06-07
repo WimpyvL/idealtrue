@@ -172,16 +172,54 @@ test('primary app routes are owned by at least one workflow', () => {
 });
 
 test('workflow documentation does not describe obsolete billing checkout endpoints', () => {
-  const docPath = join(repoRoot, 'docs', 'workflow-validation-matrix.md');
-  const doc = readFileSync(docPath, 'utf8');
+  const docsToGuard = [
+    join(repoRoot, 'docs', 'workflow-validation-matrix.md'),
+    join(repoRoot, 'docs', 'app-flow-diagram.mmd'),
+    join(repoRoot, 'docs', 'app-flow-diagram.svg'),
+  ];
   const staleTerms = [
     'createSubscriptionCheckout',
     'createHostBillingSetupCheckout',
     'createContentCreditsCheckout',
     '/billing/subscriptions/checkout',
+    '/api/encore/billing/subscriptions/checkout',
     '/billing/content/checkout',
+    'billing_status + checkout_id',
   ];
 
-  const hits = staleTerms.filter((term) => doc.includes(term));
+  const hits = docsToGuard.flatMap((docPath) => {
+    const doc = readFileSync(docPath, 'utf8');
+    return staleTerms
+      .filter((term) => doc.includes(term))
+      .map((term) => `${docPath}: ${term}`);
+  });
+
   assert.deepEqual(hits, []);
+});
+
+test('app flow diagram stays aligned with Checkout-backed billing and current messaging labels', () => {
+  const diagramPath = join(repoRoot, 'docs', 'app-flow-diagram.mmd');
+  const artifactPath = join(repoRoot, 'docs', 'app-flow-diagram.svg');
+  const diagram = readFileSync(diagramPath, 'utf8');
+  const artifact = readFileSync(artifactPath, 'utf8');
+  const currentTerms = [
+    'POST /billing/payments',
+    'billing_status + payment_id',
+    'GET /billing/payments/:paymentId',
+    'Booking Chat / Booking-Scoped Messaging',
+  ];
+  const staleMessagingTerms = [
+    'Previous Chat Implementation',
+    'Previous Chat',
+  ];
+
+  for (const term of currentTerms) {
+    assert.ok(diagram.includes(term), `${term} is missing from docs/app-flow-diagram.mmd`);
+    assert.ok(artifact.includes(term), `${term} is missing from docs/app-flow-diagram.svg`);
+  }
+
+  for (const term of staleMessagingTerms) {
+    assert.equal(diagram.includes(term), false, `${term} drifted back into docs/app-flow-diagram.mmd`);
+    assert.equal(artifact.includes(term), false, `${term} drifted back into docs/app-flow-diagram.svg`);
+  }
 });

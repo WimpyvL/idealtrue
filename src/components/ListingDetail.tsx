@@ -16,6 +16,7 @@ import { isListingNightBlocked, stayOverlapsListingAvailability } from '@/lib/li
 import type { BookingIntent } from '@/lib/booking-auth-intent';
 import { computeDriveRouteSummary } from '@/lib/google-places';
 import { readSearchContext } from '@/lib/search-context';
+import { getListingNightlyRate, getListingOriginalNightlyRate } from '@/lib/listing-pricing';
 
 export default function ListingDetail({ 
   listing, 
@@ -155,7 +156,9 @@ export default function ListingDetail({
     ? differenceInDays(dateRange.to, dateRange.from) 
     : 0;
   
-  const subtotal = listing.pricePerNight * nights;
+  const nightlyRate = getListingNightlyRate(listing);
+  const originalNightlyRate = getListingOriginalNightlyRate(listing);
+  const subtotal = nightlyRate * nights;
   const totalPrice = subtotal;
   const breakageDeposit = listing.breakageDeposit ?? null;
   const totalWithBreakageDeposit = totalPrice + (breakageDeposit ?? 0);
@@ -370,8 +373,14 @@ export default function ListingDetail({
             <Card className="p-6 sticky top-24 shadow-[0_10px_40px_rgba(18,28,42,0.06)] border-outline-variant space-y-6">
               <div className="flex justify-between items-end">
                 <div>
-                  <span className="text-2xl font-bold">{formatRand(listing.pricePerNight)}</span>
+                  <span className="text-2xl font-bold">{formatRand(nightlyRate)}</span>
                   <span className="text-on-surface-variant"> / night</span>
+                  {originalNightlyRate != null && (
+                    <div className="mt-1 flex items-center gap-2 text-sm text-on-surface-variant">
+                      <span className="line-through">{formatRand(originalNightlyRate)}</span>
+                      <span className="font-medium text-primary">Save {listing.discount}%</span>
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-1 text-sm font-medium">
                   <Star className="w-4 h-4 fill-black" />
@@ -506,7 +515,7 @@ export default function ListingDetail({
               {nights > 0 && (
                 <div className="space-y-3 pt-4 border-t border-outline-variant">
                   <div className="flex justify-between text-on-surface-variant">
-                    <span className="underline">{formatRand(listing.pricePerNight)} x {nights} night{nights !== 1 ? 's' : ''}</span>
+                    <span className="underline">{formatRand(nightlyRate)} x {nights} night{nights !== 1 ? 's' : ''}</span>
                     <span>{formatRand(subtotal)}</span>
                   </div>
                   {breakageDeposit != null && breakageDeposit > 0 && (

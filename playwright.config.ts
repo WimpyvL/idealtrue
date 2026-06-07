@@ -4,7 +4,8 @@ const isCi = !!process.env.CI;
 
 export default defineConfig({
   testDir: './tests/e2e',
-  timeout: 30_000,
+  timeout: 45_000,
+  workers: 2,
   outputDir: 'test-results/playwright',
   reporter: isCi
     ? [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]]

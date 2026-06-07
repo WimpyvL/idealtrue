@@ -7,13 +7,24 @@ export function normalizeDateOnly(value: string) {
   return value.slice(0, 10);
 }
 
-export function computeBookingTotalPrice(pricePerNight: number, checkIn: Date, checkOut: Date) {
+export function computeDiscountedNightlyRate(pricePerNight: number, discountPercent: number) {
+  const nightlyRate = Math.max(0, Number(pricePerNight) || 0);
+  const discount = Math.min(100, Math.max(0, Number(discountPercent) || 0));
+
+  if (discount <= 0) {
+    return Math.round(nightlyRate);
+  }
+
+  return Math.max(0, Math.round(nightlyRate * (1 - discount / 100)));
+}
+
+export function computeBookingTotalPrice(pricePerNight: number, checkIn: Date, checkOut: Date, discountPercent = 0) {
   const millisecondsPerNight = 1000 * 60 * 60 * 24;
   const nights = Math.floor((checkOut.getTime() - checkIn.getTime()) / millisecondsPerNight);
   if (nights <= 0) {
     throw new RangeError("Checkout must be after check-in.");
   }
-  return pricePerNight * nights;
+  return computeDiscountedNightlyRate(pricePerNight, discountPercent) * nights;
 }
 
 export function bookingOverlapsBlockedDates(checkIn: Date, checkOut: Date, blockedDates: string[] | undefined) {

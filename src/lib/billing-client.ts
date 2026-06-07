@@ -1,4 +1,5 @@
 import { encoreRequest } from './encore-client';
+import { z } from 'zod';
 import type { Listing } from '@/types';
 import type { SocialPlatform, SocialTemplateId, SocialTone } from './social-content';
 import type { AdminHostBillingAccount, HostBillingAccount } from '@/types';
@@ -45,13 +46,69 @@ export interface BillingPayment {
   providerReference: string;
 }
 
+const billingPaymentSchema = z.object({
+  paymentId: z.string().trim().min(1),
+  provider: z.literal('yoco'),
+  providerMode: z.enum(['live', 'test']),
+  status: z.enum(['pending', 'paid', 'failed', 'cancelled']),
+  redirectUrl: z.string().trim().url(),
+  providerReference: z.string().trim().min(1),
+});
+
+const billingPaymentStatusSchema = z.object({
+  status: z.enum(['pending', 'paid', 'failed', 'cancelled']),
+  purpose: z.enum(['subscription', 'content_credits', 'host_billing_setup', 'managed_hosting']),
+  providerMode: z.enum(['live', 'test']),
+});
+
+const checkoutStatusSchema = z.object({
+  status: z.enum(['pending', 'paid', 'failed', 'cancelled']),
+  checkoutType: z.enum(['subscription', 'content_credits', 'host_billing_setup', 'managed_hosting']),
+});
+
+const billingReturnStatusSchema = z.enum(['success', 'cancelled', 'failed']);
+
+export interface BillingReturnParams {
+  billingStatus: 'success' | 'cancelled' | 'failed';
+  paymentId: string | null;
+  checkoutId: string | null;
+}
+
+function parseBillingClientResponse<T>(schema: z.ZodSchema<T>, value: unknown, message: string): T {
+  const parsed = schema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(message);
+  }
+  return parsed.data;
+}
+
+// Author: (|/) Klaasvaakie
+export function parseBillingReturnParams(searchParams: URLSearchParams): BillingReturnParams | null {
+  const status = billingReturnStatusSchema.safeParse(searchParams.get('billing_status'));
+  if (!status.success) {
+    return null;
+  }
+
+  const paymentId = searchParams.get('payment_id')?.trim() || null;
+  const checkoutId = searchParams.get('checkout_id')?.trim() || null;
+  if (!paymentId && !checkoutId) {
+    return null;
+  }
+
+  return {
+    billingStatus: status.data,
+    paymentId,
+    checkoutId,
+  };
+}
+
 export async function startBillingPayment(params:
   | { purpose: 'subscription'; plan: HostPlan; billingInterval: BillingInterval }
   | { purpose: 'content_credits'; credits: number }
   | { purpose: 'host_billing_setup' }
   | { purpose: 'managed_hosting' }
 ) {
-  return encoreRequest<BillingPayment>(
+  const response = await encoreRequest<unknown>(
     '/billing/payments',
     {
       method: 'POST',
@@ -59,6 +116,7 @@ export async function startBillingPayment(params:
     },
     { auth: true },
   );
+  return parseBillingClientResponse(billingPaymentSchema, response, 'Billing payment response was invalid.');
 }
 
 export async function getContentEntitlements() {
@@ -127,20 +185,22 @@ export async function updateContentDraft(params: {
 }
 
 export async function getCheckoutStatus(checkoutId: string) {
-  return encoreRequest<{ status: 'pending' | 'paid' | 'failed' | 'cancelled'; checkoutType: 'subscription' | 'content_credits' | 'host_billing_setup' | 'managed_hosting' }>(
+  const response = await encoreRequest<unknown>(
     `/billing/checkouts/${encodeURIComponent(checkoutId)}`,
     {},
     { auth: true },
   );
+  return parseBillingClientResponse(checkoutStatusSchema, response, 'Billing checkout status response was invalid.');
 }
 
 export async function getBillingPaymentStatus(paymentId: string, billingStatus?: string | null) {
   const query = billingStatus ? `?billingStatus=${encodeURIComponent(billingStatus)}` : '';
-  return encoreRequest<{ status: 'pending' | 'paid' | 'failed' | 'cancelled'; purpose: BillingPaymentPurpose; providerMode: 'live' | 'test' }>(
+  const response = await encoreRequest<unknown>(
     `/billing/payments/${encodeURIComponent(paymentId)}${query}`,
     {},
     { auth: true },
   );
+  return parseBillingClientResponse(billingPaymentStatusSchema, response, 'Billing payment status response was invalid.');
 }
 
 export async function getMyHostBillingAccount() {

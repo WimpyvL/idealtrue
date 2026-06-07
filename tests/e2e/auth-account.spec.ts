@@ -146,7 +146,7 @@ test('signup, email verification, and signin use the account lifecycle routes', 
   await page.getByRole('button', { name: 'Sign in', exact: true }).first().click();
   await page.getByPlaceholder('you@example.com').fill('new-guest@example.com');
   await page.locator('input[type="password"]').first().fill('password123');
-  await page.locator('form').getByRole('button', { name: /Sign in/ }).click();
+  await page.locator('form').getByRole('button', { name: 'Sign in', exact: true }).click();
 
   await expect(page).toHaveURL(/\/$/);
   expect(calls.find((call) => call.path === '/auth/login')?.body).toEqual({

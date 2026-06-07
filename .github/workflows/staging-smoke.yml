@@ -34,22 +34,6 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    env:
-      ENCORE_API_URL: ${{ secrets.ENCORE_API_URL }}
-      IDEAL_STAY_API_URL: ${{ secrets.ENCORE_API_URL }}
-      IDEAL_STAY_ALLOW_REMOTE_SEED: "true"
-      IDEAL_STAY_SEED_ADMIN_EMAIL: ${{ secrets.IDEAL_STAY_SEED_ADMIN_EMAIL }}
-      IDEAL_STAY_SEED_ADMIN_PASSWORD: ${{ secrets.IDEAL_STAY_SEED_ADMIN_PASSWORD }}
-      IDEAL_STAY_DEMO_PASSWORD: ${{ secrets.IDEAL_STAY_DEMO_PASSWORD }}
-      IDEAL_STAY_SMOKE_BASE_URL: ${{ secrets.IDEAL_STAY_SMOKE_BASE_URL }}
-      IDEAL_STAY_SMOKE_REQUIRE_ROLE_CREDENTIALS: "true"
-      IDEAL_STAY_SMOKE_EXPECT_LISTINGS_MIN: "1"
-      IDEAL_STAY_SMOKE_GUEST_EMAIL: guest.nomusa@idealstay.demo
-      IDEAL_STAY_SMOKE_GUEST_PASSWORD: ${{ secrets.IDEAL_STAY_DEMO_PASSWORD }}
-      IDEAL_STAY_SMOKE_HOST_EMAIL: thandi.mokoena@idealstay.demo
-      IDEAL_STAY_SMOKE_HOST_PASSWORD: ${{ secrets.IDEAL_STAY_DEMO_PASSWORD }}
-      IDEAL_STAY_SMOKE_ADMIN_EMAIL: ${{ secrets.IDEAL_STAY_SMOKE_ADMIN_EMAIL }}
-      IDEAL_STAY_SMOKE_ADMIN_PASSWORD: ${{ secrets.IDEAL_STAY_SMOKE_ADMIN_PASSWORD }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -62,9 +46,6 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             encore/package-lock.json
-
-      - name: Validate staging smoke environment
-        run: npm run check:staging-smoke-env
 
       - name: Install frontend dependencies
         run: npm ci
@@ -98,6 +79,45 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+  staging-smoke:
+    name: staging smoke
+    runs-on: ubuntu-latest
+    needs: verify
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 20
+    env:
+      ENCORE_API_URL: ${{ secrets.ENCORE_API_URL }}
+      IDEAL_STAY_API_URL: ${{ secrets.ENCORE_API_URL }}
+      IDEAL_STAY_ALLOW_REMOTE_SEED: "true"
+      IDEAL_STAY_SEED_ADMIN_EMAIL: ${{ secrets.IDEAL_STAY_SEED_ADMIN_EMAIL }}
+      IDEAL_STAY_SEED_ADMIN_PASSWORD: ${{ secrets.IDEAL_STAY_SEED_ADMIN_PASSWORD }}
+      IDEAL_STAY_DEMO_PASSWORD: ${{ secrets.IDEAL_STAY_DEMO_PASSWORD }}
+      IDEAL_STAY_SMOKE_BASE_URL: ${{ secrets.IDEAL_STAY_SMOKE_BASE_URL }}
+      IDEAL_STAY_SMOKE_REQUIRE_ROLE_CREDENTIALS: "true"
+      IDEAL_STAY_SMOKE_EXPECT_LISTINGS_MIN: "1"
+      IDEAL_STAY_SMOKE_GUEST_EMAIL: guest.nomusa@idealstay.demo
+      IDEAL_STAY_SMOKE_GUEST_PASSWORD: ${{ secrets.IDEAL_STAY_DEMO_PASSWORD }}
+      IDEAL_STAY_SMOKE_HOST_EMAIL: thandi.mokoena@idealstay.demo
+      IDEAL_STAY_SMOKE_HOST_PASSWORD: ${{ secrets.IDEAL_STAY_DEMO_PASSWORD }}
+      IDEAL_STAY_SMOKE_ADMIN_EMAIL: ${{ secrets.IDEAL_STAY_SMOKE_ADMIN_EMAIL }}
+      IDEAL_STAY_SMOKE_ADMIN_PASSWORD: ${{ secrets.IDEAL_STAY_SMOKE_ADMIN_PASSWORD }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Validate staging smoke environment
+        run: npm run check:staging-smoke-env
+
+      - name: Install frontend dependencies
+        run: npm ci
 
       - name: Seed shared staging smoke users
         if: github.event_name != 'workflow_dispatch' || inputs.run_seed

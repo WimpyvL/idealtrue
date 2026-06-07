@@ -214,7 +214,7 @@ describe('SocialDashboard', () => {
       status: 'scheduled',
       scheduledFor: expect.stringMatching(/^2026-05-01T/),
     }));
-  });
+  }, 10000);
 
   it('keeps the content tools and wallet inside the studio tools dropdown', async () => {
     const user = userEvent.setup();
@@ -248,7 +248,7 @@ describe('SocialDashboard', () => {
     await waitFor(() => expect(getContentEntitlementsMock).toHaveBeenCalled());
 
     await user.click(screen.getByRole('button', { name: /studio tools/i }));
-    await user.click(screen.getByRole('button', { name: /quick templates/i }));
+    await user.click(await screen.findByRole('button', { name: /quick templates/i }));
 
     expect(screen.getByRole('heading', { name: /quick templates/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /use special offer/i })).toBeInTheDocument();

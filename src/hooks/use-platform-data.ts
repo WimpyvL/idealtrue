@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Booking, Listing, Referral, UserProfile } from '@/types';
 import type { AuthSessionUser } from '@/contexts/AuthContext';
 import { getEncoreErrorMessage } from '@/lib/encore-client';
@@ -26,30 +27,30 @@ interface PlatformDataState {
   removeListing: (listingId: string) => void;
 }
 
-const EMPTY_LOADING_STATE: PlatformDataLoading = {
-  listings: false,
-  bookings: false,
-  hostListings: false,
-  referrals: false,
-};
-
-const BOOKING_SYNC_INTERVAL_MS = 12000;
+const BOOKING_SYNC_INTERVAL_MS = 12_000;
+const EMPTY_LISTINGS: Listing[] = [];
+const EMPTY_BOOKINGS: Booking[] = [];
+const EMPTY_REFERRALS: Referral[] = [];
 
 function toDataError(error: unknown, fallback: string) {
   return getEncoreErrorMessage(error, fallback);
 }
 
-export function usePlatformData(user: AuthSessionUser | null, profile: UserProfile | null): PlatformDataState {
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [myListings, setMyListings] = useState<Listing[]>([]);
-  const [myBookings, setMyBookings] = useState<Booking[]>([]);
-  const [hostBookings, setHostBookings] = useState<Booking[]>([]);
-  const [referrals, setReferrals] = useState<Referral[]>([]);
-  const [dataErrors, setDataErrors] = useState<PlatformDataErrors>({});
-  const [dataLoading, setDataLoading] = useState<PlatformDataLoading>(EMPTY_LOADING_STATE);
-  const [reloadKey, setReloadKey] = useState(0);
-  const [bookingSyncTick, setBookingSyncTick] = useState(0);
+function upsertById<T extends { id: string }>(items: T[], item: T) {
+  const existingIndex = items.findIndex((current) => current.id === item.id);
+  if (existingIndex === -1) {
+    return [item, ...items];
+  }
+  return items.map((current) => (current.id === item.id ? item : current));
+}
 
+function replaceById<T extends { id: string }>(items: T[], item: T) {
+  return items.map((current) => (current.id === item.id ? item : current));
+}
+
+// Author: (|/) Klaasvaakie
+export function usePlatformData(user: AuthSessionUser | null, profile: UserProfile | null): PlatformDataState {
+  const queryClient = useQueryClient();
   const userId = user?.id ?? null;
   const profileRole = profile?.role ?? null;
   const isAdminProfile = Boolean(profile?.isAdmin);
@@ -59,162 +60,115 @@ export function usePlatformData(user: AuthSessionUser | null, profile: UserProfi
     (profileRole === 'host' || profileRole === 'admin' || isAdminProfile),
   );
 
-  const setLoadingFlag = useCallback((key: PlatformDataErrorKey, loading: boolean) => {
-    setDataLoading((current) => ({ ...current, [key]: loading }));
-  }, []);
+  const publicListingsQuery = useQuery({
+    queryKey: ['platform', 'listings', 'public'],
+    queryFn: listPublicListings,
+  });
 
-  const setDataError = useCallback((key: PlatformDataErrorKey, message?: string) => {
-    setDataErrors((current) => {
-      const next = { ...current };
-      if (message) {
-        next[key] = message;
-      } else {
-        delete next[key];
-      }
-      return next;
-    });
-  }, []);
+  const bookingsQuery = useQuery({
+    queryKey: ['platform', 'bookings', 'me', userId],
+    queryFn: listMyBookings,
+    enabled: Boolean(userId),
+    refetchInterval: BOOKING_SYNC_INTERVAL_MS,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
+  const hostListingsQuery = useQuery({
+    queryKey: ['platform', 'listings', 'host', userId],
+    queryFn: () => listHostListings(userId!),
+    enabled: canLoadHostData,
+  });
 
-    const safelySetLoadingFlag = (key: PlatformDataErrorKey, loadingState: boolean) => {
-      if (!cancelled) {
-        setLoadingFlag(key, loadingState);
-      }
-    };
+  const referralsQuery = useQuery({
+    queryKey: ['platform', 'referrals', userId],
+    queryFn: listReferralRewards,
+    enabled: Boolean(userId),
+  });
 
-    const safelySetDataError = (key: PlatformDataErrorKey, message?: string) => {
-      if (!cancelled) {
-        setDataError(key, message);
-      }
-    };
+  const listings = publicListingsQuery.data ?? EMPTY_LISTINGS;
+  const sessionBookings = bookingsQuery.data ?? EMPTY_BOOKINGS;
+  const myListings = hostListingsQuery.data ?? EMPTY_LISTINGS;
+  const referrals = referralsQuery.data ?? EMPTY_REFERRALS;
 
-    async function loadPublicListings() {
-      safelySetLoadingFlag('listings', true);
-      try {
-        const publicListings = await listPublicListings();
-        if (!cancelled) {
-          setListings(publicListings);
-          safelySetDataError('listings');
-        }
-      } catch (error) {
-        console.error('Failed to load public listings:', error);
-        safelySetDataError('listings', toDataError(error, 'Could not load public listings.'));
-      } finally {
-        safelySetLoadingFlag('listings', false);
-      }
+  const myBookings = useMemo(
+    () => (userId ? sessionBookings.filter((booking) => booking.guestId === userId) : EMPTY_BOOKINGS),
+    [sessionBookings, userId],
+  );
+  const hostBookings = useMemo(
+    () => (userId ? sessionBookings.filter((booking) => booking.hostId === userId) : EMPTY_BOOKINGS),
+    [sessionBookings, userId],
+  );
+
+  const dataErrors = useMemo<PlatformDataErrors>(() => {
+    const errors: PlatformDataErrors = {};
+    if (publicListingsQuery.error) {
+      errors.listings = toDataError(publicListingsQuery.error, 'Could not load public listings.');
     }
-
-    async function loadBookings() {
-      if (!userId) {
-        setMyBookings([]);
-        setHostBookings([]);
-        safelySetDataError('bookings');
-        safelySetLoadingFlag('bookings', false);
-        return;
-      }
-
-      safelySetLoadingFlag('bookings', true);
-      try {
-        const sessionBookings = await listMyBookings();
-        if (!cancelled) {
-          setMyBookings(sessionBookings.filter((booking) => booking.guestId === userId));
-          setHostBookings(sessionBookings.filter((booking) => booking.hostId === userId));
-          safelySetDataError('bookings');
-        }
-      } catch (error) {
-        console.error('Failed to load bookings:', error);
-        safelySetDataError('bookings', toDataError(error, 'Could not load bookings.'));
-      } finally {
-        safelySetLoadingFlag('bookings', false);
-      }
+    if (bookingsQuery.error) {
+      errors.bookings = toDataError(bookingsQuery.error, 'Could not load bookings.');
     }
-
-    async function loadReferrals() {
-      if (!userId) {
-        setReferrals([]);
-        safelySetDataError('referrals');
-        safelySetLoadingFlag('referrals', false);
-        return;
-      }
-
-      safelySetLoadingFlag('referrals', true);
-      try {
-        const rewardHistory = await listReferralRewards();
-        if (!cancelled) {
-          setReferrals(rewardHistory);
-          safelySetDataError('referrals');
-        }
-      } catch (error) {
-        console.error('Failed to load referral rewards:', error);
-        safelySetDataError('referrals', toDataError(error, 'Could not load referral rewards.'));
-      } finally {
-        safelySetLoadingFlag('referrals', false);
-      }
+    if (hostListingsQuery.error) {
+      errors.hostListings = toDataError(hostListingsQuery.error, 'Could not load host listings.');
     }
-
-    async function loadHostListings() {
-      if (!userId || !canLoadHostData) {
-        setMyListings([]);
-        safelySetDataError('hostListings');
-        safelySetLoadingFlag('hostListings', false);
-        return;
-      }
-
-      safelySetLoadingFlag('hostListings', true);
-      try {
-        const hostListings = await listHostListings(userId);
-        if (!cancelled) {
-          setMyListings(hostListings);
-          safelySetDataError('hostListings');
-        }
-      } catch (error) {
-        console.error('Failed to load host listings:', error);
-        safelySetDataError('hostListings', toDataError(error, 'Could not load host listings.'));
-      } finally {
-        safelySetLoadingFlag('hostListings', false);
-      }
+    if (referralsQuery.error) {
+      errors.referrals = toDataError(referralsQuery.error, 'Could not load referral rewards.');
     }
+    return errors;
+  }, [bookingsQuery.error, hostListingsQuery.error, publicListingsQuery.error, referralsQuery.error]);
 
-    void loadPublicListings();
-    void loadBookings();
-    void loadReferrals();
-    void loadHostListings();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [bookingSyncTick, canLoadHostData, isAdminProfile, profileRole, reloadKey, setDataError, setLoadingFlag, userId]);
-
-  useEffect(() => {
-    if (!userId) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      setBookingSyncTick((current) => current + 1);
-    }, BOOKING_SYNC_INTERVAL_MS);
-
-    const onVisibilityOrFocus = () => {
-      setBookingSyncTick((current) => current + 1);
-    };
-
-    window.addEventListener('focus', onVisibilityOrFocus);
-    document.addEventListener('visibilitychange', onVisibilityOrFocus);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener('focus', onVisibilityOrFocus);
-      document.removeEventListener('visibilitychange', onVisibilityOrFocus);
-    };
-  }, [userId]);
+  const dataLoading: PlatformDataLoading = {
+    listings: publicListingsQuery.isFetching,
+    bookings: bookingsQuery.isFetching,
+    hostListings: hostListingsQuery.isFetching,
+    referrals: referralsQuery.isFetching,
+  };
 
   const reloadPlatformData = useCallback(() => {
-    setReloadKey((current) => current + 1);
-  }, []);
+    void queryClient.invalidateQueries({ queryKey: ['platform'] });
+  }, [queryClient]);
 
-  const hasDataErrors = useMemo(() => Object.keys(dataErrors).length > 0, [dataErrors]);
+  const syncUpdatedBooking = useCallback((updatedBooking: Booking) => {
+    queryClient.setQueryData<Booking[]>(['platform', 'bookings', 'me', userId], (current = []) =>
+      upsertById(current, updatedBooking),
+    );
+
+    if (isBookedStay(updatedBooking) || ['DECLINED', 'EXPIRED'].includes(updatedBooking.inquiryState)) {
+      void getListing(updatedBooking.listingId)
+        .then((updatedListing) => {
+          queryClient.setQueryData<Listing[]>(['platform', 'listings', 'public'], (current = []) =>
+            replaceById(current, updatedListing),
+          );
+          queryClient.setQueryData<Listing[]>(['platform', 'listings', 'host', userId], (current = []) =>
+            replaceById(current, updatedListing),
+          );
+        })
+        .catch((error) => {
+          console.warn('Failed to refresh listing availability after booking update:', error);
+        });
+    }
+  }, [queryClient, userId]);
+
+  const syncUpdatedListing = useCallback((updatedListing: Listing) => {
+    queryClient.setQueryData<Listing[]>(['platform', 'listings', 'public'], (current = []) =>
+      upsertById(current, updatedListing),
+    );
+    queryClient.setQueryData<Listing[]>(['platform', 'listings', 'host', userId], (current = []) => {
+      if (updatedListing.hostId !== userId) {
+        return current;
+      }
+      return upsertById(current, updatedListing);
+    });
+  }, [queryClient, userId]);
+
+  const removeListing = useCallback((listingId: string) => {
+    queryClient.setQueryData<Listing[]>(['platform', 'listings', 'public'], (current = []) =>
+      current.filter((item) => item.id !== listingId),
+    );
+    queryClient.setQueryData<Listing[]>(['platform', 'listings', 'host', userId], (current = []) =>
+      current.filter((item) => item.id !== listingId),
+    );
+  }, [queryClient, userId]);
+
+  const hasDataErrors = Object.keys(dataErrors).length > 0;
 
   return {
     listings,
@@ -226,52 +180,8 @@ export function usePlatformData(user: AuthSessionUser | null, profile: UserProfi
     dataLoading,
     hasDataErrors,
     reloadPlatformData,
-    syncUpdatedBooking(updatedBooking) {
-      setMyBookings((current) => {
-        const existingIndex = current.findIndex((item) => item.id === updatedBooking.id);
-        if (existingIndex === -1 && updatedBooking.guestId === userId) {
-          return [updatedBooking, ...current];
-        }
-        return current.map((item) => item.id === updatedBooking.id ? updatedBooking : item);
-      });
-      setHostBookings((current) => {
-        const existingIndex = current.findIndex((item) => item.id === updatedBooking.id);
-        if (existingIndex === -1 && updatedBooking.hostId === userId) {
-          return [updatedBooking, ...current];
-        }
-        return current.map((item) => item.id === updatedBooking.id ? updatedBooking : item);
-      });
-
-      if (isBookedStay(updatedBooking) || ['DECLINED', 'EXPIRED'].includes(updatedBooking.inquiryState)) {
-        void getListing(updatedBooking.listingId)
-          .then((updatedListing) => {
-            setListings((current) => current.map((item) => item.id === updatedListing.id ? updatedListing : item));
-            setMyListings((current) => current.map((item) => item.id === updatedListing.id ? updatedListing : item));
-          })
-          .catch((error) => {
-            console.warn('Failed to refresh listing availability after booking update:', error);
-          });
-      }
-    },
-    syncUpdatedListing(updatedListing) {
-      setListings((current) => {
-        const existingIndex = current.findIndex((item) => item.id === updatedListing.id);
-        if (existingIndex === -1) {
-          return [updatedListing, ...current];
-        }
-        return current.map((item) => item.id === updatedListing.id ? updatedListing : item);
-      });
-      setMyListings((current) => {
-        const existingIndex = current.findIndex((item) => item.id === updatedListing.id);
-        if (existingIndex === -1 && updatedListing.hostId === userId) {
-          return [updatedListing, ...current];
-        }
-        return current.map((item) => item.id === updatedListing.id ? updatedListing : item);
-      });
-    },
-    removeListing(listingId) {
-      setListings((current) => current.filter((item) => item.id !== listingId));
-      setMyListings((current) => current.filter((item) => item.id !== listingId));
-    },
+    syncUpdatedBooking,
+    syncUpdatedListing,
+    removeListing,
   };
 }

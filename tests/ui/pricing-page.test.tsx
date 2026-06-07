@@ -1,10 +1,12 @@
 import React from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import PricingPage from '@/pages/PricingPage';
+import { createIdealStayQueryClient } from '@/lib/query-client';
 
 const refreshProfileMock = vi.fn();
 const authState = {
@@ -37,6 +39,15 @@ vi.mock('@/lib/billing-client', () => ({
   getBillingPaymentStatus: vi.fn(),
   getCheckoutStatus: vi.fn(),
   getMyHostBillingAccount: vi.fn(),
+  parseBillingReturnParams: (searchParams: URLSearchParams) => {
+    const billingStatus = searchParams.get('billing_status');
+    const paymentId = searchParams.get('payment_id');
+    const checkoutId = searchParams.get('checkout_id');
+    if (!['success', 'cancelled', 'failed'].includes(`${billingStatus}`) || (!paymentId && !checkoutId)) {
+      return null;
+    }
+    return { billingStatus, paymentId: paymentId || null, checkoutId: checkoutId || null };
+  },
 }));
 
 vi.mock('sonner', () => ({
@@ -50,6 +61,20 @@ vi.mock('sonner', () => ({
 function LocationProbe() {
   const location = useLocation();
   return <div data-testid="location">{`${location.pathname}${location.search}`}</div>;
+}
+
+function renderPricing(initialEntry = '/pricing') {
+  const queryClient = createIdealStayQueryClient();
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <Routes>
+          <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/signup" element={<LocationProbe />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
 }
 
 describe('PricingPage', () => {
@@ -70,13 +95,7 @@ describe('PricingPage', () => {
       writable: true,
     });
 
-    render(
-      <MemoryRouter initialEntries={['/pricing']}>
-        <Routes>
-          <Route path="/pricing" element={<PricingPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
+    renderPricing();
 
     await user.click(await screen.findByRole('button', { name: /get more visibility/i }));
 
@@ -93,13 +112,7 @@ describe('PricingPage', () => {
       writable: true,
     });
 
-    render(
-      <MemoryRouter initialEntries={['/pricing']}>
-        <Routes>
-          <Route path="/pricing" element={<PricingPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
+    renderPricing();
 
     expect(await screen.findByRole('button', { name: /apply for managed hosting/i })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /apply for managed hosting/i }));
@@ -112,14 +125,7 @@ describe('PricingPage', () => {
   it('routes unauthenticated managed hosting into managed host signup', async () => {
     const user = userEvent.setup();
 
-    render(
-      <MemoryRouter initialEntries={['/pricing']}>
-        <Routes>
-          <Route path="/pricing" element={<PricingPage />} />
-          <Route path="/signup" element={<LocationProbe />} />
-        </Routes>
-      </MemoryRouter>,
-    );
+    renderPricing();
 
     await user.click(await screen.findByRole('button', { name: /apply for managed hosting/i }));
 
@@ -135,13 +141,7 @@ describe('PricingPage', () => {
   it('shows a test mode banner when Yoco test mode is enabled on the frontend', async () => {
     vi.stubEnv('VITE_YOCO_PAYMENT_MODE', 'test');
 
-    render(
-      <MemoryRouter initialEntries={['/pricing']}>
-        <Routes>
-          <Route path="/pricing" element={<PricingPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
+    renderPricing();
 
     expect(await screen.findByText(/yoco test mode is active/i)).toBeInTheDocument();
   });

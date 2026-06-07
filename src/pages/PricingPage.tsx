@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowRight, BadgeCheck, Eye, Loader2, MessageSquareMore, ShieldCheck, Wallet } from "lucide-react";
 import { toast } from "sonner";
@@ -6,7 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
-import { createManagedHostingCheckout, getBillingPaymentStatus, getCheckoutStatus, getMyHostBillingAccount, startBillingPayment } from "@/lib/billing-client";
+import { createManagedHostingCheckout, getBillingPaymentStatus, getCheckoutStatus, getMyHostBillingAccount, parseBillingReturnParams, startBillingPayment } from "@/lib/billing-client";
 import type { HostBillingAccount } from "@/types";
 
 type PlanTier = "standard" | "professional" | "premium";
@@ -179,47 +180,63 @@ const faqs = [
 export default function PricingPage({ onBack }: { onBack?: () => void }) {
   const navigate = useNavigate();
   const { user, profile, refreshProfile } = useAuth();
+  const queryClient = useQueryClient();
   const isYocoTestMode = `${import.meta.env.VITE_YOCO_PAYMENT_MODE || ''}`.trim().toLowerCase() === 'test';
-  const [loadingPlan, setLoadingPlan] = useState<PlanTier | null>(null);
-  const [fetchingPlan, setFetchingPlan] = useState(true);
+  const [loadingPlan, setLoadingPlan] = useState<PlanTier | "managed" | null>(null);
   const [currentPlan, setCurrentPlan] = useState<PlanTier>("standard");
-  const [billingAccount, setBillingAccount] = useState<HostBillingAccount | null>(null);
   const [searchParams] = useSearchParams();
   const sourceLabel = searchParams.get("source_label") || searchParams.get("region");
-  const billingStatus = searchParams.get("billing_status");
-  const checkoutId = searchParams.get("checkout_id");
-  const paymentId = searchParams.get("payment_id");
-
-  const fetchPlan = useCallback(async () => {
-    if (!profile) {
-      setCurrentPlan("standard");
-      setBillingAccount(null);
-      setFetchingPlan(false);
-      return;
-    }
-
-    setCurrentPlan((profile.hostPlan as PlanTier) || "standard");
-    if (profile.role === "host") {
-      try {
-        const account = await getMyHostBillingAccount();
-        setBillingAccount(account);
-      } catch (error) {
-        console.error("Failed to load host billing account for pricing page:", error);
-        setBillingAccount(null);
-      }
-    } else {
-      setBillingAccount(null);
-    }
-
-    setFetchingPlan(false);
-  }, [profile]);
+  const billingReturn = useMemo(() => parseBillingReturnParams(searchParams), [searchParams]);
 
   useEffect(() => {
-    fetchPlan();
-  }, [fetchPlan]);
+    setCurrentPlan((profile?.hostPlan as PlanTier) || "standard");
+  }, [profile?.hostPlan]);
+
+  const billingAccountQuery = useQuery<HostBillingAccount | null>({
+    queryKey: ["billing", "host-account", profile?.id ?? user?.id ?? null],
+    queryFn: getMyHostBillingAccount,
+    enabled: Boolean(profile?.role === "host"),
+    retry: 1,
+  });
+  const billingAccount = billingAccountQuery.data ?? null;
+  const fetchingPlan = Boolean(profile?.role === "host" && billingAccountQuery.isLoading);
+
+  const subscriptionPaymentMutation = useMutation({
+    mutationFn: (planId: PlanTier) => startBillingPayment({ purpose: "subscription", plan: planId, billingInterval: "monthly" }),
+    onSuccess: (checkout) => {
+      window.location.assign(checkout.redirectUrl);
+    },
+    onError: (error) => {
+      console.error("Plan upgrade error:", error);
+      toast.error(`Upgrade failed: ${error instanceof Error ? error.message : "Could not start checkout."}`);
+    },
+    onSettled: () => {
+      setLoadingPlan(null);
+    },
+  });
+
+  const managedHostingMutation = useMutation({
+    mutationFn: createManagedHostingCheckout,
+    onSuccess: (checkout) => {
+      window.location.assign(checkout.redirectUrl);
+    },
+    onError: (error) => {
+      console.error("Managed hosting checkout error:", error);
+      toast.error(`Managed hosting checkout failed: ${error instanceof Error ? error.message : "Could not start checkout."}`);
+    },
+    onSettled: () => {
+      setLoadingPlan(null);
+    },
+  });
 
   useEffect(() => {
-    if (!user || !billingStatus || (!paymentId && !checkoutId)) {
+    if (billingAccountQuery.error) {
+      console.error("Failed to load host billing account for pricing page:", billingAccountQuery.error);
+    }
+  }, [billingAccountQuery.error]);
+
+  useEffect(() => {
+    if (!user || !billingReturn) {
       return;
     }
 
@@ -230,9 +247,9 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
       try {
         for (let attempt = 0; attempt < 8; attempt += 1) {
           // (|/) Klaasvaakie - standard payments return payment_id; checkout_id is kept for older return URLs.
-          const result = paymentId
-            ? await getBillingPaymentStatus(paymentId, billingStatus)
-            : await getCheckoutStatus(checkoutId!);
+          const result = billingReturn.paymentId
+            ? await getBillingPaymentStatus(billingReturn.paymentId, billingReturn.billingStatus)
+            : await getCheckoutStatus(billingReturn.checkoutId!);
           if (cancelled) {
             return;
           }
@@ -248,6 +265,7 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
               return;
             }
             setCurrentPlan((nextProfile?.hostPlan as PlanTier) || currentPlan);
+            void queryClient.invalidateQueries({ queryKey: ["billing"] });
             toast.success(
               "purpose" in result && result.purpose === "managed_hosting"
                 ? "Managed hosting payment confirmed. The team can now complete onboarding."
@@ -257,12 +275,12 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
             return;
           }
 
-          if (billingStatus === "cancelled" || result.status === "cancelled") {
+          if (billingReturn.billingStatus === "cancelled" || result.status === "cancelled") {
             toast.message("Checkout cancelled. No subscription changes were applied.");
             return;
           }
 
-          if (billingStatus === "failed" || result.status === "failed") {
+          if (billingReturn.billingStatus === "failed" || result.status === "failed") {
             toast.error("Payment failed. Nothing was upgraded.");
             return;
           }
@@ -284,7 +302,7 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
     return () => {
       cancelled = true;
     };
-  }, [billingStatus, checkoutId, currentPlan, navigate, paymentId, refreshProfile, user]);
+  }, [billingReturn, currentPlan, navigate, queryClient, refreshProfile, user]);
 
   const handleUpgrade = useCallback(
     async (planId: PlanTier) => {
@@ -294,18 +312,9 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
       }
 
       setLoadingPlan(planId);
-
-      try {
-        const checkout = await startBillingPayment({ purpose: "subscription", plan: planId, billingInterval: "monthly" });
-        window.location.assign(checkout.redirectUrl);
-      } catch (error: any) {
-        console.error("Plan upgrade error:", error);
-        toast.error(`Upgrade failed: ${error.message}`);
-      } finally {
-        setLoadingPlan(null);
-      }
+      subscriptionPaymentMutation.mutate(planId);
     },
-    [navigate, user],
+    [navigate, subscriptionPaymentMutation, user],
   );
 
   const handleManagedHosting = useCallback(() => {
@@ -314,19 +323,9 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
       return;
     }
 
-    void (async () => {
-      setLoadingPlan(null);
-      try {
-        const checkout = await createManagedHostingCheckout();
-        window.location.assign(checkout.redirectUrl);
-      } catch (error: any) {
-        console.error("Managed hosting checkout error:", error);
-        toast.error(`Managed hosting checkout failed: ${error.message}`);
-      } finally {
-        setLoadingPlan(null);
-      }
-    })();
-  }, [navigate, user]);
+    setLoadingPlan("managed");
+    managedHostingMutation.mutate();
+  }, [managedHostingMutation, navigate, user]);
 
   if (fetchingPlan) {
     return (
@@ -523,7 +522,7 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
           {plans.map((plan) => {
             const isManagedPlan = plan.id === "managed";
             const isCurrent = !isManagedPlan && showCurrentPlanState && currentPlan === plan.id;
-            const isLoading = !isManagedPlan && loadingPlan === plan.id;
+            const isLoading = isManagedPlan ? loadingPlan === "managed" : loadingPlan === plan.id;
             const darkCard = plan.id === "premium";
             const accentBarClass = darkCard ? "bg-cyan-400" : isManagedPlan ? "bg-emerald-500" : "bg-[#08a8c8]";
             const badgeClass = darkCard

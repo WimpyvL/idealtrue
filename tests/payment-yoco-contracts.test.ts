@@ -8,6 +8,7 @@ import { parseYocoSigningSecret, verifyYocoWebhookSignatureValue } from '../enco
 import {
   createManagedHostingCheckout,
   getBillingPaymentStatus,
+  parseBillingReturnParams,
   startBillingPayment,
   type HostPlan,
 } from '../src/lib/billing-client';
@@ -206,6 +207,37 @@ test('payment status client forwards return billing status for test-mode reconci
 
   assert.equal(status.status, 'paid');
   assert.equal(fetchCalls[0]?.url, `${DEFAULT_ENCORE_API_URL}/billing/payments/payment-subscription-1?billingStatus=success`);
+});
+
+test('billing client rejects malformed checkout start responses before redirecting users', async () => {
+  installFetch((url) => {
+    if (url.endsWith('/billing/payments')) {
+      return createJsonResponse({
+        paymentId: 'payment-bad-1',
+        provider: 'yoco',
+        providerMode: 'test',
+        status: 'pending',
+        redirectUrl: '',
+        providerReference: 'checkout-bad-1',
+      });
+    }
+    throw new Error(`Unhandled malformed checkout endpoint: ${url}`);
+  });
+
+  await assert.rejects(
+    () => startBillingPayment({ purpose: 'subscription', plan: 'professional', billingInterval: 'monthly' }),
+    /Billing payment response was invalid/,
+  );
+});
+
+test('billing return params only accept known statuses with a payment or checkout id', () => {
+  assert.deepEqual(parseBillingReturnParams(new URLSearchParams('billing_status=success&payment_id=payment-1')), {
+    billingStatus: 'success',
+    paymentId: 'payment-1',
+    checkoutId: null,
+  });
+  assert.equal(parseBillingReturnParams(new URLSearchParams('billing_status=weird&payment_id=payment-1')), null);
+  assert.equal(parseBillingReturnParams(new URLSearchParams('billing_status=success')), null);
 });
 
 test('accepted Yoco webhook events classify into fulfilment-safe billing outcomes', () => {

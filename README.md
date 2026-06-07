@@ -173,6 +173,11 @@ IDEAL_STAY_RUN_LIVE_SMOKE=true
 
 The staging smoke workflow lives at `.github/workflows/staging-smoke.yml`.
 
+It has two jobs by design:
+
+- `verify` runs on `main` pushes, schedules, and manual dispatches without staging secrets. This keeps the normal repo gate deterministic and preserves the existing `Staging Smoke / verify` check name.
+- `staging smoke` runs only on scheduled/manual smoke events after `verify` passes. This is the only job that reads staging secrets, seeds shared smoke data, and probes the deployed frontend.
+
 Required repository secrets:
 
 - `ENCORE_API_URL`
@@ -183,7 +188,7 @@ Required repository secrets:
 - `IDEAL_STAY_SMOKE_ADMIN_EMAIL`
 - `IDEAL_STAY_SMOKE_ADMIN_PASSWORD`
 
-The workflow validates staging smoke configuration, runs local test gates, typechecks the Encore backend, optionally seeds demo data, then runs the live smoke check.
+If `staging smoke` fails within seconds, read the `Validate staging smoke environment` annotations first. That step is intentionally strict and reports the exact missing or miswired repository secret before any deploy-facing seed/smoke action runs.
 
 ## Workflow Documentation
 

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Listing } from "@/types";
 import { formatRand } from "@/lib/currency";
 import { getGoogleMapsApiKey, loadGoogleMapsScript } from "@/lib/google-maps";
+import { getListingNightlyRate } from "@/lib/listing-pricing";
 
 interface PropertyMapProps {
   listings: Listing[];
@@ -33,7 +34,7 @@ function buildInfoWindowContent(listing: Listing, onView: () => void) {
 
   const price = document.createElement("span");
   price.className = "text-sm font-bold";
-  price.innerHTML = `${formatRand(listing.pricePerNight)} <span class="font-normal text-slate-500">/ night</span>`;
+  price.innerHTML = `${formatRand(getListingNightlyRate(listing))} <span class="font-normal text-slate-500">/ night</span>`;
 
   const button = document.createElement("button");
   button.type = "button";

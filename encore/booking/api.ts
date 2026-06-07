@@ -882,7 +882,7 @@ export const createBooking = api<CreateBookingParams, { booking: BookingRecord }
     }
     await assertListingDateRangeAvailable(params.listingId, params.checkIn, params.checkOut);
 
-    const serverTotalPrice = computeBookingTotalPrice(listing.pricePerNight, parsedCheckIn, parsedCheckOut);
+    const serverTotalPrice = computeBookingTotalPrice(listing.pricePerNight, parsedCheckIn, parsedCheckOut, listing.discountPercent);
     const serverBreakageDeposit = listing.breakageDeposit ?? null;
     if ((params.breakageDeposit ?? null) !== serverBreakageDeposit) {
       throw APIError.failedPrecondition("Listing breakage deposit changed. Please refresh the listing and try again.");

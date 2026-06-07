@@ -84,7 +84,7 @@ async function signIn(page: Page, email: string) {
   await expect(page.getByRole('heading', { name: 'Sign in to Ideal Stay' })).toBeVisible();
   await page.getByPlaceholder('you@example.com').fill(email);
   await page.locator('input[type="password"]').first().fill('password123');
-  await page.locator('form').getByRole('button', { name: /Sign in/ }).click();
+  await page.locator('form').getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByText(email === hostUser.email ? 'Host Dashboard' : 'My Stays')).toBeVisible();
 }
 

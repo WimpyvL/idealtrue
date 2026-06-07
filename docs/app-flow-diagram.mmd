@@ -63,7 +63,7 @@ flowchart TD
         I2 --> I3
     end
 
-    subgraph Messaging["Booking Chat / Previous Chat Implementation"]
+    subgraph Messaging["Booking Chat / Booking-Scoped Messaging"]
         M6 --> C1["Guest clicks Message"]
         M7 --> C2["Host clicks Message"]
         C1 --> C3["Open ChatModal"]
@@ -153,10 +153,10 @@ flowchart TD
     subgraph Billing["Pricing / Subscriptions / Content Credits"]
         D --> B1["Pricing '/pricing'"]
         B1 --> B2["Choose monthly or annual plan"]
-        B2 --> B3["POST /api/encore/billing/subscriptions/checkout"]
+        B2 --> B3["POST /billing/payments"]
         B3 --> B4["Redirect to checkout URL"]
-        B4 --> B5["Return with billing_status + checkout_id"]
-        B5 --> B6["Poll GET /api/encore/billing/checkouts/:id"]
+        B4 --> B5["Return with billing_status + payment_id"]
+        B5 --> B6["Poll GET /billing/payments/:paymentId"]
         B6 -->|paid| B7["Refresh profile hostPlan"]
         B6 -->|cancelled/failed| B8["Show status toast"]
 

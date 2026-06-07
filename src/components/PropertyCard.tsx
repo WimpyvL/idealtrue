@@ -4,6 +4,7 @@ import { Star, Heart } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "./ui/use-toast";
 import { cn } from "@/lib/utils";
+import { getListingNightlyRate, getListingOriginalNightlyRate } from "@/lib/listing-pricing";
 
 interface PropertyCardProps {
   listing: Listing;
@@ -19,6 +20,8 @@ export default function PropertyCard({ listing, onClick, showBorder = false, com
   const [isIntersecting, setIsIntersecting] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const nightlyRate = getListingNightlyRate(listing);
+  const originalNightlyRate = getListingOriginalNightlyRate(listing);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -134,7 +137,7 @@ export default function PropertyCard({ listing, onClick, showBorder = false, com
                 "font-semibold text-on-surface",
                 compact ? "text-xs sm:text-sm" : "text-sm sm:text-base",
               )}>
-                R{listing.pricePerNight.toLocaleString()}
+                R{nightlyRate.toLocaleString()}
               </span>
               <span className={cn(
                 "text-on-surface",
@@ -143,6 +146,14 @@ export default function PropertyCard({ listing, onClick, showBorder = false, com
                 night
               </span>
             </div>
+            {originalNightlyRate != null && (
+              <p className={cn(
+                "text-on-surface-variant line-through",
+                compact ? "text-[10px]" : "text-xs",
+              )}>
+                R{originalNightlyRate.toLocaleString()}
+              </p>
+            )}
           </div>
         </div>
       </div>
