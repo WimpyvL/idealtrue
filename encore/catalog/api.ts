@@ -814,6 +814,10 @@ function mapListing(
   settlementProfile?: ListingSettlementProfileRecord | null,
 ): ListingRecord {
   const resolvedAvailabilityBlocks = availabilityBlocks ?? [];
+  const resolvedBlockedDates =
+    resolvedAvailabilityBlocks.length > 0
+      ? buildBlockedDatesFromAvailability(resolvedAvailabilityBlocks)
+      : (row.blocked_dates ?? []);
   return {
     id: row.id,
     hostId: row.host_id,
@@ -841,7 +845,7 @@ function mapListing(
     isOccupied: row.is_occupied,
     latitude: row.latitude,
     longitude: row.longitude,
-    blockedDates: row.blocked_dates ?? [],
+    blockedDates: resolvedBlockedDates,
     manualBlockedDates: buildManualBlockedDates(resolvedAvailabilityBlocks),
     availabilityBlocks: resolvedAvailabilityBlocks,
     settlementProfile: settlementProfile ?? null,

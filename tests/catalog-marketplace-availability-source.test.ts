@@ -22,3 +22,22 @@ test('marketplace listing hydration refreshes booking blocks even when manual bl
   assert.equal(functionBody.includes('.checkIn.slice('), false, 'booking timestamps can be Date objects and must not use string slicing');
   assert.equal(functionBody.includes('.checkOut.slice('), false, 'booking timestamps can be Date objects and must not use string slicing');
 });
+
+test('marketplace listing mapper exposes hydrated availability through legacy blockedDates', () => {
+  const source = readFileSync(new URL('../encore/catalog/api.ts', import.meta.url), 'utf8');
+  const functionBody = source.slice(
+    source.indexOf('function mapListing'),
+    source.indexOf('export async function assertListingDateRangeAvailable'),
+  );
+
+  assert.match(
+    functionBody,
+    /buildBlockedDatesFromAvailability\(resolvedAvailabilityBlocks\)/,
+    'marketplace compatibility blockedDates must include hydrated booking availability',
+  );
+  assert.doesNotMatch(
+    functionBody,
+    /blockedDates:\s*row\.blocked_dates\s*\?\?\s*\[\]/,
+    'marketplace payload must not expose stale row.blocked_dates when availability blocks were hydrated',
+  );
+});
