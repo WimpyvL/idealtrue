@@ -12,6 +12,7 @@ import {
   DollarSign,
   Activity,
   AlertTriangle,
+  BadgeCheck,
   type LucideIcon,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -195,10 +196,29 @@ export default function HostDashboard({
           <h1 className="text-3xl font-bold tracking-tight">Hospitality Management</h1>
           <p className="text-on-surface-variant">Manage your properties and guest interactions. <span className="text-amber-600 font-medium">Ideal Stay coordinates the booking flow, but accommodation payments are collected directly by you.</span></p>
         </header>
-        <Button className="w-full sm:w-auto" onClick={() => navigate('/host/create-listing')}>
-          <Plus className="w-4 h-4 mr-2" /> Add New Listing
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button variant="outline" className="w-full sm:w-auto" onClick={() => navigate('/host/onboarding')}>
+            <BadgeCheck className="w-4 h-4 mr-2" /> Start Tutorial
+          </Button>
+          <Button className="w-full sm:w-auto" onClick={() => navigate('/host/create-listing')}>
+            <Plus className="w-4 h-4 mr-2" /> Add New Listing
+          </Button>
+        </div>
       </div>
+
+      <Card className="border-primary/20 bg-primary/5 p-5 sm:p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <h2 className="text-lg font-bold">New host tutorial</h2>
+            <p className="max-w-3xl text-sm leading-6 text-on-surface-variant">
+              Set up banking details, quick replies, listing basics, availability, and enquiry handling before the first serious guest message arrives.
+            </p>
+          </div>
+          <Button variant="outline" className="shrink-0 rounded-full" onClick={() => navigate('/host/onboarding')}>
+            Open tutorial <ArrowRight className="w-4 h-4 ml-2" />
+          </Button>
+        </div>
+      </Card>
 
       {/* Key Metrics */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

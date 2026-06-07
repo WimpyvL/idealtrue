@@ -22,6 +22,7 @@ import {
   Images,
   MessageSquareText,
   CreditCard,
+  BadgeCheck,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
@@ -54,6 +55,7 @@ export default function HostLayout() {
       icon: Building2,
       items: [
         { name: 'Dashboard', path: '/host', icon: LayoutDashboard },
+        { name: 'Onboarding', path: '/host/onboarding', icon: BadgeCheck },
         { name: 'Inbox', path: '/host/inbox', icon: MessageSquare },
         { name: 'Quick Replies', path: '/host/quick-replies', icon: MessageSquareText },
         { name: 'Enquiries', path: '/host/enquiries', icon: ClipboardList },

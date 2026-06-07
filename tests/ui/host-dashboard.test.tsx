@@ -229,4 +229,24 @@ describe('HostDashboard', () => {
     expect(screen.queryByRole('heading', { name: 'Subscription Management' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Set Up Billing Card' })).not.toBeInTheDocument();
   });
+
+  it('links new hosts to the onboarding tutorial from the host overview', () => {
+    render(
+      <MemoryRouter>
+        <HostDashboard
+          profile={profile}
+          listings={[listing]}
+          bookings={[]}
+          onUpgrade={vi.fn()}
+          onChat={vi.fn()}
+          onBookingUpdated={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('heading', { name: 'New host tutorial' })).toBeInTheDocument();
+    expect(screen.getByText(/Set up banking details, quick replies/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start tutorial/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /open tutorial/i })).toBeInTheDocument();
+  });
 });
