@@ -13,6 +13,7 @@ import {
   type HostPlan,
 } from '../src/lib/billing-client';
 import { workflowBilling } from './fixtures/workflows';
+import { buildBillingPaymentReturnUrl, buildPricingPaymentReturnUrl } from '../encore/billing/payment-return.ts';
 
 type FetchCall = {
   url: string;
@@ -238,6 +239,17 @@ test('billing return params only accept known statuses with a payment or checkou
   });
   assert.equal(parseBillingReturnParams(new URLSearchParams('billing_status=weird&payment_id=payment-1')), null);
   assert.equal(parseBillingReturnParams(new URLSearchParams('billing_status=success')), null);
+});
+
+test('payment success URLs route through backend reconciliation before returning to pricing', () => {
+  assert.equal(
+    buildBillingPaymentReturnUrl('https://www.idealstay.co.za/', 'payment 123', 'success'),
+    'https://www.idealstay.co.za/api/encore/billing/payments/payment%20123/return?billingStatus=success',
+  );
+  assert.equal(
+    buildPricingPaymentReturnUrl('https://www.idealstay.co.za/', 'payment 123', 'success'),
+    'https://www.idealstay.co.za/pricing?billing_status=success&payment_id=payment+123',
+  );
 });
 
 test('accepted Yoco webhook events classify into fulfilment-safe billing outcomes', () => {

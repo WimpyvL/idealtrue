@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { billingDB } from "./db";
 import { generateListingDraftWithFallback } from "./gemini";
 import { classifyYocoWebhookOutcome, resolveYocoWebhookCheckoutId } from "./webhook-classification";
+import { buildBillingPaymentReturnUrl, buildPricingPaymentReturnUrl } from "./payment-return";
 import { toMinorUnits } from "./pricing";
 import { catalogDB } from "../catalog/db";
 import { identityDB } from "../identity/db";
@@ -508,6 +509,12 @@ function toFulfillableCheckoutSession(session: CheckoutSessionRow): FulfillableB
   };
 }
 
+function redirectRaw(resp: ServerResponse, location: string) {
+  resp.statusCode = 303;
+  resp.setHeader("Location", location);
+  resp.end();
+}
+
 function toFulfillablePaymentIntent(intent: PaymentIntentRow): FulfillableBillingSession {
   return {
     id: intent.id,
@@ -608,7 +615,7 @@ async function createBillingPaymentIntent(params: {
   const yoco = await createYocoCheckout({
     amount: toMinorUnits(params.amount),
     currency: "ZAR",
-    successUrl: urls.successUrl.replace(/checkout_id=[^&]*/, `payment_id=${encodeURIComponent(intent.intentId)}`),
+    successUrl: buildBillingPaymentReturnUrl(getAppUrl(), intent.intentId, "success"),
     cancelUrl: urls.cancelUrl.replace(/checkout_id=[^&]*/, `payment_id=${encodeURIComponent(intent.intentId)}`),
     failureUrl: urls.failureUrl.replace(/checkout_id=[^&]*/, `payment_id=${encodeURIComponent(intent.intentId)}`),
     idempotencyKey: intent.intentId,
@@ -1410,6 +1417,32 @@ export const getBillingPaymentStatus = api<{ paymentId: string; billingStatus?: 
       purpose: resolvedIntent.purpose,
       providerMode: resolvedIntent.provider_mode,
     };
+  },
+);
+
+export const billingPaymentReturn = api.raw(
+  { expose: true, method: "GET", path: "/billing/payments/:paymentId/return" },
+  async (req: IncomingMessage, resp: ServerResponse) => {
+    const url = new URL(req.url ?? "/", getAppUrl());
+    const match = url.pathname.match(/\/billing\/payments\/([^/]+)\/return$/);
+    const paymentId = match ? decodeURIComponent(match[1]) : "";
+    const billingStatus = url.searchParams.get("billingStatus") ?? "failed";
+    const safeStatus = billingStatus === "success" || billingStatus === "cancelled" || billingStatus === "failed"
+      ? billingStatus
+      : "failed";
+
+    try {
+      if (paymentId) {
+        const intent = await getPaymentIntentById(paymentId);
+        if (intent) {
+          await reconcilePendingPaymentIntent(intent, safeStatus);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to reconcile billing payment return:", error);
+    }
+
+    redirectRaw(resp, buildPricingPaymentReturnUrl(getAppUrl(), paymentId, safeStatus));
   },
 );
 
