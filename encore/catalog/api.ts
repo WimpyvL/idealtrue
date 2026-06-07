@@ -632,9 +632,6 @@ async function insertManualAvailabilityBlocks(listingId: string, manualBlocks: L
 async function ensureListingAvailabilityHydrated(row: ListingRow) {
   try {
     const existingBlocks = await listAvailabilityBlockInputs(row.id);
-    if (existingBlocks.length > 0) {
-      return existingBlocks;
-    }
 
     const bookingRows = await bookingDB.rawQueryAll<BookingAvailabilityRow>(
       `
@@ -649,8 +646,13 @@ async function ensureListingAvailabilityHydrated(row: ListingRow) {
       row.id,
     );
 
-    if (bookingRows.length === 0 && (row.blocked_dates ?? []).length === 0) {
-      return [];
+    if (bookingRows.length === 0) {
+      if (existingBlocks.length > 0) {
+        return existingBlocks;
+      }
+      if ((row.blocked_dates ?? []).length === 0) {
+        return [];
+      }
     }
 
     const bookingEntries: BookingAvailabilitySnapshotItem[] = bookingRows.map((booking) => ({
@@ -672,6 +674,7 @@ async function ensureListingAvailabilityHydrated(row: ListingRow) {
     }
 
     if (bookingEntries.length > 0) {
+      // (|/) Klaasvaakie - marketplace reads must refresh booking-owned blocks even when manual blocks already exist.
       await replaceBookingAvailabilityBlocks(row.id, bookingEntries);
     }
 
