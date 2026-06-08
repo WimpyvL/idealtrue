@@ -1,9 +1,8 @@
 import * as React from "react";
-import useEmblaCarousel, { type UseEmblaCarouselType } from "embla-carousel-react";
+import useEmblaCarousel from "embla-carousel-react";
 import { cn } from "@/lib/utils";
 import { Button } from "./button";
 
-type CarouselApi = UseEmblaCarouselType[1];
 type UseCarouselParameters = Parameters<typeof useEmblaCarousel>;
 type CarouselOptions = UseCarouselParameters[0];
 type CarouselPlugin = UseCarouselParameters[1];
@@ -17,7 +16,7 @@ interface CarouselProps {
 
 export const Carousel = React.forwardRef<HTMLDivElement, CarouselProps>(
   ({ opts, plugins, className, children, ...props }, ref) => {
-    const [emblaRef, api] = useEmblaCarousel(opts, plugins);
+    const [emblaRef] = useEmblaCarousel(opts, plugins);
     return (
       <div ref={ref} className={cn("relative", className)} {...props}>
         <div ref={emblaRef} className="overflow-hidden">

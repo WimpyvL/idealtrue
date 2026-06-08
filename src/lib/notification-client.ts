@@ -1,4 +1,3 @@
-import type { Notification } from '@/types';
 import { encoreRequest } from './encore-client';
 import { mapEncoreNotification, type EncoreNotification } from './domain-mappers';
 

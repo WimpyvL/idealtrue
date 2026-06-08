@@ -16,6 +16,243 @@ import type {
   UserProfile,
   UserRole,
 } from '@/types';
+import { z } from 'zod';
+
+const userRoleSchema = z.enum(['host', 'guest', 'admin', 'support']);
+const referralTierSchema = z.enum(['bronze', 'silver', 'gold']);
+const kycStatusSchema = z.enum(['none', 'pending', 'verified', 'rejected']);
+const hostPlanSchema = z.enum(['standard', 'professional', 'premium']);
+const hostManagementModeSchema = z.enum(['self_service', 'managed']);
+const accountStatusSchema = z.enum(['active', 'suspended', 'deactivated']);
+const listingStatusSchema = z.enum(['draft', 'pending', 'active', 'inactive', 'rejected', 'archived']);
+const inquiryStateSchema = z.enum(['PENDING', 'VIEWED', 'RESPONDED', 'APPROVED', 'DECLINED', 'EXPIRED', 'BOOKED']);
+const paymentStateSchema = z.enum(['UNPAID', 'INITIATED', 'COMPLETED', 'FAILED']);
+const declineReasonSchema = z.enum(['DATES_UNAVAILABLE', 'GUEST_COUNT_NOT_SUPPORTED', 'BOOKING_REQUIREMENTS_NOT_MET', 'HOST_UNAVAILABLE', 'OTHER']);
+const availabilityBlockSourceSchema = z.enum(['MANUAL', 'APPROVED_HOLD', 'BOOKED']);
+const notificationTypeSchema = z.enum(['info', 'warning', 'success', 'error']);
+const subscriptionStatusSchema = z.enum(['active', 'expired', 'cancelled']);
+const referralTriggerSchema = z.enum(['signup', 'booking', 'subscription']);
+const referralProgramSchema = z.enum(['guest', 'host']);
+const referralRewardStatusSchema = z.enum(['pending', 'earned', 'paid', 'rejected']);
+
+const nullableStringSchema = z.string().nullable().optional();
+
+const listingAvailabilityBlockSchema = z.object({
+  id: z.string().min(1),
+  listingId: z.string().min(1),
+  sourceType: availabilityBlockSourceSchema,
+  sourceId: z.string().min(1),
+  startsOn: z.string().min(1),
+  endsOn: z.string().min(1),
+  nights: z.array(z.string()),
+  note: nullableStringSchema,
+  bookingId: nullableStringSchema,
+  createdAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+});
+
+const listingSettlementProfileSchema = z.object({
+  listingId: z.string().min(1),
+  paymentMethod: nullableStringSchema,
+  paymentInstructions: nullableStringSchema,
+  paymentReferencePrefix: nullableStringSchema,
+  updatedAt: z.string().min(1),
+});
+
+export const encoreUserSchema = z.object({
+  id: z.string().min(1),
+  email: z.string().min(1),
+  emailVerified: z.boolean(),
+  displayName: z.string().min(1),
+  photoUrl: nullableStringSchema,
+  role: userRoleSchema,
+  isAdmin: z.boolean().optional().default(false),
+  hostPlan: hostPlanSchema,
+  managementMode: hostManagementModeSchema.optional().default('self_service'),
+  kycStatus: kycStatusSchema,
+  accountStatus: accountStatusSchema.optional().default('active'),
+  accountStatusReason: nullableStringSchema,
+  accountStatusChangedAt: nullableStringSchema,
+  accountStatusChangedBy: nullableStringSchema,
+  balance: z.number(),
+  referralCount: z.number(),
+  tier: referralTierSchema,
+  referralCode: nullableStringSchema,
+  referredByCode: nullableStringSchema,
+  paymentMethod: nullableStringSchema,
+  paymentInstructions: nullableStringSchema,
+  paymentReferencePrefix: nullableStringSchema,
+  createdAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+});
+
+export const encoreLeaderboardUserSchema = z.object({
+  id: z.string().min(1),
+  displayName: z.string().min(1),
+  photoUrl: nullableStringSchema,
+  tier: referralTierSchema,
+  referralCount: z.number(),
+});
+
+export const encoreListingSchema = z.object({
+  id: z.string().min(1),
+  hostId: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string(),
+  location: z.string().min(1),
+  area: nullableStringSchema,
+  province: nullableStringSchema,
+  category: z.string().min(1),
+  type: z.string().min(1),
+  pricePerNight: z.number(),
+  discountPercent: z.number(),
+  breakageDeposit: z.number().nullable().optional(),
+  adults: z.number(),
+  children: z.number(),
+  bedrooms: z.number(),
+  bathrooms: z.number(),
+  amenities: z.array(z.string()),
+  facilities: z.array(z.string()),
+  restaurantOffers: z.array(z.string()),
+  images: z.array(z.string()),
+  videoUrl: nullableStringSchema,
+  isSelfCatering: z.boolean(),
+  hasRestaurant: z.boolean(),
+  isOccupied: z.boolean(),
+  latitude: z.number().nullable().optional(),
+  longitude: z.number().nullable().optional(),
+  blockedDates: z.array(z.string()).optional(),
+  manualBlockedDates: z.array(z.string()).optional(),
+  availabilityBlocks: z.array(listingAvailabilityBlockSchema).optional(),
+  settlementProfile: listingSettlementProfileSchema.nullable().optional(),
+  status: listingStatusSchema,
+  rejectionReason: nullableStringSchema,
+  createdAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+});
+
+export const encoreListingAvailabilitySummarySchema = z.object({
+  listingId: z.string().min(1),
+  manualBlockCount: z.number(),
+  manualBlockedDates: z.array(z.string()),
+  lockedDates: z.array(z.string()),
+  upcomingBlocks: z.array(listingAvailabilityBlockSchema),
+});
+
+export const encoreBookingSchema = z.object({
+  id: z.string().min(1),
+  listingId: z.string().min(1),
+  guestId: z.string().min(1),
+  hostId: z.string().min(1),
+  checkIn: z.string().min(1),
+  checkOut: z.string().min(1),
+  adults: z.number(),
+  children: z.number(),
+  totalPrice: z.number(),
+  breakageDeposit: z.number().nullable().optional(),
+  inquiryState: inquiryStateSchema,
+  paymentState: paymentStateSchema,
+  paymentMethod: nullableStringSchema,
+  paymentInstructions: nullableStringSchema,
+  paymentReference: nullableStringSchema,
+  paymentProofAccessible: z.boolean().optional(),
+  paymentProofAccessUrl: nullableStringSchema,
+  declineReason: declineReasonSchema.nullable().optional(),
+  declineReasonNote: nullableStringSchema,
+  viewedAt: nullableStringSchema,
+  respondedAt: nullableStringSchema,
+  paymentUnlockedAt: nullableStringSchema,
+  paymentSubmittedAt: nullableStringSchema,
+  paymentConfirmedAt: nullableStringSchema,
+  expiresAt: nullableStringSchema,
+  bookedAt: nullableStringSchema,
+  createdAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+});
+
+export const encoreReviewSchema = z.object({
+  id: z.string().min(1),
+  listingId: z.string().min(1),
+  bookingId: z.string().min(1).optional(),
+  guestId: z.string().min(1),
+  hostId: z.string().min(1),
+  cleanliness: z.number(),
+  accuracy: z.number(),
+  communication: z.number(),
+  location: z.number(),
+  value: z.number(),
+  comment: z.string(),
+  status: z.enum(['pending', 'approved', 'rejected']).optional(),
+  createdAt: z.string().min(1),
+});
+
+export const encoreReferralRewardSchema = z.object({
+  id: z.string().min(1),
+  referrerId: z.string().min(1),
+  referredUserId: z.string().min(1),
+  trigger: referralTriggerSchema,
+  program: referralProgramSchema.optional(),
+  amount: z.number(),
+  status: referralRewardStatusSchema,
+  createdAt: z.string().min(1),
+});
+
+export const encoreNotificationSchema = z.object({
+  id: z.string().min(1),
+  title: z.string(),
+  message: z.string(),
+  type: notificationTypeSchema,
+  target: z.string().min(1),
+  actionPath: nullableStringSchema,
+  readAt: nullableStringSchema,
+  createdAt: z.string().min(1),
+});
+
+export const encorePlatformSettingsSchema = z.object({
+  id: z.literal('global').optional().default('global'),
+  referralRewardAmount: z.number().optional().default(0),
+  commissionRate: z.number().optional().default(0),
+  minWithdrawalAmount: z.number().optional().default(0),
+  platformName: z.string().min(1).optional().default('Ideal Stay'),
+  supportEmail: z.string().min(1),
+  cancellationPolicyDays: z.number().optional().default(0),
+  maxGuestsPerListing: z.number().optional().default(0),
+  enableReviews: z.boolean().optional().default(true),
+  enableReferrals: z.boolean().optional().default(true),
+  maintenanceMode: z.boolean(),
+  updatedAt: z.string().min(1).optional().default('1970-01-01T00:00:00.000Z'),
+});
+
+export const encoreSubscriptionSchema = z.object({
+  id: z.string().min(1),
+  user_id: z.string().min(1),
+  plan: hostPlanSchema,
+  status: subscriptionStatusSchema,
+  amount: z.number(),
+  billing_interval: z.enum(['monthly', 'annual']),
+  starts_at: z.string().min(1),
+  ends_at: z.string().min(1),
+  created_at: z.string().min(1),
+});
+
+function parseDomainContract<T>(schema: z.ZodSchema<T>, value: unknown, message: string): T {
+  const parsed = schema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(message);
+  }
+  return parsed.data;
+}
+
+export const parseEncoreUser = (value: unknown) => parseDomainContract(encoreUserSchema, value, 'Identity user response was invalid.');
+export const parseEncoreLeaderboardUser = (value: unknown) => parseDomainContract(encoreLeaderboardUserSchema, value, 'Referral leaderboard response was invalid.');
+export const parseEncoreListing = (value: unknown) => parseDomainContract(encoreListingSchema, value, 'Listing response was invalid.');
+export const parseEncoreListingAvailabilitySummary = (value: unknown) => parseDomainContract(encoreListingAvailabilitySummarySchema, value, 'Listing availability response was invalid.');
+export const parseEncoreBooking = (value: unknown) => parseDomainContract(encoreBookingSchema, value, 'Booking response was invalid.');
+export const parseEncoreReview = (value: unknown) => parseDomainContract(encoreReviewSchema, value, 'Review response was invalid.');
+export const parseEncoreReferralReward = (value: unknown) => parseDomainContract(encoreReferralRewardSchema, value, 'Referral reward response was invalid.');
+export const parseEncoreSubscription = (value: unknown) => parseDomainContract(encoreSubscriptionSchema, value, 'Subscription response was invalid.');
+export const parseEncoreNotification = (value: unknown) => parseDomainContract(encoreNotificationSchema, value, 'Notification response was invalid.');
+export const parseEncorePlatformSettings = (value: unknown) => parseDomainContract(encorePlatformSettingsSchema, value, 'Platform settings response was invalid.');
 
 export interface EncoreUser {
   id: string;
@@ -131,7 +368,7 @@ export interface EncoreBooking {
 export interface EncoreReview {
   id: string;
   listingId: string;
-  bookingId: string;
+  bookingId?: string;
   guestId: string;
   hostId: string;
   cleanliness: number;

@@ -16,6 +16,8 @@ interface KYCModalProps {
   onClose: () => void;
 }
 
+type KycIdType = 'id_card' | 'passport' | 'drivers_license';
+
 export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
   const { user, profile, refreshProfile } = useAuth();
   const { toast } = useToast();
@@ -24,7 +26,7 @@ export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
   const [showSubmissionForm, setShowSubmissionForm] = useState(false);
   const [formData, setFormData] = useState({
     idNumber: '',
-    idType: 'id_card' as 'id_card' | 'passport' | 'drivers_license',
+    idType: 'id_card' as KycIdType,
     idImage: null as string | null,
     selfieImage: null as string | null,
   });
@@ -299,7 +301,7 @@ export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
                 <Label htmlFor="idType">Document Type</Label>
                 <Select 
                   value={formData.idType} 
-                  onValueChange={(v: any) => setFormData(prev => ({ ...prev, idType: v }))}
+                  onValueChange={(v) => setFormData(prev => ({ ...prev, idType: v as KycIdType }))}
                 >
                   <SelectTrigger className="h-12 rounded-xl">
                     <SelectValue placeholder="Select ID type" />

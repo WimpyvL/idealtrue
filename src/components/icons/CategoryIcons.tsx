@@ -1,7 +1,6 @@
 import { 
   Home, 
   Building2, 
-  Bed, 
   Trees, 
   Wine, 
   Palmtree, 
@@ -15,16 +14,10 @@ import {
   MapPin,
   Tent,
   Castle,
-  Palette,
-  Snowflake,
-  Sun,
-  Droplets,
-  Wind,
-  Camera,
-  Utensils
+  type LucideIcon
 } from "lucide-react";
 
-export const CATEGORY_ICONS: Record<string, any> = {
+export const CATEGORY_ICONS: Record<string, LucideIcon> = {
   hotels_resorts: Building2,
   guesthouse_bnb: Home,
   safari_bush: Trees,

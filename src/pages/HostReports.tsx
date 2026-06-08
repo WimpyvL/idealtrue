@@ -15,8 +15,6 @@ export default function HostReports({ bookings, listings }: { bookings: Booking[
   const confirmedBookings = bookings.filter(isBookedStay);
   
   const totalRevenue = confirmedBookings.reduce((sum, b) => sum + b.totalPrice, 0);
-  const totalGuests = confirmedBookings.length; // Simplified, assuming 1 guest per booking for now
-  
   // Last 30 days revenue
   const thirtyDaysAgo = subDays(new Date(), 30);
   const recentBookings = confirmedBookings.filter((b) => isAfter(new Date(getBookingRevenueDate(b)), thirtyDaysAgo));

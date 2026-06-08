@@ -281,7 +281,7 @@ export default function AdminDashboard() {
         pendingReviews: allReviews.filter((review) => review.id !== reviewId && review.status === 'pending').length,
       }));
       toast({ title: 'Review Deleted', description: 'Review has been removed.' });
-    } catch (error) {
+    } catch (_error) {
       toast({ title: 'Review delete failed', description: 'Could not delete the review.', variant: 'destructive' });
     }
   };
@@ -291,7 +291,7 @@ export default function AdminDashboard() {
       await deleteAdminReferralReward(referralId);
       setAllReferrals((current) => current.filter((referral) => referral.id !== referralId));
       toast({ title: 'Referral Deleted', description: 'Referral record has been removed.' });
-    } catch (error) {
+    } catch (_error) {
       toast({ title: 'Referral delete failed', description: 'Could not remove the referral.', variant: 'destructive' });
     }
   };
@@ -313,7 +313,7 @@ export default function AdminDashboard() {
       });
       setAllNotifications((current) => [notification, ...current]);
       toast({ title: 'Notification Sent', description: `Message sent to ${target} successfully.` });
-    } catch (error) {
+    } catch (_error) {
       toast({ title: 'Notification failed', description: 'Could not send the notification.', variant: 'destructive' });
     }
   };
@@ -323,7 +323,7 @@ export default function AdminDashboard() {
       await deleteAdminNotification(notificationId);
       setAllNotifications((current) => current.filter((notification) => notification.id !== notificationId));
       toast({ title: 'Notification Deleted', description: 'Notification has been removed.' });
-    } catch (error) {
+    } catch (_error) {
       toast({ title: 'Notification delete failed', description: 'Could not remove the notification.', variant: 'destructive' });
     }
   };
@@ -351,7 +351,7 @@ export default function AdminDashboard() {
       setAllNotifications((current) => [notification, ...current]);
       toast({ title: 'User Updated', description: 'User profile updated and notification sent.' });
       setEditingUser(null);
-    } catch (error) {
+    } catch (_error) {
       toast({ title: 'User update failed', description: 'Could not update the user.', variant: 'destructive' });
     }
   };
@@ -378,7 +378,7 @@ export default function AdminDashboard() {
       setAllNotifications((current) => [notification, ...current]);
       toast({ title: 'Listing Updated', description: 'Listing updated and notification sent.' });
       setEditingListing(null);
-    } catch (error) {
+    } catch (_error) {
       toast({ title: 'Listing update failed', description: 'Could not update the listing.', variant: 'destructive' });
     }
   };
@@ -477,7 +477,7 @@ export default function AdminDashboard() {
       });
       setAllReferrals((current) => [referral, ...current]);
       toast({ title: 'Success', description: 'Manual referral created successfully.' });
-    } catch (error) {
+    } catch (_error) {
       toast({ title: 'Referral failed', description: 'Could not create the referral.', variant: 'destructive' });
     }
   };

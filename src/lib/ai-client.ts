@@ -49,7 +49,9 @@ async function requestAi<T>(path: string, payload: unknown): Promise<T> {
     try {
       const parsed = JSON.parse(body) as { error?: string };
       parsedError = parsed.error || '';
-    } catch {}
+    } catch {
+      // Fall back to the raw provider body when it is not valid JSON.
+    }
 
     throw new Error(parsedError || body);
   }

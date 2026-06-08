@@ -13,6 +13,7 @@ test("staging smoke workflow exists and keeps the required release gates", () =>
   for (const snippet of [
     'cron: "17 3 * * *"',
     'npm run check:staging-smoke-env',
+    'npm run check:drift',
     'npm ci',
     'working-directory: encore',
     'npm run test:e2e',

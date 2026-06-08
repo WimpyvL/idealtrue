@@ -1,0 +1,26 @@
+{
+  "$schema": "https://unpkg.com/knip/schema.json",
+  "entry": [
+    "server.ts",
+    "api/**/*.js",
+    "lib/server/**/*.js",
+    "scripts/**/*.mjs",
+    "tests/**/*.ts",
+    "tests/**/*.tsx",
+    "encore/**/api.ts",
+    "encore/**/encore.service.ts",
+    "encore/**/service.ts",
+    "encore/**/subscriptions.ts"
+  ],
+  "project": [
+    "api/**/*.js",
+    "lib/**/*.js",
+    "scripts/**/*.mjs",
+    "src/**/*.{ts,tsx}",
+    "tests/**/*.{ts,tsx}",
+    "encore/**/*.ts"
+  ],
+  "ignore": [
+    "encore/encore.gen/**"
+  ]
+}

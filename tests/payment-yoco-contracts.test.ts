@@ -149,7 +149,6 @@ test('standard billing payment client creates all new Yoco payments through one 
 test('managed hosting checkout client creates a managed-hosting Yoco payment', async () => {
   installFetch((url) => {
     if (url.endsWith('/billing/payments')) {
-      const body = requestBody(fetchCalls.length - 1);
       return createJsonResponse({
         paymentId: 'payment-managed-hosting-1',
         provider: 'yoco',

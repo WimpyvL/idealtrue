@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Listing } from "@/types";
-import { Star, Heart } from "lucide-react";
+import { Heart } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "./ui/use-toast";
 import { cn } from "@/lib/utils";

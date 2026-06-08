@@ -431,7 +431,7 @@ async function mapBookingAccessRecord(row: BookingRow): Promise<BookingRecord> {
   try {
     paymentProofAccessUrl = await resolvePaymentProofUrl(row);
   } catch {
-    paymentProofAccessUrl = null;
+    // The booking can still be shown when evidence signing is temporarily unavailable.
   }
 
   return {

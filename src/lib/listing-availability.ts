@@ -1,4 +1,4 @@
-import type { Listing, ListingAvailabilityBlock } from '@/types';
+import type { Listing } from '@/types';
 
 function normalizeDateOnly(value: Date | string) {
   if (value instanceof Date) {

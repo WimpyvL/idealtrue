@@ -23,7 +23,6 @@ import { format, formatDistanceToNowStrict } from 'date-fns';
 import { formatRand } from '@/lib/currency';
 import {
   getInquiryBadgeLabel,
-  getInquiryDeclineReasonDetail,
   getInquiryDeadlineState,
   getInquiryDeadlineUrgency,
   groupHostInquiries,

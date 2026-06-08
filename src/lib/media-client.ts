@@ -1,4 +1,4 @@
-import { encoreFetch, encoreRequest } from './encore-client';
+import { encoreRequest } from './encore-client';
 
 export interface SerializedImageAsset {
   filename: string;
@@ -44,13 +44,6 @@ function loadImage(src: string) {
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error('Could not load image.'));
     image.src = src;
-  });
-}
-
-async function compressImage(file: File) {
-  return compressImageFile(file, {
-    maxDimension: 1800,
-    maxBytes: Math.round(1.6 * 1024 * 1024),
   });
 }
 

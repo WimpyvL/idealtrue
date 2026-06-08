@@ -1,6 +1,14 @@
 import { encoreRequest } from './encore-client';
 import type { UserProfile } from '@/types';
-import { mapEncoreLeaderboardUser, mapEncoreUserToProfile, type EncoreLeaderboardUser, type EncoreUser, type LeaderboardUser } from './domain-mappers';
+import {
+  mapEncoreLeaderboardUser,
+  mapEncoreUserToProfile,
+  parseEncoreLeaderboardUser,
+  parseEncoreUser,
+  type EncoreLeaderboardUser,
+  type EncoreUser,
+  type LeaderboardUser,
+} from './domain-mappers';
 import { serializeImageFile } from './media-client';
 
 export type { LeaderboardUser } from './domain-mappers';
@@ -52,7 +60,7 @@ interface UpdateEncoreProfileParams {
 }
 
 async function storeSessionResponse(response: { user: EncoreUser }) {
-  return mapEncoreUserToProfile(response.user);
+  return mapEncoreUserToProfile(parseEncoreUser(response.user));
 }
 
 export async function signUpWithPassword(params: SignupParams) {
@@ -144,7 +152,7 @@ export async function verifyEmailToken(token: string) {
 
 export async function getEncoreSessionProfile() {
   const response = await encoreRequest<{ user: EncoreUser }>('/auth/session', {}, { auth: true });
-  return mapEncoreUserToProfile(response.user);
+  return mapEncoreUserToProfile(parseEncoreUser(response.user));
 }
 
 export async function updateEncoreProfile(params: UpdateEncoreProfileParams): Promise<UserProfile> {
@@ -157,12 +165,12 @@ export async function updateEncoreProfile(params: UpdateEncoreProfileParams): Pr
     { auth: true },
   );
 
-  return mapEncoreUserToProfile(response.user);
+  return mapEncoreUserToProfile(parseEncoreUser(response.user));
 }
 
 export async function listReferralLeaderboard(): Promise<LeaderboardUser[]> {
   const response = await encoreRequest<{ users: EncoreLeaderboardUser[] }>('/users/leaderboard/referrals');
-  return response.users.map(mapEncoreLeaderboardUser);
+  return response.users.map((user) => mapEncoreLeaderboardUser(parseEncoreLeaderboardUser(user)));
 }
 
 export async function setUserKycStatus(params: { userId: string; kycStatus: EncoreKycStatus }) {
@@ -174,7 +182,7 @@ export async function setUserKycStatus(params: { userId: string; kycStatus: Enco
     },
     { auth: true },
   );
-  return mapEncoreUserToProfile(response.user);
+  return mapEncoreUserToProfile(parseEncoreUser(response.user));
 }
 
 export async function requestProfilePhotoUpload(filename: string) {

@@ -147,7 +147,7 @@ export default function SearchFilterBar({ onChange, onModeChange, onSendMessage,
       const listingSuggestions: { label: string; type: "listing"; icon: LucideIcon; listingId: string; blockedDates: string[] }[] = [];
       const provinces = new Set<string>();
 
-      (data || []).forEach((p: any) => {
+      data.forEach((p: Listing) => {
         if (p.title) {
           listingSuggestions.push({
             label: p.title,

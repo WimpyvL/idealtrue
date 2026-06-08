@@ -17,6 +17,7 @@ on:
       - ".github/workflows/staging-smoke.yml"
       - "package.json"
       - "package-lock.json"
+      - "knip.json"
       - "server.ts"
       - "scripts/**"
       - "src/**"
@@ -56,6 +57,9 @@ jobs:
 
       - name: Lint frontend
         run: npm run lint
+
+      - name: Check stale file drift
+        run: npm run check:drift
 
       - name: Run frontend unit and UI tests
         run: npm run test

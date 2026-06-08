@@ -134,7 +134,7 @@ describe('useAdminDashboardData', () => {
               trigger: 'subscription',
               program: 'host',
               amount: 50,
-              status: 'confirmed',
+              status: 'paid',
               createdAt: '2026-04-03T10:00:00.000Z',
             },
           ],

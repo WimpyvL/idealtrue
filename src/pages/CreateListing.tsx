@@ -14,15 +14,7 @@ import {
   MapPin,
   Loader2,
   Lock,
-  Instagram,
-  Facebook,
-  Twitter,
-  Linkedin,
-  X,
   ShieldAlert,
-  ShieldCheck,
-  Clock,
-  AlertCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getListing, getMyListingQuota, saveListing } from "@/lib/platform-client";
@@ -31,7 +23,6 @@ import { useToast } from "@/components/ui/use-toast";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { geocodeAddress } from "@/lib/geocoding";
 import { getErrorMessage } from "@/lib/errors";
-import { Listing } from "@/types";
 import KYCModal from "@/components/KYCModal";
 import { useEffectiveKycStatus } from "@/hooks/use-effective-kyc-status";
 import GoogleCoordinatePicker from "@/components/GoogleCoordinatePicker";

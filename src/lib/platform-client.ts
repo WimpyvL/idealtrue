@@ -4,7 +4,6 @@ import type {
   Booking,
   BookingOpsSummary,
   InquiryDeclineReason,
-  Listing,
   ListingAvailabilityManualBlockInput,
   ListingAvailabilitySummary,
   PaymentDispute,
@@ -18,6 +17,11 @@ import {
   mapEncoreListingAvailabilitySummary,
   mapEncoreReferralReward,
   mapEncoreReview,
+  parseEncoreBooking,
+  parseEncoreListing,
+  parseEncoreListingAvailabilitySummary,
+  parseEncoreReferralReward,
+  parseEncoreReview,
   type EncoreBooking,
   type EncoreListing,
   type EncoreListingAvailabilitySummary,
@@ -25,7 +29,6 @@ import {
   type EncoreReview,
   type SaveListingInput,
   toEncoreListingPayload,
-  mapReferralStatus,
 } from './domain-mappers';
 
 export type { SaveListingInput } from './domain-mappers';
@@ -40,12 +43,12 @@ interface EncoreHostListingQuota {
 
 export async function listPublicListings() {
   const response = await encoreRequest<{ listings: EncoreListing[] }>('/listings?status=active');
-  return response.listings.map(mapEncoreListing);
+  return response.listings.map((listing) => mapEncoreListing(parseEncoreListing(listing)));
 }
 
 export async function getListing(id: string) {
   const response = await encoreRequest<{ listing: EncoreListing }>(`/listings/${id}`, {}, { auth: true });
-  return mapEncoreListing(response.listing);
+  return mapEncoreListing(parseEncoreListing(response.listing));
 }
 
 export async function listHostListings(hostId: string) {
@@ -54,7 +57,7 @@ export async function listHostListings(hostId: string) {
     {},
     { auth: true },
   );
-  return response.listings.map(mapEncoreListing);
+  return response.listings.map((listing) => mapEncoreListing(parseEncoreListing(listing)));
 }
 
 export async function getMyListingQuota() {
@@ -75,7 +78,7 @@ export async function updateListingBlockedDates(listingId: string, blockedDates:
     },
     { auth: true },
   );
-  return mapEncoreListing(response.listing);
+  return mapEncoreListing(parseEncoreListing(response.listing));
 }
 
 export function isEncoreEndpointNotFound(error: unknown) {
@@ -97,8 +100,8 @@ export async function updateListingAvailabilityBlocks(listingId: string, manualB
   );
 
   return {
-    listing: mapEncoreListing(response.listing),
-    summary: mapEncoreListingAvailabilitySummary(response.summary),
+    listing: mapEncoreListing(parseEncoreListing(response.listing)),
+    summary: mapEncoreListingAvailabilitySummary(parseEncoreListingAvailabilitySummary(response.summary)),
   };
 }
 
@@ -108,7 +111,7 @@ export async function getListingAvailabilitySummary(listingId: string): Promise<
     {},
     { auth: true },
   );
-  return mapEncoreListingAvailabilitySummary(response.summary);
+  return mapEncoreListingAvailabilitySummary(parseEncoreListingAvailabilitySummary(response.summary));
 }
 
 export async function saveListing(input: SaveListingInput) {
@@ -121,7 +124,7 @@ export async function saveListing(input: SaveListingInput) {
     { auth: true },
   );
 
-  return mapEncoreListing(response.listing);
+  return mapEncoreListing(parseEncoreListing(response.listing));
 }
 
 export async function deleteListing(id: string) {
@@ -136,7 +139,7 @@ export async function deleteListing(id: string) {
 
 export async function listMyBookings() {
   const response = await encoreRequest<{ bookings: EncoreBooking[] }>('/bookings/me', {}, { auth: true });
-  return response.bookings.map(mapEncoreBooking);
+  return response.bookings.map((booking) => mapEncoreBooking(parseEncoreBooking(booking)));
 }
 
 export async function getBookingOpsSummary(id: string): Promise<BookingOpsSummary> {
@@ -195,7 +198,7 @@ export async function resolvePaymentDispute(params: {
 
   return {
     dispute: response.dispute,
-    booking: mapEncoreBooking(response.booking),
+    booking: mapEncoreBooking(parseEncoreBooking(response.booking)),
   };
 }
 
@@ -218,7 +221,7 @@ export async function createBooking(params: {
     { auth: true },
   );
 
-  return mapEncoreBooking(response.booking);
+  return mapEncoreBooking(parseEncoreBooking(response.booking));
 }
 
 export async function updateBookingStatus(
@@ -243,7 +246,7 @@ export async function updateBookingStatus(
     { auth: true },
   );
 
-  return mapEncoreBooking(response.booking);
+  return mapEncoreBooking(parseEncoreBooking(response.booking));
 }
 
 export async function markInquiryViewed(id: string) {
@@ -256,7 +259,7 @@ export async function markInquiryViewed(id: string) {
     { auth: true },
   );
 
-  return mapEncoreBooking(response.booking);
+  return mapEncoreBooking(parseEncoreBooking(response.booking));
 }
 
 export async function submitPaymentProof(params: {
@@ -278,7 +281,7 @@ export async function submitPaymentProof(params: {
     { auth: true },
   );
 
-  return mapEncoreBooking(response.booking);
+  return mapEncoreBooking(parseEncoreBooking(response.booking));
 }
 
 export async function confirmPayment(id: string) {
@@ -291,12 +294,12 @@ export async function confirmPayment(id: string) {
     { auth: true },
   );
 
-  return mapEncoreBooking(response.booking);
+  return mapEncoreBooking(parseEncoreBooking(response.booking));
 }
 
 export async function listListingReviews(listingId: string): Promise<Review[]> {
   const response = await encoreRequest<{ reviews: EncoreReview[] }>(`/reviews/${listingId}`);
-  return response.reviews.map(mapEncoreReview);
+  return response.reviews.map((review) => mapEncoreReview(parseEncoreReview(review)));
 }
 
 export async function createListingReview(params: {
@@ -319,10 +322,10 @@ export async function createListingReview(params: {
     { auth: true },
   );
 
-  return mapEncoreReview(response.review);
+  return mapEncoreReview(parseEncoreReview(response.review));
 }
 
 export async function listReferralRewards(): Promise<Referral[]> {
   const response = await encoreRequest<{ rewards: EncoreReferralReward[] }>('/referrals/rewards', {}, { auth: true });
-  return response.rewards.map(mapEncoreReferralReward);
+  return response.rewards.map((reward) => mapEncoreReferralReward(parseEncoreReferralReward(reward)));
 }

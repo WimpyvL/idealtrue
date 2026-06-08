@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Listing, Review } from '@/types';
 import { summarizeReviews } from '@/services/content';
-import { X, Star, Loader2, MessageSquare, Calendar as CalendarIcon, Users, Minus, Plus } from 'lucide-react';
+import { X, Star, Loader2, MessageSquare, Minus, Plus } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { format, differenceInDays, isBefore, startOfToday } from 'date-fns';

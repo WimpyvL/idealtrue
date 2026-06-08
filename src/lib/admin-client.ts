@@ -1,5 +1,6 @@
 import { encoreRequest } from './encore-client';
-import type { AccountStatus, AdminHostBillingAccount, Booking, Listing, Notification, PlatformSettings, Referral, Review, Subscription, UserProfile } from '@/types';
+import type { AccountStatus, AdminHostBillingAccount, Booking, Listing, Notification, PlatformSettings, Referral, Review, Subscription } from '@/types';
+import { z } from 'zod';
 import {
   mapEncoreBooking,
   mapEncoreListing,
@@ -9,6 +10,14 @@ import {
   mapEncoreReview,
   mapEncoreSubscription,
   mapEncoreUserToProfile,
+  parseEncoreBooking,
+  parseEncoreListing,
+  parseEncoreNotification,
+  parseEncorePlatformSettings,
+  parseEncoreReferralReward,
+  parseEncoreReview,
+  parseEncoreSubscription,
+  parseEncoreUser,
   type EncoreBooking,
   type EncoreListing,
   type EncoreNotification,
@@ -78,6 +87,31 @@ interface EncoreCheckout {
   updated_at: string;
 }
 
+const adminCheckoutSchema = z.object({
+  id: z.string().min(1),
+  user_id: z.string().min(1),
+  checkout_type: z.enum(['subscription', 'content_credits', 'host_billing_setup', 'managed_hosting']),
+  provider: z.string().min(1),
+  status: z.enum(['pending', 'paid', 'failed', 'cancelled']),
+  currency: z.string().min(1),
+  amount: z.number(),
+  host_plan: z.enum(['standard', 'professional', 'premium']).nullable().optional(),
+  billing_interval: z.enum(['monthly', 'annual']).nullable().optional(),
+  credit_quantity: z.number().nullable().optional(),
+  provider_checkout_id: z.string().nullable().optional(),
+  provider_payment_id: z.string().nullable().optional(),
+  created_at: z.string().min(1),
+  updated_at: z.string().min(1),
+});
+
+function parseAdminCheckout(value: unknown): EncoreCheckout {
+  const parsed = adminCheckoutSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error('Admin checkout response was invalid.');
+  }
+  return parsed.data;
+}
+
 function mapCheckout(checkout: EncoreCheckout): AdminCheckout {
   return {
     id: checkout.id,
@@ -98,7 +132,7 @@ function mapCheckout(checkout: EncoreCheckout): AdminCheckout {
 }
 
 function isAdminObservabilityEnabled() {
-  const env = (import.meta as any).env ?? {};
+  const env = import.meta.env as { DEV?: boolean; VITE_ENABLE_ADMIN_OBSERVABILITY?: string };
   return env.DEV || env.VITE_ENABLE_ADMIN_OBSERVABILITY === 'true';
 }
 
@@ -117,7 +151,7 @@ function isEncoreEndpointNotFound(error: unknown) {
 
 export async function listAdminUsers() {
   const response = await encoreRequest<{ users: EncoreUser[] }>('/admin/users', {}, { auth: true });
-  return response.users.map(mapEncoreUserToProfile);
+  return response.users.map((user) => mapEncoreUserToProfile(parseEncoreUser(user)));
 }
 
 export async function updateAdminUser(params: {
@@ -138,7 +172,7 @@ export async function updateAdminUser(params: {
     },
     { auth: true },
   );
-  return mapEncoreUserToProfile(response.user);
+  return mapEncoreUserToProfile(parseEncoreUser(response.user));
 }
 
 export async function deleteAdminUser(userId: string) {
@@ -164,29 +198,29 @@ export async function setAdminUserAccountStatus(params: {
   );
 
   return {
-    user: mapEncoreUserToProfile(response.user),
-    notification: response.notification ? mapEncoreNotification(response.notification) : null,
+    user: mapEncoreUserToProfile(parseEncoreUser(response.user)),
+    notification: response.notification ? mapEncoreNotification(parseEncoreNotification(response.notification)) : null,
   };
 }
 
 export async function listAdminListings(): Promise<Listing[]> {
   const response = await encoreRequest<{ listings: EncoreListing[] }>('/listings', {}, { auth: true });
-  return response.listings.map(mapEncoreListing);
+  return response.listings.map((listing) => mapEncoreListing(parseEncoreListing(listing)));
 }
 
 export async function listAdminBookings(): Promise<Booking[]> {
   const response = await encoreRequest<{ bookings: EncoreBooking[] }>('/admin/bookings', {}, { auth: true });
-  return response.bookings.map(mapEncoreBooking);
+  return response.bookings.map((booking) => mapEncoreBooking(parseEncoreBooking(booking)));
 }
 
 export async function listAdminReviews(): Promise<Review[]> {
   const response = await encoreRequest<{ reviews: EncoreReview[] }>('/admin/reviews', {}, { auth: true });
-  return response.reviews.map(mapEncoreReview);
+  return response.reviews.map((review) => mapEncoreReview(parseEncoreReview(review)));
 }
 
 export async function listAdminReferralRewards(): Promise<Referral[]> {
   const response = await encoreRequest<{ rewards: EncoreReferralReward[] }>('/admin/referrals', {}, { auth: true });
-  return response.rewards.map(mapEncoreReferralReward);
+  return response.rewards.map((reward) => mapEncoreReferralReward(parseEncoreReferralReward(reward)));
 }
 
 export async function createAdminReferralReward(params: {
@@ -204,7 +238,7 @@ export async function createAdminReferralReward(params: {
     },
     { auth: true },
   );
-  return mapEncoreReferralReward(response.reward);
+  return mapEncoreReferralReward(parseEncoreReferralReward(response.reward));
 }
 
 export async function deleteAdminReferralReward(referralId: string) {
@@ -217,12 +251,12 @@ export async function deleteAdminReferralReward(referralId: string) {
 
 export async function listAdminSubscriptions(): Promise<Subscription[]> {
   const response = await encoreRequest<{ subscriptions: EncoreSubscription[] }>('/admin/subscriptions', {}, { auth: true });
-  return response.subscriptions.map(mapEncoreSubscription);
+  return response.subscriptions.map((subscription) => mapEncoreSubscription(parseEncoreSubscription(subscription)));
 }
 
 export async function listAdminCheckouts(): Promise<AdminCheckout[]> {
   const response = await encoreRequest<{ checkouts: EncoreCheckout[] }>('/admin/checkouts', {}, { auth: true });
-  return response.checkouts.map(mapCheckout);
+  return response.checkouts.map((checkout) => mapCheckout(parseAdminCheckout(checkout)));
 }
 
 export async function listAdminHostBillingAccounts(): Promise<AdminHostBillingAccount[]> {
@@ -266,7 +300,7 @@ export async function setAdminHostGreylist(params: {
 
 export async function listAdminNotifications(): Promise<Notification[]> {
   const response = await encoreRequest<{ notifications: EncoreNotification[] }>('/ops/admin/notifications', {}, { auth: true });
-  return response.notifications.map(mapEncoreNotification);
+  return response.notifications.map((notification) => mapEncoreNotification(parseEncoreNotification(notification)));
 }
 
 export async function createAdminNotification(params: {
@@ -284,7 +318,7 @@ export async function createAdminNotification(params: {
     },
     { auth: true },
   );
-  return mapEncoreNotification(response.notification);
+  return mapEncoreNotification(parseEncoreNotification(response.notification));
 }
 
 export async function deleteAdminNotification(notificationId: string) {
@@ -297,7 +331,7 @@ export async function deleteAdminNotification(notificationId: string) {
 
 export async function getAdminPlatformSettings(): Promise<PlatformSettings> {
   const response = await encoreRequest<{ settings: EncorePlatformSettings }>('/ops/admin/settings', {}, { auth: true });
-  return mapEncorePlatformSettings(response.settings);
+  return mapEncorePlatformSettings(parseEncorePlatformSettings(response.settings));
 }
 
 export async function updateAdminPlatformSettings(params: Partial<PlatformSettings>) {
@@ -309,7 +343,7 @@ export async function updateAdminPlatformSettings(params: Partial<PlatformSettin
     },
     { auth: true },
   );
-  return mapEncorePlatformSettings(response.settings);
+  return mapEncorePlatformSettings(parseEncorePlatformSettings(response.settings));
 }
 
 export async function deleteAdminReview(reviewId: string) {
