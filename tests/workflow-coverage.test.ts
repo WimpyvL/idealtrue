@@ -223,3 +223,21 @@ test('app flow diagram stays aligned with Checkout-backed billing and current me
     assert.equal(artifact.includes(term), false, `${term} drifted back into docs/app-flow-diagram.svg`);
   }
 });
+
+test('payment flow docs stay aligned with managed-hosting fulfilment effects', () => {
+  const docsToGuard = [
+    join(repoRoot, 'docs', 'payment-flow-diagrams.md'),
+    join(repoRoot, 'docs', 'diagrams', 'payment', '06-fulfillment-by-purpose.mmd'),
+  ];
+
+  for (const docPath of docsToGuard) {
+    const doc = readFileSync(docPath, 'utf8');
+    assert.ok(doc.includes('managed_hosting'), `${docPath} should document managed-hosting fulfilment`);
+    assert.ok(doc.includes('identity.users.host_plan = premium'), `${docPath} should document quota-unlocking host plan upgrade`);
+    assert.ok(doc.includes('identity.users.management_mode = managed'), `${docPath} should document managed mode activation`);
+    assert.ok(
+      doc.includes('host_billing_accounts = premium / paid / active / card_on_file=true'),
+      `${docPath} should document managed-hosting billing account activation`,
+    );
+  }
+});

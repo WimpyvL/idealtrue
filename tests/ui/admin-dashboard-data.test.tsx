@@ -104,12 +104,116 @@ describe('useAdminDashboardData', () => {
         }),
       ),
       http.get('*/api/encore/admin/bookings', () => HttpResponse.json({ bookings: [] })),
-      http.get('*/api/encore/admin/reviews', () => HttpResponse.json({ reviews: [] })),
-      http.get('*/api/encore/admin/referrals', () => HttpResponse.json({ rewards: [] })),
-      http.get('*/api/encore/admin/subscriptions', () => HttpResponse.json({ subscriptions: [] })),
-      http.get('*/api/encore/admin/checkouts', () => HttpResponse.json({ checkouts: [] })),
-      http.get('*/api/encore/admin/billing/host-accounts', () => HttpResponse.json({ accounts: [] })),
-      http.get('*/api/encore/ops/admin/notifications', () => HttpResponse.json({ notifications: [] })),
+      http.get('*/api/encore/admin/reviews', () =>
+        HttpResponse.json({
+          reviews: [
+            {
+              id: 'review-1',
+              listingId: 'listing-1',
+              guestId: 'guest-1',
+              hostId: 'user-1',
+              cleanliness: 5,
+              accuracy: 5,
+              communication: 5,
+              location: 5,
+              value: 5,
+              comment: 'Good stay',
+              status: 'pending',
+              createdAt: '2026-04-02T10:00:00.000Z',
+            },
+          ],
+        }),
+      ),
+      http.get('*/api/encore/admin/referrals', () =>
+        HttpResponse.json({
+          rewards: [
+            {
+              id: 'referral-1',
+              referrerId: 'user-1',
+              referredUserId: 'guest-1',
+              trigger: 'subscription',
+              program: 'host',
+              amount: 50,
+              status: 'confirmed',
+              createdAt: '2026-04-03T10:00:00.000Z',
+            },
+          ],
+        }),
+      ),
+      http.get('*/api/encore/admin/subscriptions', () =>
+        HttpResponse.json({
+          subscriptions: [
+            {
+              id: 'subscription-1',
+              user_id: 'user-1',
+              plan: 'professional',
+              status: 'active',
+              amount: 350,
+              billing_interval: 'monthly',
+              starts_at: '2026-04-01T10:00:00.000Z',
+              ends_at: '2026-05-01T10:00:00.000Z',
+              created_at: '2026-04-01T10:00:00.000Z',
+            },
+          ],
+        }),
+      ),
+      http.get('*/api/encore/admin/checkouts', () =>
+        HttpResponse.json({
+          checkouts: [
+            {
+              id: 'checkout-1',
+              user_id: 'user-1',
+              checkout_type: 'managed_hosting',
+              provider: 'yoco',
+              status: 'paid',
+              currency: 'ZAR',
+              amount: 650,
+              host_plan: null,
+              billing_interval: null,
+              credit_quantity: null,
+              provider_checkout_id: 'provider-checkout-1',
+              provider_payment_id: 'provider-payment-1',
+              created_at: '2026-04-04T10:00:00.000Z',
+              updated_at: '2026-04-04T10:01:00.000Z',
+            },
+          ],
+        }),
+      ),
+      http.get('*/api/encore/admin/billing/host-accounts', () =>
+        HttpResponse.json({
+          accounts: [
+            {
+              userId: 'user-1',
+              plan: 'professional',
+              billingSource: 'paid',
+              billingStatus: 'active',
+              currentPeriodStart: '2026-04-01T10:00:00.000Z',
+              currentPeriodEnd: '2026-05-01T10:00:00.000Z',
+              nextAction: 'none',
+              reminderCount: 0,
+              cardOnFile: true,
+              createdAt: '2026-04-01T10:00:00.000Z',
+              updatedAt: '2026-04-01T10:00:00.000Z',
+            },
+          ],
+        }),
+      ),
+      http.get('*/api/encore/ops/admin/notifications', () =>
+        HttpResponse.json({
+          notifications: [
+            {
+              id: 'notification-1',
+              title: 'Admin notice',
+              message: 'Check billing',
+              type: 'info',
+              target: 'admins',
+              actionPath: '/admin',
+              readAt: null,
+              createdAt: '2026-04-05T10:00:00.000Z',
+            },
+          ],
+        }),
+      ),
       http.get('*/api/encore/ops/admin/settings', () =>
         HttpResponse.json({
           settings: {
@@ -123,7 +227,32 @@ describe('useAdminDashboardData', () => {
           },
         }),
       ),
-      http.get('*/api/encore/ops/kyc/submissions', () => HttpResponse.json({ submissions: [] })),
+      http.get('*/api/encore/ops/kyc/submissions', () =>
+        HttpResponse.json({
+          submissions: [
+            {
+              userId: 'user-1',
+              status: 'pending',
+              idType: 'sa_id',
+              idNumberMasked: '******1234',
+              idImageUrl: null,
+              selfieImageUrl: null,
+              rejectionReason: null,
+              reviewerId: null,
+              reviewedAt: null,
+              submittedAt: '2026-04-06T10:00:00.000Z',
+              createdAt: '2026-04-06T10:00:00.000Z',
+              updatedAt: '2026-04-06T10:00:00.000Z',
+              user: {
+                id: 'user-1',
+                email: 'host@example.com',
+                displayName: 'Host One',
+                photoUrl: '',
+              },
+            },
+          ],
+        }),
+      ),
       http.get('*/api/encore/ops/admin/observability', () => HttpResponse.json({ snapshot: null })),
       http.put('*/api/encore/host/listings', async ({ request }) => {
         const body = await request.json() as { id: string; status: string };
@@ -173,6 +302,16 @@ describe('useAdminDashboardData', () => {
     );
 
     await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.allReviews).toHaveLength(1);
+    expect(result.current.allReferrals).toHaveLength(1);
+    expect(result.current.allSubscriptions).toHaveLength(1);
+    expect(result.current.allCheckouts).toHaveLength(1);
+    expect(result.current.allHostBillingAccounts).toHaveLength(1);
+    expect(result.current.allNotifications).toHaveLength(1);
+    expect(result.current.kycSubmissions).toHaveLength(1);
+    expect(result.current.pendingKycCount).toBe(1);
+    expect(result.current.platformSettings?.supportEmail).toBe('support@example.com');
+    expect(result.current.stats.pendingReviews).toBe(1);
     expect(result.current.stats.activeListings).toBe(1);
     expect(result.current.topListings).toHaveLength(1);
 

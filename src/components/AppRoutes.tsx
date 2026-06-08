@@ -113,7 +113,7 @@ export default function AppRoutes({
               />
             }
           />
-          <Route path="onboarding" element={<HostOnboardingTutorial />} />
+          <Route path="onboarding" element={<HostOnboardingTutorial profile={profile} listings={myListings} />} />
           <Route path="inbox" element={<HostInbox bookings={hostBookings} listings={myListings} onChat={onSelectedBookingForChat} />} />
           <Route path="quick-replies" element={<HostQuickReplies />} />
           <Route path="enquiries" element={<HostEnquiries bookings={hostBookings} listings={myListings} onChat={onSelectedBookingForChat} onBookingUpdated={onSyncUpdatedBooking} />} />

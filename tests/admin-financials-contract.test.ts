@@ -28,3 +28,15 @@ test('managed hosting fulfilment upgrades identity host plan used by listing quo
   assert.match(functionSource, /management_mode = \$\{"managed"\}/);
   assert.match(functionSource, /WHERE id = \$\{intent\.user_id\}/);
 });
+
+test('admin manual host referrals are created as subscription conversion rewards', () => {
+  const adminDashboardPath = new URL('../src/pages/AdminDashboard.tsx', import.meta.url);
+  const source = readFileSync(adminDashboardPath, 'utf8');
+  const handlerStart = source.indexOf('const handleCreateManualReferral');
+  assert.notEqual(handlerStart, -1, 'AdminDashboard should own manual referral creation');
+
+  const handlerSource = source.slice(handlerStart, source.indexOf('const menuItems', handlerStart));
+  assert.match(handlerSource, /createAdminReferralReward/);
+  assert.match(handlerSource, /trigger: program === 'guest' \? 'signup' : 'subscription'/);
+  assert.match(handlerSource, /program,/);
+});

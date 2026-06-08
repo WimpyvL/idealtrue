@@ -472,7 +472,7 @@ export default function AdminDashboard() {
         referrerId: referrer.id,
         referredUserId: referee.id,
         amount: platformSettings?.referralRewardAmount || 50,
-        trigger: 'signup',
+        trigger: program === 'guest' ? 'signup' : 'subscription',
         program,
       });
       setAllReferrals((current) => [referral, ...current]);

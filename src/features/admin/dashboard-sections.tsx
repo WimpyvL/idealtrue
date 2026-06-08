@@ -982,6 +982,7 @@ export function ReferralsSection({
   const [referralTab, setReferralTab] = useState<ReferralTab>('guest');
   const [manualReferrerEmail, setManualReferrerEmail] = useState('');
   const [manualRefereeEmail, setManualRefereeEmail] = useState('');
+  const triggerForReferralTab = (tab: ReferralTab) => tab === 'guest' ? 'signup' : 'subscription';
   const filteredReferrals = sortByDate(
     allReferrals.filter((referral) => {
       const referrer = allUsers.find((user) => user.id === referral.referrerId);
@@ -991,7 +992,7 @@ export function ReferralsSection({
         referred?.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         referrer?.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
         referred?.email.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesTab = referralTab === 'guest' ? referral.trigger === 'signup' : referral.trigger === 'booking';
+      const matchesTab = referral.trigger === triggerForReferralTab(referralTab);
       const matchesFilter = referralFilter === 'all' || referral.status === referralFilter;
       return Boolean(matchesSearch && matchesTab && matchesFilter);
     }),
@@ -999,10 +1000,10 @@ export function ReferralsSection({
     sortDirection,
   );
   const counts = {
-    all: allReferrals.filter((referral) => (referralTab === 'guest' ? referral.trigger === 'signup' : referral.trigger === 'booking')).length,
-    pending: allReferrals.filter((referral) => (referralTab === 'guest' ? referral.trigger === 'signup' : referral.trigger === 'booking') && referral.status === 'pending').length,
-    confirmed: allReferrals.filter((referral) => (referralTab === 'guest' ? referral.trigger === 'signup' : referral.trigger === 'booking') && referral.status === 'confirmed').length,
-    rewarded: allReferrals.filter((referral) => (referralTab === 'guest' ? referral.trigger === 'signup' : referral.trigger === 'booking') && referral.status === 'rewarded').length,
+    all: allReferrals.filter((referral) => referral.trigger === triggerForReferralTab(referralTab)).length,
+    pending: allReferrals.filter((referral) => referral.trigger === triggerForReferralTab(referralTab) && referral.status === 'pending').length,
+    confirmed: allReferrals.filter((referral) => referral.trigger === triggerForReferralTab(referralTab) && referral.status === 'confirmed').length,
+    rewarded: allReferrals.filter((referral) => referral.trigger === triggerForReferralTab(referralTab) && referral.status === 'rewarded').length,
   };
 
   return (
