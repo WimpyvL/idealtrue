@@ -25,6 +25,7 @@ import {
   getHostInquiryDeadlineText,
   groupHostInquiries,
   isAwaitingGuestPayment,
+  isPassedHostInquiry,
 } from '@/lib/inquiry-state';
 import { useHostBookingActions } from '@/hooks/use-host-booking-actions';
 import { useBookingOpsSummaries } from '@/hooks/use-booking-ops-summaries';
@@ -122,6 +123,13 @@ export default function HostEnquiries({
       tone: 'success',
       icon: CircleCheckBig,
     },
+    {
+      title: 'Passed',
+      value: groupedBookings.passed.length,
+      helper: 'Expired or stale enquiries with no active hold or action.',
+      tone: 'secondary',
+      icon: Ban,
+    },
   ];
 
   const renderEmptyState = (icon: React.ComponentType<{ className?: string }>, title: string, description: string) => {
@@ -147,8 +155,11 @@ export default function HostEnquiries({
     const listing = listings.find((l) => l.id === booking.listingId);
     const opsSummary = bookingOpsSummaries[booking.id];
     const hasOpenPaymentDispute = (opsSummary?.openDisputeCount ?? 0) > 0;
+    const isPassed = isPassedHostInquiry(booking);
     const statusLabel = getInquiryBadgeLabel(booking);
-    const deadlineCopy = getOpsDeadlineCopy(opsSummary) ?? getHostInquiryDeadlineText(booking);
+    const deadlineCopy = isPassed
+      ? 'This enquiry has passed. Any approval hold should be released and active payment or confirmation actions are disabled.'
+      : getOpsDeadlineCopy(opsSummary) ?? getHostInquiryDeadlineText(booking);
     const totalExposure = booking.totalPrice + (booking.breakageDeposit ?? 0);
     const lastTouchAt =
       opsSummary?.lastEventAt ??
@@ -167,7 +178,7 @@ export default function HostEnquiries({
                 variant={
                   options?.showPaymentConfirm
                     ? 'warning'
-                    : booking.inquiryState === 'DECLINED' || booking.inquiryState === 'EXPIRED'
+                    : booking.inquiryState === 'DECLINED' || isPassed
                       ? 'danger'
                       : booking.inquiryState === 'BOOKED'
                         ? 'success'
@@ -183,7 +194,7 @@ export default function HostEnquiries({
               <span className="text-sm text-on-surface-variant">
                 Last movement {formatDistanceToNowStrict(new Date(lastTouchAt), { addSuffix: true })}
               </span>
-              {options?.emphasizeAging && <Badge variant="warning">Action due</Badge>}
+              {isPassed ? <Badge variant="danger">Passed</Badge> : options?.emphasizeAging && <Badge variant="warning">Action due</Badge>}
             </div>
 
             <div>
@@ -244,6 +255,11 @@ export default function HostEnquiries({
               )}
               {isAwaitingGuestPayment(booking) && (
                 <p>Guest payment is unlocked, but proof has not been submitted yet.</p>
+              )}
+              {isPassed && (
+                <p className="font-medium text-red-600">
+                  State deactivated. Do not approve, confirm payment, or treat these dates as held from this card.
+                </p>
               )}
               {options?.showPaymentConfirm && (
                 <p>
@@ -320,7 +336,7 @@ export default function HostEnquiries({
         <p className="text-on-surface-variant">Run the full inquiry pipeline from first response through payment confirmation, without losing track of who is waiting on whom.</p>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
         {summaryCards.map((card) => {
           const Icon = card.icon;
           return (
@@ -387,12 +403,22 @@ export default function HostEnquiries({
 
         <section className="space-y-4">
           <div className="space-y-1">
+            <h2 className="text-xl font-bold tracking-tight">Passed</h2>
+            <p className="text-sm text-on-surface-variant">Expired enquiries and stale deadline cards live here with active states disabled. If the backend has not refreshed yet, this view still treats them as inactive.</p>
+          </div>
+          {groupedBookings.passed.map((booking) => renderBookingCard(booking))}
+          {groupedBookings.passed.length === 0 &&
+            renderEmptyState(Ban, 'No passed enquiries', 'Expired or stale-deadline enquiries will move here instead of staying in active queues.')}
+        </section>
+
+        <section className="space-y-4">
+          <div className="space-y-1">
             <h2 className="text-xl font-bold tracking-tight">Closed Loop</h2>
-            <p className="text-sm text-on-surface-variant">Declined and expired enquiries stay visible here for traceability instead of vanishing into the void.</p>
+            <p className="text-sm text-on-surface-variant">Declined enquiries stay visible here for traceability instead of vanishing into the void.</p>
           </div>
           {groupedBookings.closed.slice(0, 8).map((booking) => renderBookingCard(booking))}
           {groupedBookings.closed.length === 0 &&
-            renderEmptyState(Ban, 'No closed enquiries', 'Declined and expired enquiries will remain visible here for audit context.')}
+            renderEmptyState(Ban, 'No closed enquiries', 'Declined enquiries will remain visible here for audit context.')}
         </section>
       </div>
 

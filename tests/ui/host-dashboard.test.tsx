@@ -178,7 +178,7 @@ describe('HostDashboard', () => {
   it('prefers backend ops summary data in the approved-hold watchlist when available', async () => {
     const bookings = [
       makeBooking('payment-open', 'APPROVED', {
-        expiresAt: '2026-04-22T18:00:00.000Z',
+        expiresAt: '2099-04-22T18:00:00.000Z',
       }),
     ];
 

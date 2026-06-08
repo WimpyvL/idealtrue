@@ -1239,9 +1239,10 @@ export function FinancialsSection({
 }) {
   const [subscriptionSortDirection, setSubscriptionSortDirection] = useState<DateSortDirection>('desc');
   const [checkoutSortDirection, setCheckoutSortDirection] = useState<DateSortDirection>('desc');
-  const totalRevenue = allSubscriptions.reduce((accumulator, subscription) => accumulator + subscription.amount, 0);
   const paidCheckouts = allCheckouts.filter((checkout) => checkout.status === 'paid');
   const pendingCheckouts = allCheckouts.filter((checkout) => checkout.status === 'pending');
+  const totalRevenue = paidCheckouts.reduce((accumulator, checkout) => accumulator + checkout.amount, 0);
+  const subscriptionRevenue = allSubscriptions.reduce((accumulator, subscription) => accumulator + subscription.amount, 0);
   const sortedSubscriptions = sortByDate(allSubscriptions, (subscription) => subscription.endDate, subscriptionSortDirection);
   const sortedCheckouts = sortByDate(allCheckouts, (checkout) => checkout.createdAt, checkoutSortDirection);
 
@@ -1264,7 +1265,7 @@ export function FinancialsSection({
         </Card>
         <Card className="p-6">
           <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">Avg. Subscription</p>
-          <h3 className="text-3xl font-bold">R{allSubscriptions.length > 0 ? (totalRevenue / allSubscriptions.length).toFixed(2) : '0.00'}</h3>
+          <h3 className="text-3xl font-bold">R{allSubscriptions.length > 0 ? (subscriptionRevenue / allSubscriptions.length).toFixed(2) : '0.00'}</h3>
         </Card>
         <Card className="p-6">
           <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">Pending Checkouts</p>
@@ -1341,13 +1342,17 @@ export function FinancialsSection({
                     ? `${checkout.hostPlan || 'unknown'} • ${checkout.billingInterval || 'n/a'}`
                     : checkout.checkoutType === 'host_billing_setup'
                       ? 'Provider-backed host billing card setup'
-                      : `${checkout.creditQuantity || 0} credits`;
+                      : checkout.checkoutType === 'managed_hosting'
+                        ? 'Managed hosting package'
+                        : `${checkout.creditQuantity || 0} credits`;
                 const checkoutLabel =
                   checkout.checkoutType === 'subscription'
                     ? 'Subscription'
                     : checkout.checkoutType === 'host_billing_setup'
                       ? 'Card setup'
-                      : 'Credits';
+                      : checkout.checkoutType === 'managed_hosting'
+                        ? 'Managed hosting'
+                        : 'Credits';
                 return (
                   <tr key={checkout.id} className="transition-colors hover:bg-slate-50">
                     <td className="px-6 py-4">

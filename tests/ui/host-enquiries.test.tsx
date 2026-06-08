@@ -71,7 +71,7 @@ function makeReviewBooking(overrides: Partial<Booking> = {}): Booking {
     paymentUnlockedAt: '2026-04-20T11:00:00.000Z',
     paymentSubmittedAt: '2026-04-21T08:00:00.000Z',
     paymentConfirmedAt: null,
-    expiresAt: '2026-04-21T18:00:00.000Z',
+    expiresAt: '2099-04-21T18:00:00.000Z',
     bookedAt: null,
     createdAt: '2026-04-20T08:00:00.000Z',
     updatedAt: '2026-04-21T08:00:00.000Z',
@@ -158,5 +158,33 @@ describe('HostEnquiries', () => {
       screen.getByText((_, node) => node?.textContent === 'Open payment disputes: 2'),
     ).toBeInTheDocument();
     expect(screen.getByText(/Backend deadline: guest payment due/i)).toBeInTheDocument();
+  });
+
+  it('moves stale passed enquiries out of active payment queues and disables held-state actions', () => {
+    render(
+      <MemoryRouter>
+        <HostEnquiries
+          bookings={[
+            makeReviewBooking({
+              id: 'stale-approved-hold',
+              paymentSubmittedAt: null,
+              paymentProofAccessible: false,
+              paymentProofAccessUrl: null,
+              expiresAt: '2026-04-21T18:00:00.000Z',
+            }),
+          ]}
+          listings={[listing]}
+          onChat={vi.fn()}
+          onBookingUpdated={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Passed' })).toBeInTheDocument();
+    expect(screen.getByText(/This enquiry has passed/i)).toBeInTheDocument();
+    expect(screen.getByText(/State deactivated/i)).toBeInTheDocument();
+    expect(screen.getByText('No guest payments pending')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Confirm Payment' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
   });
 });

@@ -780,7 +780,8 @@ async function activateManagedHostingFromPaymentIntent(intent: PaymentIntentRow)
 
   await identityDB.exec`
     UPDATE users
-    SET management_mode = ${"managed"},
+    SET host_plan = ${"premium"},
+        management_mode = ${"managed"},
         updated_at = ${now}
     WHERE id = ${intent.user_id}
       AND role = ${"host"}
@@ -1325,8 +1326,53 @@ export const listAdminCheckouts = api<void, { checkouts: CheckoutSessionRow[] }>
   async () => {
     requireRole("admin", "support");
     const checkouts = await billingDB.queryAll<CheckoutSessionRow>`
-      SELECT *
+      SELECT
+        id,
+        user_id,
+        checkout_type,
+        provider,
+        status,
+        currency,
+        amount,
+        host_plan,
+        billing_interval,
+        credit_quantity,
+        provider_checkout_id,
+        provider_payment_id,
+        provider_mode,
+        redirect_url,
+        success_url,
+        cancel_url,
+        failure_url,
+        metadata,
+        paid_at,
+        created_at,
+        updated_at
       FROM billing_checkout_sessions
+      UNION ALL
+      SELECT
+        id,
+        user_id,
+        purpose AS checkout_type,
+        provider,
+        status,
+        currency,
+        amount,
+        host_plan,
+        billing_interval,
+        credit_quantity,
+        provider_checkout_id,
+        provider_payment_id,
+        provider_mode,
+        redirect_url,
+        NULL AS success_url,
+        NULL AS cancel_url,
+        NULL AS failure_url,
+        metadata,
+        paid_at,
+        created_at,
+        updated_at
+      FROM billing_payment_intents
       ORDER BY created_at DESC
     `;
     return { checkouts };

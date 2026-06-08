@@ -12,6 +12,7 @@ import {
   getMessagingProcessContext,
   groupHostInquiries,
   isAwaitingGuestPayment,
+  isPassedHostInquiry,
 } from '../src/lib/inquiry-state.ts';
 
 const baseBooking = {
@@ -66,6 +67,17 @@ test('host inquiry buckets separate decision, payment, confirmed, and closed que
       inquiryState: 'DECLINED',
     }),
     'closed',
+  );
+
+  assert.equal(
+    getHostInquiryBucket({
+      ...baseBooking,
+      inquiryState: 'APPROVED',
+      paymentState: 'INITIATED',
+      paymentUnlockedAt: '2026-04-16T09:00:00.000Z',
+      expiresAt: '2026-04-17T09:00:00.000Z',
+    }),
+    'passed',
   );
 });
 
@@ -183,13 +195,54 @@ test('groupHostInquiries keeps each workflow queue in the shared helper layer', 
       bookedAt: '2026-04-16T11:00:00.000Z',
       paymentConfirmedAt: '2026-04-16T11:00:00.000Z',
     },
+    {
+      ...baseBooking,
+      id: 'passed-hold',
+      inquiryState: 'APPROVED',
+      paymentState: 'INITIATED',
+      paymentUnlockedAt: '2026-04-16T09:00:00.000Z',
+      expiresAt: '2026-04-17T09:00:00.000Z',
+    },
   ]);
 
   assert.deepEqual(grouped.needsResponse.map((booking) => booking.id), ['needs-response']);
   assert.deepEqual(grouped.awaitingGuestPayment.map((booking) => booking.id), ['awaiting-payment']);
   assert.deepEqual(grouped.paymentReview.map((booking) => booking.id), ['payment-review']);
   assert.deepEqual(grouped.confirmed.map((booking) => booking.id), ['confirmed']);
+  assert.deepEqual(grouped.passed.map((booking) => booking.id), ['passed-hold']);
   assert.deepEqual(grouped.closed, []);
+});
+
+test('passed host inquiries include expired rows and stale open deadlines', () => {
+  assert.equal(
+    isPassedHostInquiry(
+      {
+        inquiryState: 'APPROVED',
+        expiresAt: '2026-04-21T18:00:00.000Z',
+      },
+      new Date('2026-04-21T18:00:00.000Z'),
+    ),
+    true,
+  );
+
+  assert.equal(
+    isPassedHostInquiry(
+      {
+        inquiryState: 'APPROVED',
+        expiresAt: '2026-04-21T18:00:01.000Z',
+      },
+      new Date('2026-04-21T18:00:00.000Z'),
+    ),
+    false,
+  );
+
+  assert.equal(
+    isPassedHostInquiry({
+      inquiryState: 'EXPIRED',
+      expiresAt: '2026-04-21T18:00:00.000Z',
+    }),
+    true,
+  );
 });
 
 test('deadline urgency escalates approved holds that are nearing expiry', () => {

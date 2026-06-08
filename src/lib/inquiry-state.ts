@@ -48,6 +48,7 @@ export type HostInquiryBucket =
   | 'awaiting_guest_payment'
   | 'payment_review'
   | 'confirmed'
+  | 'passed'
   | 'closed';
 
 export type InquiryDeadlineState =
@@ -88,6 +89,7 @@ export type HostInquiryGroups<TBooking extends HostBookingSlice> = {
   awaitingGuestPayment: TBooking[];
   paymentReview: TBooking[];
   confirmed: TBooking[];
+  passed: TBooking[];
   closed: TBooking[];
 };
 
@@ -665,11 +667,16 @@ export function groupHostInquiries<TBooking extends HostBookingSlice>(
     awaitingGuestPayment: sorted.filter((booking) => getHostInquiryBucket(booking) === 'awaiting_guest_payment'),
     paymentReview: sorted.filter((booking) => getHostInquiryBucket(booking) === 'payment_review'),
     confirmed: sorted.filter((booking) => getHostInquiryBucket(booking) === 'confirmed'),
+    passed: sorted.filter((booking) => getHostInquiryBucket(booking) === 'passed'),
     closed: sorted.filter((booking) => getHostInquiryBucket(booking) === 'closed'),
   };
 }
 
 export function getHostInquiryBucket(booking: HostBookingSlice): HostInquiryBucket {
+  if (isPassedHostInquiry(booking)) {
+    return 'passed';
+  }
+
   if (isAwaitingHostPaymentConfirmation(booking)) {
     return 'payment_review';
   }
@@ -697,6 +704,8 @@ export function getHostInquirySortTimestamp(booking: HostBookingSlice) {
       return booking.paymentUnlockedAt ?? booking.respondedAt ?? booking.createdAt;
     case 'confirmed':
       return booking.paymentConfirmedAt ?? booking.bookedAt ?? booking.createdAt;
+    case 'passed':
+      return booking.expiresAt ?? booking.paymentUnlockedAt ?? booking.respondedAt ?? booking.createdAt;
     case 'closed':
       return booking.expiresAt ?? booking.respondedAt ?? booking.viewedAt ?? booking.createdAt;
     case 'needs_response':
@@ -711,4 +720,24 @@ export function isOpenHostInquiry(booking: Pick<Booking, 'inquiryState'>) {
 
 export function isPendingHostDecision(booking: Pick<Booking, 'inquiryState'>) {
   return ['PENDING', 'VIEWED', 'RESPONDED'].includes(booking.inquiryState);
+}
+
+export function isPassedHostInquiry(
+  booking: Pick<Booking, 'inquiryState' | 'expiresAt'>,
+  now: Date = new Date(),
+) {
+  if (booking.inquiryState === 'EXPIRED') {
+    return true;
+  }
+
+  if (!isOpenHostInquiry(booking) || !booking.expiresAt) {
+    return false;
+  }
+
+  const expiresAt = new Date(booking.expiresAt);
+  if (Number.isNaN(expiresAt.getTime())) {
+    return false;
+  }
+
+  return expiresAt.getTime() <= now.getTime();
 }
