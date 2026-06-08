@@ -19,6 +19,7 @@ import { getMyHostQuickReplies } from '@/lib/messaging-client';
 import { cn } from '@/lib/utils';
 import type { HostQuickReplySettings, Listing, UserProfile } from '@/types';
 
+// (|/) Klaasvaakie: keep onboarding state tied to persisted host/listing/messaging data, not a cosmetic checklist.
 type TutorialStep = {
   title: string;
   description: string;
@@ -311,8 +312,6 @@ export default function HostOnboardingTutorial({ profile, listings }: HostOnboar
           </div>
         </div>
       </Card>
-
-      <p className="text-xs text-on-surface-variant">Signed: (|/) Klaasvaakie</p>
     </div>
   );
 }

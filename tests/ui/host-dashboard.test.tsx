@@ -4,9 +4,10 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import HostDashboard from '@/pages/HostDashboard';
-import type { Booking, Listing, UserProfile } from '@/types';
+import type { Booking, HostQuickReplySettings, Listing, UserProfile } from '@/types';
 
 const mockUseBookingOpsSummaries = vi.fn();
+const mockGetMyHostQuickReplies = vi.fn<() => Promise<HostQuickReplySettings>>();
 
 vi.mock('@/hooks/use-booking-ops-summaries', () => ({
   useBookingOpsSummaries: (...args: unknown[]) => mockUseBookingOpsSummaries(...args),
@@ -19,6 +20,10 @@ vi.mock('@/lib/billing-client', () => ({
 
 vi.mock('@/lib/platform-client', () => ({
   updateBookingStatus: vi.fn(),
+}));
+
+vi.mock('@/lib/messaging-client', () => ({
+  getMyHostQuickReplies: () => mockGetMyHostQuickReplies(),
 }));
 
 vi.mock('sonner', () => ({
@@ -34,6 +39,7 @@ const profile: UserProfile = {
   id: 'host-1',
   displayName: 'Host Example',
   email: 'host@example.com',
+  emailVerified: true,
   photoUrl: '',
   role: 'host',
   referralCode: 'HOST-1',
@@ -42,7 +48,10 @@ const profile: UserProfile = {
   referralCount: 0,
   tier: 'bronze',
   hostPlan: 'professional',
+  managementMode: 'self_service',
   kycStatus: 'verified',
+  paymentMethod: 'EFT',
+  paymentInstructions: 'Use the booking ID as reference.',
   createdAt: '2026-04-20T08:00:00.000Z',
 };
 
@@ -74,6 +83,7 @@ const listing: Listing = {
   reviews: 12,
   category: 'apartment',
   status: 'active',
+  blockedDates: ['2026-07-01'],
   createdAt: '2026-04-01T10:00:00.000Z',
   updatedAt: '2026-04-01T10:00:00.000Z',
 };
@@ -113,6 +123,13 @@ describe('HostDashboard', () => {
   beforeEach(() => {
     mockUseBookingOpsSummaries.mockReset();
     mockUseBookingOpsSummaries.mockReturnValue({});
+    mockGetMyHostQuickReplies.mockResolvedValue({
+      checkin: 'Check-in is from 14:00.',
+      checkout: 'Checkout is by 10:00.',
+      paymentInfo: 'Use the booking reference.',
+      directions: 'Follow the pin.',
+      houseRules: 'No parties.',
+    });
   });
 
   it('shows the full needs-response queue size instead of the preview slice', async () => {
@@ -230,11 +247,11 @@ describe('HostDashboard', () => {
     expect(screen.queryByRole('button', { name: 'Set Up Billing Card' })).not.toBeInTheDocument();
   });
 
-  it('links new hosts to the onboarding tutorial from the host overview', () => {
+  it('links incomplete hosts to the onboarding tutorial from the host overview', () => {
     render(
       <MemoryRouter>
         <HostDashboard
-          profile={profile}
+          profile={{ ...profile, paymentInstructions: null }}
           listings={[listing]}
           bookings={[]}
           onUpgrade={vi.fn()}
@@ -248,5 +265,25 @@ describe('HostDashboard', () => {
     expect(screen.getByText(/Set up banking details, quick replies/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /start tutorial/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /open tutorial/i })).toBeInTheDocument();
+  });
+
+  it('hides the onboarding tutorial prompt after setup is complete', async () => {
+    render(
+      <MemoryRouter>
+        <HostDashboard
+          profile={profile}
+          listings={[listing]}
+          bookings={[]}
+          onUpgrade={vi.fn()}
+          onChat={vi.fn()}
+          onBookingUpdated={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('button', { name: /add new listing/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'New host tutorial' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /start tutorial/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /open tutorial/i })).not.toBeInTheDocument();
   });
 });

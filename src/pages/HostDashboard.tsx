@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Booking, BookingOpsSummary, Listing, UserProfile } from '../types';
 import { 
@@ -33,6 +33,8 @@ import {
 import { useHostBookingActions } from '@/hooks/use-host-booking-actions';
 import { useBookingOpsSummaries } from '@/hooks/use-booking-ops-summaries';
 import { cn } from '@/lib/utils';
+import { getMyHostQuickReplies } from '@/lib/messaging-client';
+import type { HostQuickReplySettings } from '@/types';
 
 function getMetricPercentage(value: number, total: number) {
   if (total <= 0) {
@@ -40,6 +42,39 @@ function getMetricPercentage(value: number, total: number) {
   }
 
   return Math.round((value / total) * 100);
+}
+
+const quickReplyKeys: Array<keyof Pick<HostQuickReplySettings, 'checkin' | 'checkout' | 'paymentInfo' | 'directions' | 'houseRules'>> = [
+  'checkin',
+  'checkout',
+  'paymentInfo',
+  'directions',
+  'houseRules',
+];
+
+function hasText(value: string | null | undefined) {
+  return Boolean(value?.trim());
+}
+
+function hasListingSettlementProfile(listing: Listing) {
+  return hasText(listing.settlementProfile?.paymentMethod) && hasText(listing.settlementProfile?.paymentInstructions);
+}
+
+function hasAvailabilitySetup(listing: Listing) {
+  return (listing.blockedDates?.length ?? 0) > 0 || (listing.manualBlockedDates?.length ?? 0) > 0 || (listing.availabilityBlocks?.length ?? 0) > 0;
+}
+
+function isHostOnboardingComplete(profile: UserProfile | null, listings: Listing[], quickReplies: HostQuickReplySettings | null) {
+  const isManagedHost = profile?.managementMode === 'managed';
+  const accountReady = Boolean(profile?.emailVerified) && profile?.kycStatus === 'verified';
+  const paymentReady = isManagedHost
+    ? listings.length > 0 && listings.every(hasListingSettlementProfile)
+    : hasText(profile?.paymentMethod) && hasText(profile?.paymentInstructions);
+  const listingsReady = listings.length > 0;
+  const availabilityReady = listingsReady && listings.every(hasAvailabilitySetup);
+  const quickRepliesReady = Boolean(quickReplies) && quickReplyKeys.every((key) => hasText(quickReplies?.[key]));
+
+  return accountReady && paymentReady && listingsReady && availabilityReady && quickRepliesReady;
 }
 
 function getDashboardOpsDeadline(summary: BookingOpsSummary | undefined) {
@@ -121,6 +156,28 @@ export default function HostDashboard({
 }) {
   const navigate = useNavigate();
   const bookingOpsSummaries = useBookingOpsSummaries(bookings);
+  const [quickReplies, setQuickReplies] = useState<HostQuickReplySettings | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getMyHostQuickReplies()
+      .then((settings) => {
+        if (!cancelled) {
+          setQuickReplies(settings);
+        }
+      })
+      .catch((error) => {
+        console.error('Could not load host quick replies for dashboard onboarding gate:', error);
+        if (!cancelled) {
+          setQuickReplies(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const {
     approveBooking,
@@ -165,6 +222,7 @@ export default function HostDashboard({
   }, [awaitingGuestPaymentBookings, bookingOpsSummaries, groupedBookings.paymentReview]);
   const activeQueueCount = needsResponseBookings.length + awaitingGuestPaymentBookings.length + groupedBookings.paymentReview.length;
   const mostUrgentApprovedHold = approvedHoldWatchlist[0] ?? null;
+  const showOnboardingPrompt = !isHostOnboardingComplete(profile, listings, quickReplies);
 
   return (
     <div className="space-y-8">
@@ -197,28 +255,32 @@ export default function HostDashboard({
           <p className="text-on-surface-variant">Manage your properties and guest interactions. <span className="text-amber-600 font-medium">Ideal Stay coordinates the booking flow, but accommodation payments are collected directly by you.</span></p>
         </header>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Button variant="outline" className="w-full sm:w-auto" onClick={() => navigate('/host/onboarding')}>
-            <BadgeCheck className="w-4 h-4 mr-2" /> Start Tutorial
-          </Button>
+          {showOnboardingPrompt ? (
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => navigate('/host/onboarding')}>
+              <BadgeCheck className="w-4 h-4 mr-2" /> Start Tutorial
+            </Button>
+          ) : null}
           <Button className="w-full sm:w-auto" onClick={() => navigate('/host/create-listing')}>
             <Plus className="w-4 h-4 mr-2" /> Add New Listing
           </Button>
         </div>
       </div>
 
-      <Card className="border-primary/20 bg-primary/5 p-5 sm:p-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-1">
-            <h2 className="text-lg font-bold">New host tutorial</h2>
-            <p className="max-w-3xl text-sm leading-6 text-on-surface-variant">
-              Set up banking details, quick replies, listing basics, availability, and enquiry handling before the first serious guest message arrives.
-            </p>
+      {showOnboardingPrompt ? (
+        <Card className="border-primary/20 bg-primary/5 p-5 sm:p-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <h2 className="text-lg font-bold">New host tutorial</h2>
+              <p className="max-w-3xl text-sm leading-6 text-on-surface-variant">
+                Set up banking details, quick replies, listing basics, availability, and enquiry handling before the first serious guest message arrives.
+              </p>
+            </div>
+            <Button variant="outline" className="shrink-0 rounded-full" onClick={() => navigate('/host/onboarding')}>
+              Open tutorial <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
           </div>
-          <Button variant="outline" className="shrink-0 rounded-full" onClick={() => navigate('/host/onboarding')}>
-            Open tutorial <ArrowRight className="w-4 h-4 ml-2" />
-          </Button>
-        </div>
-      </Card>
+        </Card>
+      ) : null}
 
       {/* Key Metrics */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

@@ -103,7 +103,7 @@ describe('HostOnboardingTutorial', () => {
     expect(screen.getByRole('heading', { name: 'Configure quick replies' })).toBeInTheDocument();
     expect(screen.getByText(/house rules, directions, payment info, check-in, and checkout/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /edit quick replies/i })).toHaveAttribute('href', '/host/quick-replies');
-    expect(screen.getByText('Signed: (|/) Klaasvaakie')).toBeInTheDocument();
+    expect(screen.queryByText(/\(\|\/\) Klaasvaakie/i)).not.toBeInTheDocument();
   });
 
   it('branches managed hosts away from loose account banking and checks listing settlement setup', async () => {
