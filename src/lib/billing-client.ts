@@ -2,7 +2,7 @@ import { encoreRequest } from './encore-client';
 import { z } from 'zod';
 import type { Listing } from '@/types';
 import type { SocialPlatform, SocialTemplateId, SocialTone } from './social-content';
-import type { AdminHostBillingAccount, HostBillingAccount } from '@/types';
+import type { HostBillingAccount } from '@/types';
 
 export type HostPlan = 'standard' | 'professional' | 'premium';
 export type BillingInterval = 'monthly' | 'annual';
@@ -226,13 +226,4 @@ export async function redeemHostVoucher(code: string) {
     { auth: true },
   );
   return response.account;
-}
-
-export async function listAdminHostBillingAccounts() {
-  const response = await encoreRequest<{ accounts: AdminHostBillingAccount[] }>(
-    '/admin/billing/host-accounts',
-    {},
-    { auth: true },
-  );
-  return response.accounts;
 }

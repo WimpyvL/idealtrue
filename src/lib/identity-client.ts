@@ -185,17 +185,6 @@ export async function setUserKycStatus(params: { userId: string; kycStatus: Enco
   return mapEncoreUserToProfile(parseEncoreUser(response.user));
 }
 
-export async function requestProfilePhotoUpload(filename: string) {
-  return encoreRequest<{ objectKey: string; uploadUrl: string; publicUrl: string }>(
-    '/users/me/photo/upload-url',
-    {
-      method: 'POST',
-      body: JSON.stringify({ filename }),
-    },
-    { auth: true },
-  );
-}
-
 export async function uploadProfilePhoto(file: File) {
   const serialized = await serializeImageFile(file, {
     maxDimension: 1200,

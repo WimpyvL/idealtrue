@@ -669,13 +669,26 @@ async function activatePlanFromBillingSession(session: FulfillableBillingSession
 
   const subscriptionId = existingSubscription?.id ?? randomUUID();
 
-  if (!existingSubscription) {
+  await billingDB.exec`
+    UPDATE subscriptions
+    SET status = ${"cancelled"}
+    WHERE user_id = ${session.user_id}
+      AND status = ${"active"}
+      AND checkout_session_id <> ${session.id}
+  `;
+
+  if (existingSubscription) {
     await billingDB.exec`
       UPDATE subscriptions
-      SET status = ${"cancelled"}
-      WHERE user_id = ${session.user_id}
-        AND status = ${"active"}
+      SET plan = ${session.host_plan},
+          status = ${"active"},
+          amount = ${session.amount},
+          billing_interval = ${session.billing_interval},
+          starts_at = ${now.toISOString()},
+          ends_at = ${endsAt.toISOString()}
+      WHERE id = ${subscriptionId}
     `;
+  } else {
 
     await billingDB.exec`
       INSERT INTO subscriptions (

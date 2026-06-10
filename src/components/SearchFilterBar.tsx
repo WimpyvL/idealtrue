@@ -58,6 +58,7 @@ export default function SearchFilterBar({ onChange, onModeChange, onSendMessage,
   const [activeIndex, setActiveIndex] = useState(-1);
   const [isLoading, setIsLoading] = useState(false);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const checkOutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const latestLocationRef = useRef("");
 
@@ -259,6 +260,17 @@ export default function SearchFilterBar({ onChange, onModeChange, onSendMessage,
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+      if (checkOutTimerRef.current) {
+        clearTimeout(checkOutTimerRef.current);
+      }
+    };
+  }, []);
+
   const formatDate = (date: Date | null) => {
     if (!date) return "";
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -268,7 +280,10 @@ export default function SearchFilterBar({ onChange, onModeChange, onSendMessage,
     if (type === "checkin") {
       setCheckIn(date);
       setShowCheckInCal(false);
-      setTimeout(() => setShowCheckOutCal(true), 300);
+      if (checkOutTimerRef.current) {
+        clearTimeout(checkOutTimerRef.current);
+      }
+      checkOutTimerRef.current = setTimeout(() => setShowCheckOutCal(true), 300);
       emit(location, guests, date, checkOut ?? undefined);
     } else {
       setCheckOut(date);

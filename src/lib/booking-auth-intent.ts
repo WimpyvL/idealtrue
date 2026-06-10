@@ -40,7 +40,7 @@ function parseGuestCount(value: string | null, fallback: number) {
   return Number.isFinite(count) && count >= 0 ? count : fallback;
 }
 
-export function buildBookingReturnPath({ listingId, checkIn, checkOut, adults, children }: BookingAuthIntentInput) {
+function buildBookingReturnPath({ listingId, checkIn, checkOut, adults, children }: BookingAuthIntentInput) {
   const searchParams = new URLSearchParams();
   searchParams.set('listingId', listingId);
   searchParams.set('checkIn', toDateParam(checkIn));

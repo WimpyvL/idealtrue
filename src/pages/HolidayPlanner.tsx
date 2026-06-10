@@ -18,6 +18,36 @@ export default function HolidayPlanner() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const { profile } = useAuth();
 
+  const handleSend = async (text: string = input) => {
+    if (!text.trim() || loading) return;
+
+    const userMessage = text;
+    setInput('');
+    setMessages((prev) => [...prev, { role: 'user', content: userMessage }]);
+    setLoading(true);
+
+    try {
+      const response = await generateTripPlannerReply([
+        ...messages.map((message) => ({
+          role: message.role === 'ai' ? 'assistant' as const : 'user' as const,
+          content: message.content,
+        })),
+        { role: 'user' as const, content: userMessage },
+      ]);
+      setMessages((prev) => [...prev, { role: 'ai', content: response }]);
+    } catch (error: unknown) {
+      console.error(error);
+      if (error instanceof Error && /signed in/i.test(error.message)) {
+        toast.error('Sign in to use the AI trip planner.');
+        navigate(buildPlannerAuthPath(userMessage));
+        return;
+      }
+      setMessages((prev) => [...prev, { role: 'ai', content: "Something broke while talking to the planner. Try again with a clearer destination or trip shape." }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!profile) {
       return;
@@ -32,36 +62,6 @@ export default function HolidayPlanner() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
-
-  const handleSend = async (text: string = input) => {
-    if (!text.trim() || loading) return;
-
-    const userMessage = text;
-    setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
-    setLoading(true);
-
-    try {
-      const response = await generateTripPlannerReply([
-        ...messages.map((message) => ({
-          role: message.role === 'ai' ? 'assistant' as const : 'user' as const,
-          content: message.content,
-        })),
-        { role: 'user' as const, content: userMessage },
-      ]);
-      setMessages(prev => [...prev, { role: 'ai', content: response }]);
-    } catch (error: any) {
-      console.error(error);
-      if (error instanceof Error && /signed in/i.test(error.message)) {
-        toast.error('Sign in to use the AI trip planner.');
-        navigate(buildPlannerAuthPath(userMessage));
-        return;
-      }
-      setMessages(prev => [...prev, { role: 'ai', content: "Something broke while talking to the planner. Try again with a clearer destination or trip shape." }]);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const suggestedPrompts = [
     { icon: Map, text: "Plan a 5-day itinerary for Cape Town" },

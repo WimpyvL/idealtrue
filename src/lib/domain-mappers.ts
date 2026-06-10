@@ -4,6 +4,7 @@ import type {
   HostManagementMode,
   HostPlan,
   KycStatus,
+  ListingAdminTagKey,
   Listing,
   ListingAvailabilitySummary,
   ListingSettlementProfile,
@@ -59,7 +60,15 @@ const listingSettlementProfileSchema = z.object({
   updatedAt: z.string().min(1),
 });
 
-export const encoreUserSchema = z.object({
+const listingAdminTagKeySchema = z.enum([
+  'payment_setup_review',
+  'ops_attention',
+  'special_conditions',
+  'contact_before_booking',
+  'verified_host_pick',
+]);
+
+const encoreUserSchema = z.object({
   id: z.string().min(1),
   email: z.string().min(1),
   emailVerified: z.boolean(),
@@ -86,7 +95,7 @@ export const encoreUserSchema = z.object({
   updatedAt: z.string().min(1),
 });
 
-export const encoreLeaderboardUserSchema = z.object({
+const encoreLeaderboardUserSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
   photoUrl: nullableStringSchema,
@@ -94,7 +103,7 @@ export const encoreLeaderboardUserSchema = z.object({
   referralCount: z.number(),
 });
 
-export const encoreListingSchema = z.object({
+const encoreListingSchema = z.object({
   id: z.string().min(1),
   hostId: z.string().min(1),
   title: z.string().min(1),
@@ -125,13 +134,17 @@ export const encoreListingSchema = z.object({
   manualBlockedDates: z.array(z.string()).optional(),
   availabilityBlocks: z.array(listingAvailabilityBlockSchema).optional(),
   settlementProfile: listingSettlementProfileSchema.nullable().optional(),
+  adminTagKey: listingAdminTagKeySchema.nullable().optional(),
+  adminTagNote: nullableStringSchema,
+  adminTagAppliedAt: nullableStringSchema,
+  adminTagAppliedBy: nullableStringSchema,
   status: listingStatusSchema,
   rejectionReason: nullableStringSchema,
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
 });
 
-export const encoreListingAvailabilitySummarySchema = z.object({
+const encoreListingAvailabilitySummarySchema = z.object({
   listingId: z.string().min(1),
   manualBlockCount: z.number(),
   manualBlockedDates: z.array(z.string()),
@@ -139,7 +152,7 @@ export const encoreListingAvailabilitySummarySchema = z.object({
   upcomingBlocks: z.array(listingAvailabilityBlockSchema),
 });
 
-export const encoreBookingSchema = z.object({
+const encoreBookingSchema = z.object({
   id: z.string().min(1),
   listingId: z.string().min(1),
   guestId: z.string().min(1),
@@ -170,7 +183,7 @@ export const encoreBookingSchema = z.object({
   updatedAt: z.string().min(1),
 });
 
-export const encoreReviewSchema = z.object({
+const encoreReviewSchema = z.object({
   id: z.string().min(1),
   listingId: z.string().min(1),
   bookingId: z.string().min(1).optional(),
@@ -186,7 +199,7 @@ export const encoreReviewSchema = z.object({
   createdAt: z.string().min(1),
 });
 
-export const encoreReferralRewardSchema = z.object({
+const encoreReferralRewardSchema = z.object({
   id: z.string().min(1),
   referrerId: z.string().min(1),
   referredUserId: z.string().min(1),
@@ -197,7 +210,7 @@ export const encoreReferralRewardSchema = z.object({
   createdAt: z.string().min(1),
 });
 
-export const encoreNotificationSchema = z.object({
+const encoreNotificationSchema = z.object({
   id: z.string().min(1),
   title: z.string(),
   message: z.string(),
@@ -208,7 +221,7 @@ export const encoreNotificationSchema = z.object({
   createdAt: z.string().min(1),
 });
 
-export const encorePlatformSettingsSchema = z.object({
+const encorePlatformSettingsSchema = z.object({
   id: z.literal('global').optional().default('global'),
   referralRewardAmount: z.number().optional().default(0),
   commissionRate: z.number().optional().default(0),
@@ -223,7 +236,7 @@ export const encorePlatformSettingsSchema = z.object({
   updatedAt: z.string().min(1).optional().default('1970-01-01T00:00:00.000Z'),
 });
 
-export const encoreSubscriptionSchema = z.object({
+const encoreSubscriptionSchema = z.object({
   id: z.string().min(1),
   user_id: z.string().min(1),
   plan: hostPlanSchema,
@@ -320,6 +333,10 @@ export interface EncoreListing {
   manualBlockedDates?: string[];
   availabilityBlocks?: Listing['availabilityBlocks'];
   settlementProfile?: ListingSettlementProfile | null;
+  adminTagKey?: ListingAdminTagKey | null;
+  adminTagNote?: string | null;
+  adminTagAppliedAt?: string | null;
+  adminTagAppliedBy?: string | null;
   status: Listing['status'];
   rejectionReason?: string | null;
   createdAt: string;
@@ -463,6 +480,8 @@ export interface SaveListingInput {
     paymentInstructions?: string | null;
     paymentReferencePrefix?: string | null;
   } | null;
+  adminTagKey?: ListingAdminTagKey | null;
+  adminTagNote?: string | null;
   status: Listing['status'];
   rejectionReason?: string | null;
 }
@@ -554,6 +573,10 @@ export function mapEncoreListing(listing: EncoreListing): Listing {
     manualBlockedDates: listing.manualBlockedDates || [],
     availabilityBlocks: listing.availabilityBlocks || [],
     settlementProfile: listing.settlementProfile || null,
+    adminTagKey: listing.adminTagKey || null,
+    adminTagNote: listing.adminTagNote || null,
+    adminTagAppliedAt: listing.adminTagAppliedAt || null,
+    adminTagAppliedBy: listing.adminTagAppliedBy || null,
   };
 }
 
@@ -726,6 +749,8 @@ export function toEncoreListingPayload(input: SaveListingInput) {
           paymentReferencePrefix: input.settlementProfile.paymentReferencePrefix ?? null,
         }
       : undefined,
+    adminTagKey: input.adminTagKey ?? null,
+    adminTagNote: input.adminTagNote ?? null,
     status: input.status,
     rejectionReason: input.status === 'rejected' ? input.rejectionReason ?? null : null,
   };

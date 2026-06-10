@@ -1,3 +1,4 @@
+// (|/) Klaasvaakie
 import React, { useState, useEffect } from 'react';
 import { Listing, Review } from '@/types';
 import { summarizeReviews } from '@/services/content';
@@ -17,6 +18,7 @@ import type { BookingIntent } from '@/lib/booking-auth-intent';
 import { computeDriveRouteSummary } from '@/lib/google-places';
 import { readSearchContext } from '@/lib/search-context';
 import { getListingNightlyRate, getListingOriginalNightlyRate } from '@/lib/listing-pricing';
+import { getListingAdminTagDefinition } from '@/lib/listing-tags';
 
 export default function ListingDetail({ 
   listing, 
@@ -158,6 +160,7 @@ export default function ListingDetail({
   
   const nightlyRate = getListingNightlyRate(listing);
   const originalNightlyRate = getListingOriginalNightlyRate(listing);
+  const adminTag = getListingAdminTagDefinition(listing.adminTagKey ?? null);
   const subtotal = nightlyRate * nights;
   const totalPrice = subtotal;
   const breakageDeposit = listing.breakageDeposit ?? null;
@@ -262,6 +265,16 @@ export default function ListingDetail({
                   <p className="text-on-surface-variant">
                     {listing.adults + listing.children} guests · {listing.bedrooms} bedrooms · {listing.bedrooms} beds · {listing.bathrooms} bath
                   </p>
+                  {adminTag ? (
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <span className="rounded-full bg-black/85 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">
+                        {adminTag.label}
+                      </span>
+                      <span className="text-sm text-on-surface-variant">
+                        {adminTag.message}
+                      </span>
+                    </div>
+                  ) : null}
                   {routeSummary && (
                     <p className="text-sm font-medium text-on-surface-variant">
                       Approx. {routeSummary.durationLabel} drive from {routeSummary.label} · {routeSummary.distanceLabel}

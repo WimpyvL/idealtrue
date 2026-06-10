@@ -5,6 +5,12 @@ export type KycStatus = "none" | "pending" | "verified" | "rejected";
 export type ReferralTier = "bronze" | "silver" | "gold";
 export type AccountStatus = "active" | "suspended" | "deactivated";
 export type ListingStatus = "draft" | "pending" | "active" | "inactive" | "rejected" | "archived";
+export type ListingAdminTagKey =
+  | "payment_setup_review"
+  | "ops_attention"
+  | "special_conditions"
+  | "contact_before_booking"
+  | "verified_host_pick";
 export type AvailabilityBlockSource = "MANUAL" | "APPROVED_HOLD" | "BOOKED";
 export type InquiryDeclineReason =
   | "DATES_UNAVAILABLE"
@@ -93,6 +99,10 @@ export interface ListingRecord {
   manualBlockedDates?: string[];
   availabilityBlocks?: ListingAvailabilityBlockRecord[];
   settlementProfile?: ListingSettlementProfileRecord | null;
+  adminTagKey?: ListingAdminTagKey | null;
+  adminTagNote?: string | null;
+  adminTagAppliedAt?: string | null;
+  adminTagAppliedBy?: string | null;
   status: ListingStatus;
   rejectionReason?: string | null;
   createdAt: string;

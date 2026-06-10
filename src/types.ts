@@ -98,6 +98,13 @@ export interface ListingSettlementProfile {
   updatedAt: string;
 }
 
+export type ListingAdminTagKey =
+  | 'payment_setup_review'
+  | 'ops_attention'
+  | 'special_conditions'
+  | 'contact_before_booking'
+  | 'verified_host_pick';
+
 export interface UserProfile {
   id: string;
   displayName: string;
@@ -161,6 +168,10 @@ export interface Listing {
   category: string;
   status: 'draft' | 'pending' | 'active' | 'inactive' | 'rejected' | 'archived';
   rejectionReason?: string | null;
+  adminTagKey?: ListingAdminTagKey | null;
+  adminTagNote?: string | null;
+  adminTagAppliedAt?: string | null;
+  adminTagAppliedBy?: string | null;
   createdAt: string;
   updatedAt?: string;
   coordinates?: { lat: number; lng: number };

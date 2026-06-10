@@ -20,6 +20,7 @@ import { listingMediaBucket } from "./storage";
 import { computeHostListingQuota, type HostListingQuota } from "./quota";
 import { getMaxImagesForPlan, supportsListingVideo } from "./host-plan";
 import { requireRole, type AuthData } from "../shared/auth";
+import { isListingAdminTagKey } from "../shared/listing-tags";
 import { billingDB } from "../billing/db";
 import { assertHostBillingOperationalAccess } from "../billing/host-billing-service";
 import { bookingDB } from "../booking/db";
@@ -65,6 +66,10 @@ type ListingRow = {
   latitude: number | null;
   longitude: number | null;
   blocked_dates: string[];
+  admin_tag_key: string | null;
+  admin_tag_note: string | null;
+  admin_tag_applied_at: string | null;
+  admin_tag_applied_by: string | null;
   status: ListingStatus;
   rejection_reason: string | null;
   created_at: string;
@@ -134,6 +139,8 @@ interface SaveListingParams {
   longitude?: number | null;
   blockedDates?: string[];
   settlementProfile?: SettlementProfileInput | null;
+  adminTagKey?: string | null;
+  adminTagNote?: string | null;
   status: ListingStatus;
   rejectionReason?: string | null;
 }
@@ -849,6 +856,10 @@ function mapListing(
     manualBlockedDates: buildManualBlockedDates(resolvedAvailabilityBlocks),
     availabilityBlocks: resolvedAvailabilityBlocks,
     settlementProfile: settlementProfile ?? null,
+    adminTagKey: isListingAdminTagKey(row.admin_tag_key) ? row.admin_tag_key : null,
+    adminTagNote: row.admin_tag_note,
+    adminTagAppliedAt: row.admin_tag_applied_at,
+    adminTagAppliedBy: row.admin_tag_applied_by,
     status: row.status,
     rejectionReason: row.rejection_reason,
     createdAt: row.created_at,
@@ -1322,9 +1333,9 @@ export const getMyListingQuota = api<void, { quota: HostListingQuota }>(
 export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
   { expose: true, method: ["POST", "PUT"], path: "/host/listings", auth: true },
   async (params) => {
-    const auth = requireRole("host", "admin", "support");
-    const now = new Date().toISOString();
-    const isStaffOperator = auth.role === "admin" || auth.role === "support";
+  const auth = requireRole("host", "admin", "support");
+  const now = new Date().toISOString();
+  const isStaffOperator = auth.role === "admin" || auth.role === "support";
     if (!isStaffOperator) {
       await assertHostBillingOperationalAccess(auth.userID, "listings");
     }
@@ -1340,6 +1351,12 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
       const hostAccess = await getHostAccess(existing.host_id);
       assertListingImageCount(params.images, hostAccess.host_plan);
       assertListingVideoAccess(params.videoUrl, hostAccess.host_plan);
+
+    const nextAdminTagKey = isStaffOperator ? (params.adminTagKey ?? null) : existing.admin_tag_key;
+    const nextAdminTagNote = isStaffOperator ? (params.adminTagNote?.trim() || null) : existing.admin_tag_note;
+    if (nextAdminTagKey !== null && !isListingAdminTagKey(nextAdminTagKey)) {
+      throw APIError.invalidArgument("Invalid listing tag.");
+    }
 
       let nextStatus = params.status;
       let nextRejectionReason =
@@ -1392,6 +1409,10 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
             latitude = ${params.latitude ?? null},
             longitude = ${params.longitude ?? null},
             blocked_dates = ${existing.blocked_dates ?? []},
+            admin_tag_key = ${nextAdminTagKey},
+            admin_tag_note = ${nextAdminTagNote},
+            admin_tag_applied_at = ${isStaffOperator && nextAdminTagKey ? now : existing.admin_tag_applied_at},
+            admin_tag_applied_by = ${isStaffOperator && nextAdminTagKey ? auth.userID : existing.admin_tag_applied_by},
             status = ${nextStatus},
             rejection_reason = ${nextRejectionReason},
             updated_at = ${now}
@@ -1448,6 +1469,11 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
       await assertHostCanCreateListing(targetHostId);
     }
     const createdStatus = auth.role === "admin" ? params.status : "pending";
+    const nextAdminTagKey = isStaffOperator ? (params.adminTagKey ?? null) : null;
+    const nextAdminTagNote = isStaffOperator ? (params.adminTagNote?.trim() || null) : null;
+    if (nextAdminTagKey !== null && !isListingAdminTagKey(nextAdminTagKey)) {
+      throw APIError.invalidArgument("Invalid listing tag.");
+    }
 
     const id = randomUUID();
     await catalogDB.exec`
@@ -1455,7 +1481,7 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
         id, host_id, title, description, location, area, province, category, type,
         price_per_night, discount_percent, breakage_deposit, adults, children, bedrooms, bathrooms,
         amenities, facilities, restaurant_offers, images, video_url, is_self_catering,
-        has_restaurant, is_occupied, latitude, longitude, blocked_dates, status, rejection_reason, created_at, updated_at
+        has_restaurant, is_occupied, latitude, longitude, blocked_dates, admin_tag_key, admin_tag_note, admin_tag_applied_at, admin_tag_applied_by, status, rejection_reason, created_at, updated_at
       )
       VALUES (
         ${id}, ${targetHostId}, ${params.title}, ${params.description}, ${params.location},
@@ -1464,7 +1490,7 @@ export const saveListing = api<SaveListingParams, { listing: ListingRecord }>(
         ${params.bedrooms}, ${params.bathrooms}, ${params.amenities}, ${params.facilities},
         ${params.restaurantOffers}, ${params.images}, ${params.videoUrl ?? null},
         ${params.isSelfCatering}, ${params.hasRestaurant}, ${params.isOccupied},
-        ${params.latitude ?? null}, ${params.longitude ?? null}, ${[]}, ${createdStatus}, ${null}, ${now}, ${now}
+        ${params.latitude ?? null}, ${params.longitude ?? null}, ${[]}, ${nextAdminTagKey}, ${nextAdminTagNote}, ${nextAdminTagKey ? now : null}, ${nextAdminTagKey ? auth.userID : null}, ${createdStatus}, ${null}, ${now}, ${now}
       )
     `;
     await upsertListingSettlementProfile(id, params.settlementProfile, now);

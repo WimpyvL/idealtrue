@@ -45,6 +45,8 @@ export function toListingPayload(
           paymentReferencePrefix: listing.settlementProfile.paymentReferencePrefix ?? null,
         }
       : null,
+    adminTagKey: listing.adminTagKey ?? null,
+    adminTagNote: listing.adminTagNote ?? null,
     status,
     rejectionReason,
   };
@@ -122,7 +124,7 @@ export function StatCard({
   );
 }
 
-export function HealthMetric({
+function HealthMetric({
   label,
   value,
   max = 100,

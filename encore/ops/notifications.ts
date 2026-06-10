@@ -92,13 +92,6 @@ export async function notifyInquiryStatusChanged(params: {
   return createNotification(buildInquiryStatusChangedNotification(params));
 }
 
-export async function notifyInquiryApproved(params: {
-  guestId: string;
-  listingTitle: string;
-}) {
-  return createNotification(buildInquiryApprovedNotification(params));
-}
-
 export async function notifyPaymentProofSubmitted(params: {
   hostId: string;
   listingTitle: string;

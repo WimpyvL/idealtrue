@@ -219,20 +219,3 @@ export async function uploadListingMedia(params: { listingId?: string; file: Fil
   await uploadToSignedUrl(signed.uploadUrl, params.file);
   return signed.publicUrl;
 }
-
-export async function uploadChatAttachment(params: { bookingId: string; file: File }) {
-  const signed = await encoreRequest<{ objectKey: string; uploadUrl: string }>(
-    '/messages/attachments/upload-url',
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        bookingId: params.bookingId,
-        filename: params.file.name,
-      }),
-    },
-    { auth: true },
-  );
-
-  await uploadToSignedUrl(signed.uploadUrl, params.file);
-  return signed.objectKey;
-}

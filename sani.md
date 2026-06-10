@@ -224,3 +224,52 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - 2026-06-08: Turned `/host/onboarding` from a static checklist into a real setup gate. `HostOnboardingTutorial` now receives the current host profile and host listings from `AppRoutes`, reads saved host quick replies from `/messages/quick-replies/me`, and computes complete/missing state for account/KYC, payment setup, first listing, availability, quick replies, and enquiry readiness. Payment guidance now branches correctly: self-service hosts still use `/account` profile payment instructions, while managed hosts are guided to listing-scoped settlement setup through `/host/listings` or listing creation, avoiding the loose account banking field. Added UI coverage for standard hosts, managed hosts with complete listing settlement setup, and managed hosts missing listing settlement profiles. Verification passed: `npm run lint` and `npm run test:ui -- tests/ui/host-onboarding-tutorial.test.tsx`. Author signature: (|/) Klaasvaakie
 - 2026-06-08: Deployed commit `566992d` (`Ship host onboarding and admin billing fixes`). Pre-deploy verification passed: `npm run lint`, `npx tsc --noEmit -p encore/tsconfig.json`, `npm test` (194 unit tests and 51 UI tests), and `npm run build`. Pushed `main` to GitHub `origin` and Encore remote `encore`, triggering Encore staging deploy `1vegsimagip74obdouvg` and prod deploy `1vegsimagip74obdov00`. Ran Vercel production deploy `dpl_CTXynSsB84m9zwhsouH2yqQxzAnT`, which finished `READY` and aliased `https://www.idealstay.co.za`. Live probes passed: homepage `200`, anonymous `/api/encore/auth/session` `401`, and `/api/encore/listings?status=active` `200`. Author signature: (|/) Klaasvaakie
 - 2026-06-08: Removed the visible `( |/ ) Klaasvaakie` signature from the host onboarding tutorial while keeping the author marker as a source-code comment only. Updated `HostDashboard` so the new-host tutorial button/card disappear once the real onboarding setup is complete: verified profile/KYC, self-service account payment instructions or managed listing settlement profiles, at least one listing, availability touched for every listing, and all saved quick replies present. The `/host/onboarding` route remains available from the host navigation for hosts who want to redo it. Verification passed: `npm run test:ui -- tests/ui/host-onboarding-tutorial.test.tsx tests/ui/host-dashboard.test.tsx` and `npm run lint`. Author signature: (|/) Klaasvaakie
+- 2026-06-10: Tightened subscription fulfillment so a successful paid checkout cannot leave stale subscription data behind on replay. `activatePlanFromBillingSession` now updates an existing subscription row for the same checkout session instead of only inserting on the first pass, and it still cancels any other active subscriptions for the user. Added a regression guard in `tests/payment-yoco-contracts.test.ts` for the existing-subscription update branch. Verification pending. Author signature: (|/) Klaasvaakie
+- 2026-06-10: Repaired a corrupted `src/components/ListingDetail.tsx` build blocker by restoring the file from `HEAD`. Normalized catalog admin-tag mapping in `encore/catalog/api.ts` so raw strings cannot leak into the typed listing contract, then removed an unused admin tag import in `src/features/admin/dashboard-support.tsx`. Verification passed: `npm run lint`, `npm run build`, and `npx tsx --test tests/payment-yoco-contracts.test.ts`. Live DB trace was attempted via Encore DB tooling but blocked because this machine has no `psql` client and Docker is unavailable for Encore's fallback shell. Author signature: (|/) Klaasvaakie
+- 2026-06-10: With Docker available, used a disposable `postgres:16-alpine` client container against the Encore proxy to inspect the live prod billing rows. The current paid user `c19a9994-2a7c-4ca6-b662-ed6e0601a918` (`loop69org@gmail.com`) has `host_plan = premium` in identity, and the billing DB shows the latest active subscription row as `premium` with matching `billing_interval = monthly`. Older pending rows still exist from earlier attempts, but a mismatch query between active subscriptions and identity host plans returned no rows. Author signature: (|/) Klaasvaakie
+- 2026-06-10: Cleaned the prod Encore billing history by cancelling 11 stale `billing_payment_intents` rows that were still `pending` from earlier checkout attempts. Used the write-enabled Encore DB proxy and a disposable PostgreSQL client container. After cleanup, `c19a9994-2a7c-4ca6-b662-ed6e0601a918` has 0 pending intents, 1 paid intent, and 10 cancelled intents; `c81a6158-019f-44cb-b57f-fe284e1680ce` has 1 cancelled intent and no pending intents. The paid subscription row remained untouched. Author signature: (|/) Klaasvaakie
+- 2026-06-10: Removed the remaining stale billing noise by deleting 19 orphaned `billing_webhook_events` rows in prod. All were `yoco/payment.succeeded`, all were unprocessed, and none linked to any `billing_payment_intents` row by `paymentIntentId` or `checkoutId`, so they were safe to drop. Final verification showed `billing_webhook_events` count is 0 and no orphaned Yoco webhook rows remain. Author signature: (|/) Klaasvaakie
+- 2026-06-10: Ran a targeted stale-code sweep with `knip` and `rg`. Most hits were intentional guardrails or live contracts, but the repo still has unrelated dirty worktree changes in catalog/listing/tag surfaces (`encore/catalog/api.ts`, `encore/catalog/migrations/1_init.up.sql`, `encore/shared/domain.ts`, `src/lib/domain-mappers.ts`, `src/types.ts`, plus new tag-related files). I did not touch those because they are outside the billing cleanup path and should be reviewed as a separate change set. Author signature: (|/) Klaasvaakie
+- 2026-06-10: Finished the listing admin tag surface. Public cards already showed the tag; I added the same badge/message to `src/components/ListingDetail.tsx`, and updated `tests/api-clients.test.ts` so the canonical Encore listing contract expects `adminTagKey`/`adminTagNote` in the payload. Verification passed on the targeted run: `npm test -- --runInBand tests\\api-clients.test.ts tests\\ui\\host-onboarding-tutorial.test.tsx tests\\ui\\app-routes.test.tsx` and the full UI suite still passed. Author signature: (|/) Klaasvaakie
+# 2026-06-10 scan log
+
+- Ran a broad dead-code/dependency scan from the repo root.
+- `knip --include files --no-progress` returned clean.
+- Searched declared dependencies against source imports; no clearly unused installed packages surfaced.
+- Found tracked runtime artifacts under `test-results/` in git status, but left them alone because they are likely local test outputs and not part of the current user change set.
+- Repo already has unrelated modified files and new untracked files; I did not touch them.
+
+# 2026-06-10 deeper scan
+
+- Removed two confirmed unused dependencies: `@hookform/resolvers` and `@vercel/analytics`.
+- Re-ran `knip --reporter json`; it now reports only CSS/framework false positives for some deps plus several unused exports in shared UI and client helper modules.
+- Verified the typecheck still passes with `npm run lint:types`.
+- The remaining stale-code candidates are export-level helpers like `CardAction`, `DialogClose`, `DialogOverlay`, `DialogPortal`, `DialogTrigger`, `PopoverDescription`, `PopoverHeader`, `PopoverTitle`, `SelectGroup`, `SelectLabel`, `SelectSeparator`, `SelectScrollUpButton`, `SelectScrollDownButton`, `CalendarDayButton`, `HealthMetric`, `buildBookingReturnPath`, `requestProfilePhotoUpload`, `uploadChatAttachment`, and `encoreFetch`; they are still present but not imported anywhere outside their defining files.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-06-10 dead-export cleanup
+
+- Removed unused UI exports from `src/components/ui/card.tsx`, `dialog.tsx`, `popover.tsx`, `select.tsx`, and `calendar.tsx`.
+- Demoted `HealthMetric` in `src/features/admin/dashboard-support.tsx` to an internal helper.
+- Demoted `buildBookingReturnPath` in `src/lib/booking-auth-intent.ts` and `encoreFetch` in `src/lib/encore-client.ts` to internal helpers.
+- Deleted dead client-only helpers `requestProfilePhotoUpload` from `src/lib/identity-client.ts` and `uploadChatAttachment` from `src/lib/media-client.ts`.
+- Verified `npm run lint:types`, `npm test`, and `npm run build` all passed after the cleanup.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-06-10 follow-up cleanup
+
+- Removed `listAdminHostBillingAccounts` from `src/lib/billing-client.ts` after confirming it was not imported anywhere.
+- Demoted `normalizeDateOnly` and `getInquiryStateLabel` in `encore/booking/workflow.ts` to internal helpers.
+- Converted the exported Zod schema objects in `src/lib/domain-mappers.ts` to internal constants while keeping the public parse helpers intact.
+- Re-verified with `npm run lint:types`, `npm test`, and `npm run build`; all passed.
+- `knip` now only reports expected CSS/framework dependency false positives and still-unused exported helper types/values that are part of shared API surfaces, not obvious dead code.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-06-10 final cleanup pass
+
+- Removed `getInquiryDisplayState`, `getInquiryDeclineReasonLabel`, `getInquiryResponseText`, and `canGuestViewStayDetails` from the public surface of `src/lib/inquiry-state.ts`; they remain internal helpers for the same module.
+- Removed the dead `notifyInquiryApproved` export from `encore/ops/notifications.ts`.
+- Verified the client-side `src/lib/listing-tags.ts` is still imported by `AdminDashboard`, `PropertyCard`, and `ListingDetail`, so it stays in place.
+- Re-ran `knip`, `npm run lint:types`, `npm test`, and `npm run build`; all passed.
+- The remaining `knip` hits are framework/CSS dependency false positives plus intentional shared API exports that are still in use.
+- Author signature: (|/) Klaasvaakie

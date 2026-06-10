@@ -3,7 +3,7 @@ import type { InquiryState, PaymentState } from "../shared/domain";
 const UNRESOLVED_INQUIRY_EXPIRY_HOURS = 48;
 const APPROVED_INQUIRY_EXPIRY_HOURS = 24;
 
-export function normalizeDateOnly(value: string) {
+function normalizeDateOnly(value: string) {
   return value.slice(0, 10);
 }
 
@@ -156,7 +156,7 @@ export function shouldExpireInquiry(state: InquiryState, expiresAt: string | nul
   return now.getTime() >= expiry.getTime();
 }
 
-export function getInquiryStateLabel(state: InquiryState) {
+function getInquiryStateLabel(state: InquiryState) {
   switch (state) {
     case "PENDING":
       return "Awaiting host response";

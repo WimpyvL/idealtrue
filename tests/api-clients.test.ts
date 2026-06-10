@@ -316,6 +316,8 @@ test('getListing and saveListing use the canonical Encore listing contract', asy
       paymentInstructions: 'Use the managed host account and include the guest surname.',
       paymentReferencePrefix: 'MANAGED',
     },
+    adminTagKey: null,
+    adminTagNote: null,
     status: 'rejected',
     rejectionReason: 'Photos were too blurry and the description was incomplete.',
   });

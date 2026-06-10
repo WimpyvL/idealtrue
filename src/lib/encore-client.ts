@@ -105,7 +105,7 @@ export async function encoreRequest<T>(
   return JSON.parse(body) as T;
 }
 
-export async function encoreFetch(
+async function encoreFetch(
   path: string,
   init: RequestInit = {},
   _opts: { auth?: boolean } = {},

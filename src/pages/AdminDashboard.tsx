@@ -33,6 +33,7 @@ import { getKycSubmissionAssets, reviewKycSubmission, type KycSubmission } from 
 import { setUserKycStatus } from '@/lib/identity-client';
 import { deleteListing, saveListing } from '@/lib/platform-client';
 import { cn } from '@/lib/utils';
+import { LISTING_ADMIN_TAGS, getListingAdminTagDefinition } from '@/lib/listing-tags';
 import { toListingPayload } from '@/features/admin/dashboard-support';
 import { getErrorMessage } from '@/lib/errors';
 import {
@@ -907,6 +908,41 @@ export default function AdminDashboard() {
                 <label className="text-xs font-bold uppercase text-slate-500">Description</label>
                 <textarea className="min-h-[100px] w-full rounded-md border border-input bg-background p-3 text-sm" value={editingListing.description} onChange={(event) => setEditingListing({ ...editingListing, description: event.target.value })} />
               </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase text-slate-500">Admin tag</label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={editingListing.adminTagKey ?? ''}
+                  onChange={(event) =>
+                    setEditingListing({
+                      ...editingListing,
+                      adminTagKey: event.target.value ? (event.target.value as Listing['adminTagKey']) : null,
+                      adminTagAppliedAt: event.target.value
+                        ? editingListing.adminTagAppliedAt ?? editingListing.updatedAt ?? editingListing.createdAt
+                        : null,
+                      adminTagAppliedBy: event.target.value ? editingListing.adminTagAppliedBy ?? profile?.id ?? null : null,
+                    })
+                  }
+                >
+                  <option value="">No admin tag</option>
+                  {LISTING_ADMIN_TAGS.map((tag) => (
+                    <option key={tag.key} value={tag.key}>
+                      {tag.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-500">
+                  This controls the public message shown on the listing card and listing details page.
+                </p>
+              </div>
+              {editingListing.adminTagKey ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-xs font-bold uppercase text-amber-700">Public message preview</p>
+                  <p className="mt-1 text-sm text-amber-900">
+                    {getListingAdminTagDefinition(editingListing.adminTagKey)?.message}
+                  </p>
+                </div>
+              ) : null}
               <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div>
                   <label className="text-xs font-bold uppercase text-slate-500">Listing Settlement Profile</label>

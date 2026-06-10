@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import test, { afterEach } from 'node:test';
 
 import { DEFAULT_ENCORE_API_URL } from '../src/lib/encore-client';
@@ -249,6 +250,18 @@ test('payment success URLs route through backend reconciliation before returning
     buildPricingPaymentReturnUrl('https://www.idealstay.co.za/', 'payment 123', 'success'),
     'https://www.idealstay.co.za/pricing?billing_status=success&payment_id=payment+123',
   );
+});
+
+test('subscription fulfilment updates an existing checkout subscription row instead of leaving stale plan data behind', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  const activationBlock = source.slice(
+    source.indexOf('async function activatePlanFromBillingSession'),
+    source.indexOf('async function creditWalletFromBillingSession'),
+  );
+
+  assert.match(activationBlock, /if \(existingSubscription\) \{/);
+  assert.match(activationBlock, /UPDATE subscriptions[\s\S]*SET plan = \$\{session\.host_plan\},[\s\S]*billing_interval = \$\{session\.billing_interval\}/);
+  assert.match(activationBlock, /AND checkout_session_id <> \$\{session\.id\}/);
 });
 
 test('accepted Yoco webhook events classify into fulfilment-safe billing outcomes', () => {

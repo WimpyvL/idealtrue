@@ -24,6 +24,10 @@ CREATE TABLE listings (
   is_occupied BOOLEAN NOT NULL DEFAULT FALSE,
   latitude DOUBLE PRECISION,
   longitude DOUBLE PRECISION,
+  admin_tag_key TEXT,
+  admin_tag_note TEXT,
+  admin_tag_applied_at TIMESTAMPTZ,
+  admin_tag_applied_by TEXT,
   status TEXT NOT NULL DEFAULT 'draft',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

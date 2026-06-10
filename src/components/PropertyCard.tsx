@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "./ui/use-toast";
 import { cn } from "@/lib/utils";
 import { getListingNightlyRate, getListingOriginalNightlyRate } from "@/lib/listing-pricing";
+import { getListingAdminTagDefinition } from "@/lib/listing-tags";
 
 interface PropertyCardProps {
   listing: Listing;
@@ -22,6 +23,7 @@ export default function PropertyCard({ listing, onClick, showBorder = false, com
   const cardRef = useRef<HTMLDivElement>(null);
   const nightlyRate = getListingNightlyRate(listing);
   const originalNightlyRate = getListingOriginalNightlyRate(listing);
+  const adminTag = getListingAdminTagDefinition(listing.adminTagKey ?? null);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -105,16 +107,27 @@ export default function PropertyCard({ listing, onClick, showBorder = false, com
           />
         </button>
 
-        {listing.discount > 0 && (
-          <div className={cn("absolute z-10 flex gap-2", compact ? "top-2 left-2" : "top-3 left-3")}>
+        <div className={cn("absolute z-10 flex flex-col gap-2", compact ? "top-2 left-2" : "top-3 left-3")}>
+          {listing.discount > 0 ? (
             <Badge variant="secondary" className={cn(
               "bg-surface/95 text-on-surface font-semibold shadow-sm hover:bg-surface backdrop-blur-sm border-none",
               compact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1",
             )}>
               Save {listing.discount}%
             </Badge>
-          </div>
-        )}
+          ) : null}
+          {adminTag ? (
+            <Badge
+              variant="secondary"
+              className={cn(
+                "bg-black/75 text-white font-semibold shadow-sm backdrop-blur-sm border-none",
+                compact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1",
+              )}
+            >
+              {adminTag.label}
+            </Badge>
+          ) : null}
+        </div>
       </div>
 
       <div className="flex justify-between items-start">
@@ -131,6 +144,11 @@ export default function PropertyCard({ listing, onClick, showBorder = false, com
           )}>
             {listing.location}
           </p>
+          {adminTag ? (
+            <p className={cn("mt-1 line-clamp-2 text-on-surface-variant", compact ? "text-[10px]" : "text-xs")}>
+              {adminTag.message}
+            </p>
+          ) : null}
           <div className={cn("flex flex-col", compact ? "gap-0.5 mt-0.5" : "gap-1 mt-1")}>
             <div className="flex items-baseline gap-1">
               <span className={cn(

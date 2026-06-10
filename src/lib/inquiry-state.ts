@@ -93,7 +93,7 @@ export type HostInquiryGroups<TBooking extends HostBookingSlice> = {
   closed: TBooking[];
 };
 
-export function getInquiryDisplayState(booking: BookingStateSlice): InquiryState {
+function getInquiryDisplayState(booking: BookingStateSlice): InquiryState {
   if (booking.inquiryState === 'APPROVED' && booking.paymentState === 'COMPLETED') {
     return 'BOOKED';
   }
@@ -128,7 +128,7 @@ export function getInquiryBadgeLabel(booking: BookingStateSlice) {
   }
 }
 
-export function getInquiryDeclineReasonLabel(reason: InquiryDeclineReason | null | undefined) {
+function getInquiryDeclineReasonLabel(reason: InquiryDeclineReason | null | undefined) {
   return inquiryDeclineReasonOptions.find((option) => option.value === reason)?.label ?? null;
 }
 
@@ -154,7 +154,7 @@ function formatDeclineReasonSentence(detail: string | null) {
   return `This inquiry was declined: ${normalizedDetail}.`;
 }
 
-export function getInquiryResponseText(booking: BookingStateSlice) {
+function getInquiryResponseText(booking: BookingStateSlice) {
   if (isAwaitingHostPaymentConfirmation(booking)) {
     return 'Payment proof submitted. Awaiting host confirmation';
   }
@@ -589,7 +589,7 @@ export function canGuestPay(booking: BookingStateSlice) {
   return booking.inquiryState === 'APPROVED' && booking.paymentState === 'INITIATED' && !booking.paymentSubmittedAt;
 }
 
-export function canGuestViewStayDetails(booking: BookingStateSlice) {
+function canGuestViewStayDetails(booking: BookingStateSlice) {
   return booking.inquiryState === 'BOOKED' && booking.paymentState === 'COMPLETED';
 }
 
