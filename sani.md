@@ -273,3 +273,85 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Re-ran `knip`, `npm run lint:types`, `npm test`, and `npm run build`; all passed.
 - The remaining `knip` hits are framework/CSS dependency false positives plus intentional shared API exports that are still in use.
 - Author signature: (|/) Klaasvaakie
+
+# 2026-06-10 deploy
+
+- Committed the verified cleanup as `9241e10` with message `Prune dead exports and unused deps`.
+- Pushed `main` to `origin` so the GitHub-linked Vercel deployment can pick it up.
+- Pushed `main` to `encore`, which triggered Encore Cloud deploys for staging and prod:
+  - `https://app.encore.cloud/ideal-stay-online-gh5i/envs/staging/deploys/1vft296agip74obdp1bg`
+  - `https://app.encore.cloud/ideal-stay-online-gh5i/envs/prod/deploys/1vft296agip74obdp1c0`
+- Author signature: (|/) Klaasvaakie
+
+# 2026-06-22 vercel account check
+
+- Confirmed this checkout is linked locally to Vercel project `prj_komlJxxNhZdzCD7PyxNestigAO5A` with org/team `team_DAsOov3nTllu6SluJSqvpf0X` and project name `ideal-stay`.
+- `vercel.json` still routes frontend traffic to `/api/encore-proxy` for Encore API calls, so the app wiring itself is unchanged.
+- The `.vercel` folder is local-only and should stay uncommitted; it contains the current Vercel link metadata and environment files.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-06-22 relinked to new vercel home
+
+- Relinked this checkout to `loop69/idealtrue` with project ID `prj_ehouhIGWLvaGCPKow4a8zH0Jfbjs`.
+- Verified via `vercel project inspect idealtrue --scope loop69`; root directory is `.`, framework preset is Vite, and the project is owned by `Loop69`.
+- `vercel link` surfaced both `origin` and `encore` remotes, but the actual Vercel binding is now the new team project the user asked for.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-06-22 ownership blocker
+
+- The active Vercel CLI identity is `looping69`, and `vercel teams ls` only shows the `loop69` scope in this session.
+- There is no visible `klaasvaakie` scope available here, so the project cannot be moved to that owner without re-authenticating or being granted access to the target scope.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-06-22 vercel logout
+
+- Logged out of the Vercel CLI successfully.
+- A follow-up `vercel teams ls` now reports no existing credentials and starts the device-login flow, so the old `looping69` session is cleared.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-06-22 handoff for klaasvaakie login
+
+- The next step is to log the Vercel CLI into the `klaasvaakie` account and then relink this checkout to that scope.
+- After login, the relink command should target the `klaasvaakie` scope/project, not `loop69`.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-06-22 deployment wiring check
+
+- Confirmed the repo still has the expected release surfaces wired together: `origin` points at GitHub, `encore` points at `encore://ideal-stay-online-gh5i`, and the local Vercel project binding exists for `idealtrue`.
+- Confirmed the Encore app ID is `ideal-stay-online-gh5i` in `encore.app`, and the frontend Vercel config still rewrites `/api/encore/*` to the same-origin proxy.
+- Live deployment health still needs authenticated checks against GitHub Actions, Vercel, and Encore dashboards or CLIs; the repo files alone prove wiring, not current cloud-side status.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-06-22 live deployment check
+
+- GitHub Actions auth is present for `WimpyvL`, and the latest visible `Staging Smoke` run on `main` failed (`27083093728`).
+- Vercel and Encore still need cloud-side verification; no live production URL or authenticated dashboard access was available in this session for a definitive health check.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-06-22 vercel verified
+
+- Authenticated Vercel with the provided token and relinked the checkout to `klaasvaakies-projects/idealtrue`.
+- Verified the production deployment is `Ready` at `https://idealtrue-qvsouc2t3-klaasvaakies-projects.vercel.app` with aliases including `https://idealtrue.vercel.app`.
+- Verified the required Vercel env vars exist for production/preview: `ENCORE_API_URL`, `YOCO_SECRET_KEY`, `YOCO_WEBHOOK_SECRET`, `VITE_GOOGLE_CLIENT_ID`, `VITE_GOOGLE_MAPS_API_KEY`, `SEARCH_AI_GEMINI_API_KEY`, `SEARCH_AI_MODEL`, and `ALLOW_STAGING_ENCORE_BACKEND`.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-06-23 backend proxy proof
+
+- Probed `https://idealtrue.vercel.app/api/encore/auth/session` and got `401 unauthenticated`, which shows the Vercel proxy is actually reaching Encore.
+- Probed `https://idealtrue.vercel.app/api/encore/listings?status=active` and got `200` with live listing JSON, which is stronger proof that the frontend proxy is talking to the backend successfully.
+- `https://idealtrue.vercel.app/api/encore/health` returned a backend `404`, so that path is not a valid health signal here and should not be used as proof of backend failure.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-06-23 screenshot diagnosis
+
+- The browser screenshot showed a frontend banner saying `Listing response was invalid`, but the live `www.idealstay.co.za/api/encore/listings?status=active` endpoint currently returns valid JSON and `200`.
+- That makes the screenshot most likely stale browser state, a prior deployment, or a transient frontend contract failure that is no longer present.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-06-23 root cause and fix
+
+- Found the real breakage: one live public listing had `location: ""`, which violated the listing contract and caused `listPublicListings()` to fail the entire homepage.
+- Hardened `src/lib/platform-client.ts` so public listings now skip malformed records instead of blanking the whole marketplace.
+- Added a regression test proving one bad listing no longer takes down the homepage.
+- `npm test -- --runInBand tests/api-contract-validation.test.ts` now passes; `npm run lint` still fails on unrelated pre-existing unused-export noise in other files.
+- Author signature: (|/) Klaasvaakie

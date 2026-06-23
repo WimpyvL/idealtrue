@@ -10,6 +10,7 @@ import type {
   PaymentDisputeResolution,
   Referral,
   Review,
+  Listing,
 } from '@/types';
 import {
   mapEncoreBooking,
@@ -43,7 +44,17 @@ interface EncoreHostListingQuota {
 
 export async function listPublicListings() {
   const response = await encoreRequest<{ listings: EncoreListing[] }>('/listings?status=active');
-  return response.listings.map((listing) => mapEncoreListing(parseEncoreListing(listing)));
+  const listings: Listing[] = [];
+
+  for (const listing of response.listings) {
+    try {
+      listings.push(mapEncoreListing(parseEncoreListing(listing)));
+    } catch (error) {
+      console.warn('Skipping invalid public listing response:', error);
+    }
+  }
+
+  return listings;
 }
 
 export async function getListing(id: string) {

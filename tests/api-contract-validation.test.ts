@@ -159,6 +159,24 @@ test('listing client rejects malformed listing contracts before rendering market
   await assert.rejects(() => getListing('listing-1'), /Listing response was invalid/i);
 });
 
+test('public listings skip malformed records instead of failing the entire homepage', async () => {
+  installFetch((url) => {
+    assert.equal(url, `${DEFAULT_ENCORE_API_URL}/listings?status=active`);
+    return createJsonResponse({
+      listings: [
+        validEncoreListing({ id: 'listing-valid' }),
+        validEncoreListing({ id: 'listing-invalid', location: '', title: 'Broken listing' }),
+      ],
+    });
+  });
+
+  const { listPublicListings } = await import('../src/lib/platform-client.ts');
+  const listings = await listPublicListings();
+
+  assert.equal(listings.length, 1);
+  assert.equal(listings[0]?.id, 'listing-valid');
+});
+
 test('booking client rejects malformed workflow contracts before mutating enquiry state', async () => {
   installFetch((url) => {
     assert.equal(url, `${DEFAULT_ENCORE_API_URL}/bookings/booking-1/status`);

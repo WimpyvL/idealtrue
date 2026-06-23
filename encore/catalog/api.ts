@@ -820,6 +820,11 @@ function mapListing(
   availabilityBlocks?: ListingAvailabilityBlockRecord[],
   settlementProfile?: ListingSettlementProfileRecord | null,
 ): ListingRecord {
+  const resolvedLocation =
+    row.location.trim() ||
+    row.area?.trim() ||
+    row.province?.trim() ||
+    row.title.trim();
   const resolvedAvailabilityBlocks = availabilityBlocks ?? [];
   const resolvedBlockedDates =
     resolvedAvailabilityBlocks.length > 0
@@ -830,7 +835,7 @@ function mapListing(
     hostId: row.host_id,
     title: row.title,
     description: row.description,
-    location: row.location,
+    location: resolvedLocation,
     area: row.area,
     province: row.province,
     category: row.category,
