@@ -326,3 +326,14 @@ test('Yoco Checkout payment webhooks expose the checkout id inside payload metad
 
   assert.equal(resolveYocoWebhookCheckoutId(event), 'ch_checkout_123');
 });
+
+test('successful Yoco webhook handling persists a provider order id for later reconciliation', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  const webhookBlock = source.slice(
+    source.indexOf('export const yocoWebhook = api.raw('),
+    source.indexOf('export const listPlans = api<void, { plans: SubscriptionPlan[] }>('),
+  );
+
+  assert.match(webhookBlock, /const providerOrderId = resolveProviderOrderId\(event\);/);
+  assert.match(webhookBlock, /await storeProviderOrderId\(paymentIntent\.id, providerOrderId\);/);
+});

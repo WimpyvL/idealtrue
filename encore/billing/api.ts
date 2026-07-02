@@ -594,6 +594,21 @@ async function storeProviderPaymentIntent(params: {
   `;
 }
 
+async function storeProviderOrderId(intentId: string, providerOrderId: string | null) {
+  if (!providerOrderId) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  await billingDB.exec`
+    UPDATE billing_payment_intents
+    SET provider_order_id = ${providerOrderId},
+        updated_at = ${now}
+    WHERE id = ${intentId}
+      AND provider_order_id IS NULL
+  `;
+}
+
 function mapYocoOrderStatus(status?: string | null): CheckoutStatus {
   const normalized = status?.trim().toLowerCase();
   if (normalized === "completed") return "paid";
@@ -1686,7 +1701,12 @@ export const yocoWebhook = api.raw(
       }
 
       const providerPaymentId = event.payload?.paymentId ?? event.payload?.id ?? null;
+      const providerOrderId = resolveProviderOrderId(event);
       const outcome = classifyYocoWebhookOutcome(eventType, event.payload?.status);
+
+      if (paymentIntent) {
+        await storeProviderOrderId(paymentIntent.id, providerOrderId);
+      }
 
       if (paymentIntent && outcome === "paid") {
         await fulfilSuccessfulPaymentIntent(paymentIntent, providerPaymentId);
