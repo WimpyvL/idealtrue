@@ -589,10 +589,6 @@ export function canGuestPay(booking: BookingStateSlice) {
   return booking.inquiryState === 'APPROVED' && booking.paymentState === 'INITIATED' && !booking.paymentSubmittedAt;
 }
 
-function canGuestViewStayDetails(booking: BookingStateSlice) {
-  return booking.inquiryState === 'BOOKED' && booking.paymentState === 'COMPLETED';
-}
-
 export function isBookedStay(booking: BookingStateSlice) {
   return booking.inquiryState === 'BOOKED' && booking.paymentState === 'COMPLETED';
 }

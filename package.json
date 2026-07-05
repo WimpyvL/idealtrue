@@ -41,6 +41,7 @@
     "dotenv": "^17.2.3",
     "embla-carousel-autoplay": "^8.6.0",
     "embla-carousel-react": "^8.6.0",
+    "encore": "^0.0.30-beta",
     "express": "^4.21.2",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.546.0",

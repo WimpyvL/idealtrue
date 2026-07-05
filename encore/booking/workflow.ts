@@ -156,23 +156,3 @@ export function shouldExpireInquiry(state: InquiryState, expiresAt: string | nul
   return now.getTime() >= expiry.getTime();
 }
 
-function getInquiryStateLabel(state: InquiryState) {
-  switch (state) {
-    case "PENDING":
-      return "Awaiting host response";
-    case "VIEWED":
-      return "Host has viewed the inquiry";
-    case "RESPONDED":
-      return "Host responded";
-    case "APPROVED":
-      return "Ready for payment";
-    case "DECLINED":
-      return "Inquiry declined";
-    case "EXPIRED":
-      return "Inquiry expired";
-    case "BOOKED":
-      return "Confirmed stay";
-    default:
-      return state;
-  }
-}

@@ -85,19 +85,6 @@ export function buildInquiryStatusChangedNotification(params: {
   };
 }
 
-export function buildInquiryApprovedNotification(params: {
-  guestId: string;
-  listingTitle: string;
-}): NotificationInput {
-  return {
-    title: "Payment unlocked",
-    message: `${params.listingTitle} is approved and ready for payment.`,
-    type: "success",
-    target: params.guestId,
-    actionPath: "/guest",
-  };
-}
-
 export function buildPaymentCompletedNotification(params: {
   target: string;
   listingTitle: string;

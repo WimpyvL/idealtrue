@@ -5,7 +5,6 @@ import {
   buildBookingRequestedNotification,
   buildCheckoutStatusChangedNotification,
   buildContentCreditsPurchasedNotification,
-  buildInquiryApprovedNotification,
   buildInquiryStatusChangedNotification,
   buildKycReviewedNotification,
   buildListingReviewedNotification,

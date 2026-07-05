@@ -124,30 +124,3 @@ export function StatCard({
   );
 }
 
-function HealthMetric({
-  label,
-  value,
-  max = 100,
-  color,
-}: {
-  label: string;
-  value: number;
-  max?: number;
-  color: string;
-}) {
-  const percentage = Math.min((value / max) * 100, 100);
-  return (
-    <div className="space-y-2">
-      <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider">
-        <span className="text-slate-400">{label}</span>
-        <span className="text-white">
-          {value}
-          {max === 100 ? '%' : 'ms'}
-        </span>
-      </div>
-      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-        <div className={cn('h-full rounded-full transition-all duration-1000', color)} style={{ width: `${percentage}%` }} />
-      </div>
-    </div>
-  );
-}
