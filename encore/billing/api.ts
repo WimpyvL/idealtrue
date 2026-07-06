@@ -4,7 +4,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { billingDB } from "./db";
 import { generateListingDraftWithFallback } from "./gemini";
 import { classifyYocoWebhookOutcome, resolveYocoWebhookCheckoutId } from "./webhook-classification";
-import { buildBillingPaymentReturnUrl, buildPricingPaymentReturnUrl } from "./payment-return";
+import { buildBillingPaymentReturnUrl, buildBillingSuccessReturnUrl, buildPricingPaymentReturnUrl } from "./payment-return";
 import { toMinorUnits } from "./pricing";
 import { catalogDB } from "../catalog/db";
 import { identityDB } from "../identity/db";
@@ -18,6 +18,7 @@ import { HOST_PLANS, HostPlan, SubscriptionPlan } from "../shared/domain";
 import { platformEvents } from "../analytics/events";
 import {
   createYocoCheckout,
+  fetchYocoCheckout,
   fetchYocoOrder,
   getAppUrl,
   verifyYocoWebhookSignature,
@@ -626,7 +627,28 @@ async function storeProviderOrderId(intentId: string, providerOrderId: string | 
 function mapYocoOrderStatus(status?: string | null): CheckoutStatus {
   const normalized = status?.trim().toLowerCase();
   if (normalized === "completed") return "paid";
+  if (normalized === "failed") return "failed";
   if (normalized === "cancelled") return "cancelled";
+  return "pending";
+}
+
+// Author: (|╲) Klaasvaakie
+function mapYocoCheckoutStatus(status?: string | null): CheckoutStatus {
+  const normalized = status?.trim().toLowerCase();
+  if (
+    normalized === "completed" ||
+    normalized === "successful" ||
+    normalized === "succeeded" ||
+    normalized === "paid"
+  ) {
+    return "paid";
+  }
+  if (normalized === "failed") {
+    return "failed";
+  }
+  if (normalized === "cancelled") {
+    return "cancelled";
+  }
   return "pending";
 }
 
@@ -1256,6 +1278,28 @@ async function reconcilePendingPaymentIntent(intent: PaymentIntentRow, billingSt
     return (await getPaymentIntentById(intent.id)) ?? intent;
   }
 
+  if (intent.provider_checkout_id) {
+    const checkout = await fetchYocoCheckout(intent.provider_checkout_id);
+    const checkoutStatus = mapYocoCheckoutStatus(checkout.status);
+    const providerPaymentId = checkout.paymentId ?? checkout.payment_id ?? null;
+    const providerOrderId = checkout.orderId ?? checkout.order_id ?? null;
+
+    await storeProviderOrderId(intent.id, providerOrderId);
+
+    if (checkoutStatus === "paid") {
+      await fulfilSuccessfulPaymentIntent(intent, providerPaymentId ?? intent.provider_checkout_id);
+      return (await getPaymentIntentById(intent.id)) ?? intent;
+    }
+    if (checkoutStatus === "failed") {
+      await markPaymentIntentStatus(intent, "failed");
+      return (await getPaymentIntentById(intent.id)) ?? intent;
+    }
+    if (checkoutStatus === "cancelled") {
+      await markPaymentIntentStatus(intent, "cancelled");
+      return (await getPaymentIntentById(intent.id)) ?? intent;
+    }
+  }
+
   if (!intent.provider_order_id) {
     return intent;
   }
@@ -1627,12 +1671,16 @@ export const billingPaymentReturn = api.raw(
       : "failed";
 
     try {
+      let redirectUrl = buildPricingPaymentReturnUrl(getAppUrl(), paymentId, safeStatus);
       if (paymentId) {
         const intent = await getPaymentIntentById(paymentId);
         if (intent) {
           await reconcilePendingPaymentIntent(intent, safeStatus);
+          redirectUrl = buildBillingSuccessReturnUrl(getAppUrl(), paymentId, safeStatus, intent.purpose);
         }
       }
+      redirectRaw(resp, redirectUrl);
+      return;
     } catch (error) {
       console.error("Failed to reconcile billing payment return:", error);
     }

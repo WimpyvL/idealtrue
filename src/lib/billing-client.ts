@@ -1,8 +1,10 @@
 import { encoreRequest } from './encore-client';
 import { z } from 'zod';
 import type { Listing } from '@/types';
+import type { Subscription } from '@/types';
 import type { SocialPlatform, SocialTemplateId, SocialTone } from './social-content';
 import type { HostBillingAccount } from '@/types';
+import { mapEncoreSubscription, parseEncoreSubscription, type EncoreSubscription } from './domain-mappers';
 
 export type HostPlan = 'standard' | 'professional' | 'premium';
 export type BillingInterval = 'monthly' | 'annual';
@@ -210,6 +212,16 @@ export async function getMyHostBillingAccount() {
     { auth: true },
   );
   return response.account;
+}
+
+// Author: (|╲) Klaasvaakie
+export async function listMySubscriptions(): Promise<Subscription[]> {
+  const response = await encoreRequest<{ subscriptions: EncoreSubscription[] }>(
+    '/billing/subscriptions',
+    {},
+    { auth: true },
+  );
+  return response.subscriptions.map((subscription) => mapEncoreSubscription(parseEncoreSubscription(subscription)));
 }
 
 export async function createManagedHostingCheckout() {

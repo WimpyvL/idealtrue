@@ -271,7 +271,13 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
                 ? "Managed hosting payment confirmed. The team can now complete onboarding."
                 : "Subscription payment confirmed. Your plan access is now live.",
             );
-            navigate("/host", { replace: true });
+            // Author: (|╲) Klaasvaakie
+            navigate(
+              "purpose" in result && result.purpose === "subscription"
+                ? "/host?modal=subscriptions"
+                : "/host",
+              { replace: true },
+            );
             return;
           }
 

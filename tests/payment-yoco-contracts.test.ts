@@ -14,7 +14,12 @@ import {
   type HostPlan,
 } from '../src/lib/billing-client';
 import { workflowBilling } from './fixtures/workflows';
-import { buildBillingPaymentReturnUrl, buildPricingPaymentReturnUrl } from '../encore/billing/payment-return.ts';
+import {
+  buildBillingPaymentReturnUrl,
+  buildBillingSuccessReturnUrl,
+  buildHostSubscriptionsReturnUrl,
+  buildPricingPaymentReturnUrl,
+} from '../encore/billing/payment-return.ts';
 
 type FetchCall = {
   url: string;
@@ -247,8 +252,16 @@ test('payment success URLs route through backend reconciliation before returning
     'https://www.idealstay.co.za/api/encore/billing/payments/payment%20123/return?billingStatus=success',
   );
   assert.equal(
+    buildHostSubscriptionsReturnUrl('https://www.idealstay.co.za/', 'payment 123', 'success'),
+    'https://www.idealstay.co.za/host?modal=subscriptions&billing_status=success&payment_id=payment+123',
+  );
+  assert.equal(
     buildPricingPaymentReturnUrl('https://www.idealstay.co.za/', 'payment 123', 'success'),
     'https://www.idealstay.co.za/pricing?billing_status=success&payment_id=payment+123',
+  );
+  assert.equal(
+    buildBillingSuccessReturnUrl('https://www.idealstay.co.za/', 'payment 123', 'success', 'subscription'),
+    'https://www.idealstay.co.za/host?modal=subscriptions&billing_status=success&payment_id=payment+123',
   );
 });
 
@@ -338,6 +351,14 @@ test('successful Yoco webhook handling persists a provider order id for later re
   const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
   assert.match(source, /const providerOrderId = resolveProviderOrderId\(event\);/);
   assert.match(source, /await storeProviderOrderId\(paymentIntent\.id, providerOrderId\);/);
+});
+
+test('pending payment reconciliation falls back to direct checkout verification before giving up on live payments', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  assert.match(source, /if \(intent\.provider_checkout_id\) \{/);
+  assert.match(source, /const checkout = await fetchYocoCheckout\(intent\.provider_checkout_id\);/);
+  assert.match(source, /const checkoutStatus = mapYocoCheckoutStatus\(checkout\.status\);/);
+  assert.match(source, /await fulfilSuccessfulPaymentIntent\(intent, providerPaymentId \?\? intent\.provider_checkout_id\);/);
 });
 
 test('Yoco webhook handling rejects metadata ownership mismatches before subscription activation', () => {

@@ -95,6 +95,29 @@ async function installHostBillingRoutes(page: Page) {
       return;
     }
 
+    if (path === '/billing/subscriptions' && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          subscriptions: currentSession.hostPlan === 'professional'
+            ? [{
+                id: 'subscription-host-1',
+                user_id: currentSession.id,
+                plan: 'professional',
+                status: 'active',
+                amount: 350,
+                billing_interval: 'monthly',
+                starts_at: '2026-04-01T10:00:00.000Z',
+                ends_at: '2026-05-01T10:00:00.000Z',
+                created_at: '2026-04-01T10:00:00.000Z',
+              }]
+            : [],
+        }),
+      });
+      return;
+    }
+
     if (path === '/billing/payments' && method === 'POST') {
       const purpose = String(body.purpose);
       await route.fulfill({
@@ -160,7 +183,8 @@ test('host pricing subscription starts the standard Yoco checkout and resolves t
 
   await page.goto('/pricing?billing_status=success&payment_id=payment-subscription-1');
 
-  await expect(page).toHaveURL(/\/host$/);
+  await expect(page).toHaveURL(/\/host\?modal=subscriptions$/);
+  await expect(page.getByRole('heading', { name: /subscription management/i })).toBeVisible();
   expect(calls.some((call) => call.path === '/billing/payments/payment-subscription-1?billingStatus=success')).toBe(true);
 });
 

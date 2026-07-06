@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Outlet, Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard, 
   MessageSquare, 
@@ -29,17 +29,66 @@ import { cn } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
 import NotificationBell from './NotificationBell';
 import BrandLogo from './BrandLogo';
+import HostSubscriptionsDialog from './HostSubscriptionsDialog';
+import { getBillingPaymentStatus, parseBillingReturnParams } from '@/lib/billing-client';
 
 export default function HostLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout, profile } = useAuth();
+  const { logout, profile, user, refreshProfile } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [openGroups, setOpenGroups] = useState<string[]>(['Hospitality Management', 'Social Media', 'Referral System']);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const billingReturn = useMemo(() => parseBillingReturnParams(searchParams), [searchParams]);
+  const subscriptionsModalOpen = searchParams.get('modal') === 'subscriptions';
 
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [location.pathname, location.search]);
+
+  // Author: (|╲) Klaasvaakie
+  useEffect(() => {
+    if (!user || !billingReturn?.paymentId) {
+      return;
+    }
+
+    let cancelled = false;
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    async function resolveBillingReturn() {
+      try {
+        for (let attempt = 0; attempt < 8; attempt += 1) {
+          const result = await getBillingPaymentStatus(billingReturn.paymentId!, billingReturn.billingStatus);
+          if (cancelled) {
+            return;
+          }
+
+          if (result.status === 'paid') {
+            await refreshProfile();
+            return;
+          }
+
+          if (result.status === 'failed' || result.status === 'cancelled') {
+            return;
+          }
+
+          if (attempt < 7) {
+            await wait(2000);
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to resolve host billing return:', error);
+        }
+      }
+    }
+
+    void resolveBillingReturn();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [billingReturn, refreshProfile, user]);
 
   const toggleGroup = (groupName: string) => {
     setOpenGroups(prev => 
@@ -87,7 +136,7 @@ export default function HostLayout() {
       icon: Settings,
       items: [
         { name: 'Account', path: '/account', icon: UserCircle2 },
-        { name: 'Subscription', path: '/pricing', icon: CreditCard },
+        { name: 'Subscriptions', path: '/host?modal=subscriptions', icon: CreditCard },
       ]
     }
   ];
@@ -249,6 +298,22 @@ export default function HostLayout() {
           </div>
         </main>
       </div>
+      <HostSubscriptionsDialog
+        open={subscriptionsModalOpen}
+        onOpenChange={(open) => {
+          const next = new URLSearchParams(searchParams);
+          if (open) {
+            next.set('modal', 'subscriptions');
+          } else {
+            next.delete('modal');
+            next.delete('billing_status');
+            next.delete('payment_id');
+            next.delete('checkout_id');
+          }
+          setSearchParams(next, { replace: true });
+        }}
+        onOpenPricing={() => navigate('/pricing')}
+      />
     </div>
   );
 }

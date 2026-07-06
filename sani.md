@@ -384,3 +384,19 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Kept the upgrade endpoint returning the existing payment object, which already includes the provider mode and checkout metadata needed by the dashboard.
 - Re-ran `npx tsc --noEmit -p encore/tsconfig.json` and `npx tsx --test tests/payment-yoco-contracts.test.ts`; both passed after the fix.
 - Author signature: (|/) Klaasvaakie
+
+# 2026-07-06 payment and subscription trace
+
+- Mapped the live subscription payment path from `src/pages/PricingPage.tsx` through `src/lib/billing-client.ts`, `encore/billing/api.ts`, `encore/billing/payment-return.ts`, the Yoco webhook handler, `subscriptions`, `users.host_plan`, and `host_billing_accounts`.
+- Confirmed that actual subscription activation only happens inside `fulfilSuccessfulPaymentIntent()` -> `activatePlanFromBillingSession()`, which inserts or updates `subscriptions`, updates `users.host_plan`, and syncs `host_billing_accounts`.
+- Isolated the break: live browser return reconciliation cannot mark a payment intent paid unless a successful webhook already exists or `provider_order_id` is already stored, but `provider_order_id` is only captured from the webhook path. If the webhook does not land, the app keeps the payment intent pending and never activates the subscription.
+- No code changes made in this pass; this was a direct code-path map and root-cause finding.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-07-06 subscription activation and dashboard return fix
+
+- Added direct Yoco checkout verification to pending payment-intent reconciliation so live subscription activation no longer depends on the webhook being the only place that reveals payment completion.
+- Kept webhook fulfilment intact, but added a checkout-status fallback using the stored `provider_checkout_id`, then routed successful returns by payment purpose instead of forcing everything back through `/pricing`.
+- Added a host-dashboard `Subscriptions` modal under the `Administration` group, backed by `GET /billing/subscriptions`, and changed successful subscription returns to land on `/host?modal=subscriptions`.
+- Updated payment contract tests and the host billing E2E fixture expectations to match the new return path; Encore typecheck, frontend typecheck, and `tests/payment-yoco-contracts.test.ts` passed. Playwright browser binaries were missing locally, so the E2E spec itself could not be executed to completion in this environment.
+- Author signature: (|/) Klaasvaakie

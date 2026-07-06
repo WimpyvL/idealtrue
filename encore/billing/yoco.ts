@@ -26,8 +26,18 @@ export interface YocoCheckoutResponse {
   id: string;
   redirectUrl: string;
   status?: string;
+  paymentId?: string | null;
   mode?: string;
   processingMode?: "live" | "test";
+}
+
+export interface YocoCheckoutStatusResponse {
+  id: string;
+  status?: string;
+  paymentId?: string | null;
+  payment_id?: string | null;
+  orderId?: string | null;
+  order_id?: string | null;
 }
 
 export type YocoProviderMode = "live" | "test";
@@ -112,6 +122,24 @@ export async function createYocoCheckout(input: YocoCheckoutRequest): Promise<Yo
     throw APIError.internal("Yoco checkout creation returned an invalid response.");
   }
   return { ...checkout, processingMode: checkout.processingMode ?? mode };
+}
+
+// Author: (|╲) Klaasvaakie
+export async function fetchYocoCheckout(checkoutId: string): Promise<YocoCheckoutStatusResponse> {
+  const { apiKey } = getYocoApiKey();
+
+  const response = await fetch(`${YOCO_API_BASE}/checkouts/${encodeURIComponent(checkoutId)}`, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw APIError.internal(`Yoco checkout lookup failed: ${body || response.statusText}`);
+  }
+
+  return response.json() as Promise<YocoCheckoutStatusResponse>;
 }
 
 export async function fetchYocoOrder(orderId: string): Promise<YocoOrderResponse> {
