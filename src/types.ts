@@ -307,6 +307,7 @@ export interface Subscription {
   plan: HostPlan;
   amount: number;
   status: 'active' | 'expired' | 'cancelled';
+  billingInterval: 'monthly' | 'annual';
   startDate: string;
   endDate: string;
   createdAt: string;

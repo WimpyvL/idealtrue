@@ -153,6 +153,7 @@ describe('useAdminDashboardData', () => {
               starts_at: '2026-04-01T10:00:00.000Z',
               ends_at: '2026-05-01T10:00:00.000Z',
               created_at: '2026-04-01T10:00:00.000Z',
+              billingInterval: 'monthly',
             },
           ],
         }),

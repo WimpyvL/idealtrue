@@ -254,6 +254,40 @@ export async function listAdminSubscriptions(): Promise<Subscription[]> {
   return response.subscriptions.map((subscription) => mapEncoreSubscription(parseEncoreSubscription(subscription)));
 }
 
+export async function cancelAdminSubscription(subscriptionId: string) {
+  const response = await encoreRequest<{ subscription: EncoreSubscription }>(
+    `/admin/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`,
+    { method: 'POST' },
+    { auth: true },
+  );
+  return mapEncoreSubscription(parseEncoreSubscription(response.subscription));
+}
+
+export async function upgradeAdminSubscription(params: {
+  subscriptionId: string;
+  plan: 'standard' | 'professional' | 'premium';
+  billingInterval: 'monthly' | 'annual';
+}) {
+  const response = await encoreRequest<{
+    payment: {
+      paymentId: string;
+      provider: 'yoco';
+      providerMode: 'live' | 'test';
+      status: 'pending' | 'paid' | 'failed' | 'cancelled';
+      redirectUrl: string;
+      providerReference: string;
+    };
+  }>(
+    `/admin/subscriptions/${encodeURIComponent(params.subscriptionId)}/upgrade`,
+    {
+      method: 'POST',
+      body: JSON.stringify(params),
+    },
+    { auth: true },
+  );
+  return response.payment;
+}
+
 export async function listAdminCheckouts(): Promise<AdminCheckout[]> {
   const response = await encoreRequest<{ checkouts: EncoreCheckout[] }>('/admin/checkouts', {}, { auth: true });
   return response.checkouts.map((checkout) => mapCheckout(parseAdminCheckout(checkout)));

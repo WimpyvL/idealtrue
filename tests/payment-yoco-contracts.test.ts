@@ -271,6 +271,13 @@ test('accepted Yoco webhook events classify into fulfilment-safe billing outcome
   assert.equal(classifyYocoWebhookOutcome('payment.refunded', 'refunded'), 'failed');
 });
 
+test('Yoco webhook handler ignores non-fulfilment events before touching billing state', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  assert.match(source, /function isFulfilmentSafeWebhookOutcome\(outcome: ReturnType<typeof classifyYocoWebhookOutcome>\)/);
+  assert.match(source, /if \(!isFulfilmentSafeWebhookOutcome\(outcome\)\) \{/);
+  assert.match(source, /resp\.end\(JSON\.stringify\(\{ ok: true, ignored: true \}\)\);\n        return;/);
+});
+
 test('Yoco webhook signature verification uses webhook id, timestamp, and raw body exactly', () => {
   const rawBody = JSON.stringify({
     id: 'evt-order-completed-1',
@@ -331,4 +338,18 @@ test('successful Yoco webhook handling persists a provider order id for later re
   const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
   assert.match(source, /const providerOrderId = resolveProviderOrderId\(event\);/);
   assert.match(source, /await storeProviderOrderId\(paymentIntent\.id, providerOrderId\);/);
+});
+
+test('Yoco webhook handling rejects metadata ownership mismatches before subscription activation', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  assert.match(source, /function assertWebhookIntentOwnership\(intent: PaymentIntentRow, event: YocoWebhookEvent\)/);
+  assert.match(source, /Webhook metadata did not match the payment owner\./);
+  assert.match(source, /assertWebhookIntentOwnership\(paymentIntent, event\);/);
+});
+
+test('Yoco webhook duplicate delivery guard keys off event ids before insertion', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  assert.match(source, /const alreadyProcessed = await billingDB\.queryRow<WebhookEventRow>`/);
+  assert.match(source, /WHERE id = \$\{eventId\}/);
+  assert.match(source, /duplicate: true/);
 });

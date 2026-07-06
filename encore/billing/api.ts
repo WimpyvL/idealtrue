@@ -535,6 +535,7 @@ async function createPaymentIntentRow(params: {
   hostPlan?: HostPlan | null;
   billingInterval?: BillingInterval | null;
   creditQuantity?: number | null;
+  sourceSubscriptionId?: string | null;
 }) {
   const now = new Date().toISOString();
   const intentId = randomUUID();
@@ -564,7 +565,11 @@ async function createPaymentIntentRow(params: {
       ${intentId}, ${params.userId}, ${params.purpose}, ${"pending"}, ${"ZAR"}, ${params.amount},
       ${params.hostPlan ?? null}, ${params.billingInterval ?? null}, ${params.creditQuantity ?? null},
       ${reference.slice(0, 100)}, ${description.slice(0, 255)},
-      ${JSON.stringify({ paymentIntentId: intentId, purpose: params.purpose })}, ${now}, ${now}
+      ${JSON.stringify({
+        paymentIntentId: intentId,
+        purpose: params.purpose,
+        ...(params.sourceSubscriptionId ? { sourceSubscriptionId: params.sourceSubscriptionId } : {}),
+      })}, ${now}, ${now}
     )
   `;
 
@@ -623,6 +628,7 @@ async function createBillingPaymentIntent(params: {
   hostPlan?: HostPlan | null;
   billingInterval?: BillingInterval | null;
   creditQuantity?: number | null;
+  sourceSubscriptionId?: string | null;
 }) {
   // (|/) Klaasvaakie - all new Yoco payments enter through this one standard intent path.
   const intent = await createPaymentIntentRow(params);
@@ -641,6 +647,7 @@ async function createBillingPaymentIntent(params: {
       ...(params.hostPlan ? { plan: params.hostPlan } : {}),
       ...(params.billingInterval ? { billingInterval: params.billingInterval } : {}),
       ...(params.creditQuantity ? { credits: String(params.creditQuantity) } : {}),
+      ...(params.sourceSubscriptionId ? { sourceSubscriptionId: params.sourceSubscriptionId } : {}),
     },
   });
 
@@ -1048,6 +1055,11 @@ function resolveProviderMetadata(event: YocoWebhookEvent) {
   return event.payload?.metadata ?? {};
 }
 
+function readMetadataString(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 function resolveProviderCheckoutId(event: YocoWebhookEvent) {
   return resolveYocoWebhookCheckoutId(event);
 }
@@ -1118,7 +1130,7 @@ async function getPaymentIntentById(paymentId: string) {
 
 async function findPaymentIntentForWebhook(event: YocoWebhookEvent) {
   const metadata = resolveProviderMetadata(event);
-  const paymentIntentId = typeof metadata.paymentIntentId === "string" ? metadata.paymentIntentId : null;
+  const paymentIntentId = readMetadataString(metadata, "paymentIntentId");
   const providerCheckoutId = resolveProviderCheckoutId(event);
   const orderId = resolveProviderOrderId(event);
   if (paymentIntentId) {
@@ -1155,6 +1167,67 @@ async function findPaymentIntentForWebhook(event: YocoWebhookEvent) {
   }
 
   return null;
+}
+
+function isFulfilmentSafeWebhookOutcome(outcome: ReturnType<typeof classifyYocoWebhookOutcome>) {
+  return outcome === "paid" || outcome === "failed" || outcome === "cancelled";
+}
+
+function assertWebhookIntentOwnership(intent: PaymentIntentRow, event: YocoWebhookEvent) {
+  const metadata = resolveProviderMetadata(event);
+  const userId = readMetadataString(metadata, "userId");
+
+  if (userId && userId !== intent.user_id) {
+    // (|╲) Klaasvaakie - webhook callbacks must never be allowed to reassign a paid subscription to the wrong user.
+    throw APIError.permissionDenied("Webhook metadata did not match the payment owner.");
+  }
+}
+
+async function cancelSubscriptionById(subscriptionId: string) {
+  const subscription = await billingDB.queryRow<SubscriptionRow>`
+    SELECT *
+    FROM subscriptions
+    WHERE id = ${subscriptionId}
+  `;
+
+  if (!subscription) {
+    throw APIError.notFound("Subscription not found.");
+  }
+
+  const now = new Date().toISOString();
+  await billingDB.exec`
+    UPDATE subscriptions
+    SET status = ${"cancelled"}
+    WHERE id = ${subscriptionId}
+  `;
+
+  const hasOtherActiveSubscription = await billingDB.queryRow<{ count: number }>`
+    SELECT COUNT(*)::int AS count
+    FROM subscriptions
+    WHERE user_id = ${subscription.user_id}
+      AND status = ${"active"}
+      AND id <> ${subscriptionId}
+  `;
+
+  if (!hasOtherActiveSubscription || hasOtherActiveSubscription.count === 0) {
+    await identityDB.exec`
+      UPDATE users
+      SET host_plan = ${"standard"},
+          updated_at = ${now}
+      WHERE id = ${subscription.user_id}
+        AND host_plan <> ${"standard"}
+    `;
+  }
+
+  await platformEvents.publish({
+    type: "subscription.cancelled",
+    aggregateId: subscriptionId,
+    actorId: subscription.user_id,
+    occurredAt: now,
+    payload: JSON.stringify({ plan: subscription.plan }),
+  });
+
+  return subscription;
 }
 
 async function reconcilePendingPaymentIntent(intent: PaymentIntentRow, billingStatus?: string | null) {
@@ -1346,6 +1419,45 @@ export const listAdminSubscriptions = api<void, { subscriptions: SubscriptionRow
       ORDER BY created_at DESC
     `;
     return { subscriptions };
+  },
+);
+
+export const cancelAdminSubscription = api<{ subscriptionId: string }, { subscription: SubscriptionRow }>(
+  { expose: true, method: "POST", path: "/admin/subscriptions/:subscriptionId/cancel", auth: true },
+  async ({ subscriptionId }) => {
+    requireRole("admin", "support");
+    return { subscription: await cancelSubscriptionById(subscriptionId) };
+  },
+);
+
+export const upgradeAdminSubscription = api<{ subscriptionId: string; plan: HostPlan; billingInterval: BillingInterval }, { payment: Awaited<ReturnType<typeof createBillingPaymentIntent>> }>(
+  { expose: true, method: "POST", path: "/admin/subscriptions/:subscriptionId/upgrade", auth: true },
+  async ({ subscriptionId, plan, billingInterval }) => {
+    requireRole("admin", "support");
+    const subscription = await billingDB.queryRow<SubscriptionRow>`
+      SELECT *
+      FROM subscriptions
+      WHERE id = ${subscriptionId}
+    `;
+
+    if (!subscription) {
+      throw APIError.notFound("Subscription not found.");
+    }
+    if (subscription.status !== "active") {
+      throw APIError.failedPrecondition("Only active subscriptions can be upgraded.");
+    }
+
+    const amount = getPlanAmount(plan, billingInterval);
+    const payment = await createBillingPaymentIntent({
+      userId: subscription.user_id,
+      purpose: "subscription",
+      amount,
+      hostPlan: plan,
+      billingInterval,
+      sourceSubscriptionId: subscriptionId,
+    });
+
+    return { payment };
   },
 );
 
@@ -1704,7 +1816,15 @@ export const yocoWebhook = api.raw(
       const providerOrderId = resolveProviderOrderId(event);
       const outcome = classifyYocoWebhookOutcome(eventType, event.payload?.status);
 
+      if (!isFulfilmentSafeWebhookOutcome(outcome)) {
+        resp.statusCode = 202;
+        resp.setHeader("Content-Type", "application/json");
+        resp.end(JSON.stringify({ ok: true, ignored: true }));
+        return;
+      }
+
       if (paymentIntent) {
+        assertWebhookIntentOwnership(paymentIntent, event);
         await storeProviderOrderId(paymentIntent.id, providerOrderId);
       }
 

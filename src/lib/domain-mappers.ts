@@ -677,6 +677,7 @@ export function mapEncoreSubscription(subscription: EncoreSubscription): Subscri
     plan: subscription.plan,
     amount: subscription.amount,
     status: subscription.status,
+    billingInterval: subscription.billing_interval,
     startDate: subscription.starts_at,
     endDate: subscription.ends_at,
     createdAt: subscription.created_at,

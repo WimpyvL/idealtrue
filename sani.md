@@ -355,3 +355,25 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Added a regression test proving one bad listing no longer takes down the homepage.
 - `npm test -- --runInBand tests/api-contract-validation.test.ts` now passes; `npm run lint` still fails on unrelated pre-existing unused-export noise in other files.
 - Author signature: (|/) Klaasvaakie
+
+# 2026-07-06 yoco webhook hardening
+
+- Hardened `encore/billing/api.ts` webhook processing so a Yoco callback now rejects metadata ownership mismatches before subscription activation or payment fulfillment.
+- Kept the existing payment-intent lookup flow intact, but added a strict user ownership check against `metadata.userId` before a payment intent can be fulfilled.
+- Added a regression assertion in `tests/payment-yoco-contracts.test.ts` covering the ownership guard and verified it with `npx tsx --test tests/payment-yoco-contracts.test.ts` plus `npx tsc --noEmit -p encore/tsconfig.json`.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-07-06 webhook event filtering and idempotency
+
+- Tightened the Yoco webhook handler so only `paid`, `failed`, and `cancelled` outcomes can touch billing state; anything else now exits early with a `202 ignored` response.
+- Added a regression assertion for the non-fulfilment early-return path and a duplicate-delivery guard assertion keyed off `billing_webhook_events.id`.
+- Re-ran `npx tsx --test tests/payment-yoco-contracts.test.ts` and `npx tsc --noEmit -p encore/tsconfig.json`; both passed.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-07-06 subscription management dashboard
+
+- Added a new admin dashboard subscriptions section that lists active subscription rows with the exact subscription ID, user, plan, billing interval, amounts, and start/end dates.
+- Wired per-row actions for cancel and upgrade. Cancel now hits a dedicated subscription-id endpoint; upgrade opens a Yoco checkout for the exact subscription owner and carries the source subscription ID through payment metadata.
+- Extended the frontend subscription model with `billingInterval` so the dashboard and admin client can render the real billing cadence.
+- Verified with `npx tsc --noEmit -p encore/tsconfig.json`, `npm run lint:types`, and `npm run test:ui -- tests/ui/admin-dashboard-data.test.tsx tests/ui/admin-financials.test.tsx`.
+- Author signature: (|/) Klaasvaakie

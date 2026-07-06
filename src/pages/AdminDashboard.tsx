@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   Menu,
   MessageSquare,
+  Power,
   X,
   Settings,
   Share2,
@@ -22,11 +23,13 @@ import type { Listing, Notification, UserProfile } from '@/types';
 import {
   createAdminNotification,
   createAdminReferralReward,
+  cancelAdminSubscription,
   deleteAdminNotification,
   deleteAdminReferralReward,
   deleteAdminReview,
   deleteAdminUser,
   setAdminUserAccountStatus,
+  upgradeAdminSubscription,
   updateAdminUser,
 } from '@/lib/admin-client';
 import { getKycSubmissionAssets, reviewKycSubmission, type KycSubmission } from '@/lib/ops-client';
@@ -49,6 +52,7 @@ import {
   ReviewsSection,
   RewardsSection,
   SettingsSection,
+  SubscriptionsSection,
   UsersSection,
 } from '@/features/admin/dashboard-sections';
 import { useAdminDashboardData } from '@/features/admin/use-admin-dashboard-data';
@@ -126,6 +130,7 @@ export default function AdminDashboard() {
     allReviews,
     setAllReviews,
     allSubscriptions,
+    setAllSubscriptions,
     allCheckouts,
     allNotifications,
     setAllNotifications,
@@ -483,6 +488,31 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleCancelSubscription = async (subscriptionId: string) => {
+    try {
+      const subscription = await cancelAdminSubscription(subscriptionId);
+      setAllSubscriptions((current) => current.map((item) => (item.id === subscription.id ? subscription : item)));
+      toast({ title: 'Subscription Cancelled', description: 'The exact subscription row was cancelled.' });
+    } catch (error) {
+      console.error('Error cancelling subscription:', error);
+      toast({ title: 'Cancellation failed', description: getErrorMessage(error), variant: 'destructive' });
+    }
+  };
+
+  const handleUpgradeSubscription = async (subscriptionId: string, plan: 'standard' | 'professional' | 'premium', billingInterval: 'monthly' | 'annual') => {
+    try {
+      const payment = await upgradeAdminSubscription({ subscriptionId, plan, billingInterval });
+      window.open(payment.redirectUrl, '_blank', 'noopener,noreferrer');
+      toast({
+        title: 'Upgrade Checkout Started',
+        description: `Opened checkout for ${plan} (${billingInterval}) on the selected subscription.`,
+      });
+    } catch (error) {
+      console.error('Error upgrading subscription:', error);
+      toast({ title: 'Upgrade failed', description: getErrorMessage(error), variant: 'destructive' });
+    }
+  };
+
   const menuItems = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard, section: 'MAIN MENU' },
     { id: 'pending', label: 'Pending Listings', icon: ClipboardList, section: 'MAIN MENU' },
@@ -495,6 +525,7 @@ export default function AdminDashboard() {
     { id: 'referrals', label: 'Referrals', icon: Share2, section: 'MAIN MENU' },
     { id: 'rewards', label: 'Rewards', icon: Gift, section: 'MANAGEMENT' },
     { id: 'financials', label: 'Financials', icon: DollarSign, section: 'MANAGEMENT' },
+    { id: 'subscriptions', label: 'Subscriptions', icon: Power, section: 'MANAGEMENT' },
     { id: 'notifications', label: 'Notifications', icon: Bell, section: 'MANAGEMENT' },
     { id: 'settings', label: 'Settings', icon: Settings, section: 'MANAGEMENT' },
   ] as const;
@@ -523,6 +554,8 @@ export default function AdminDashboard() {
         return <RewardsSection allUsers={allUsers} />;
       case 'financials':
         return <FinancialsSection allCheckouts={allCheckouts} allSubscriptions={allSubscriptions} allUsers={allUsers} />;
+      case 'subscriptions':
+        return <SubscriptionsSection allSubscriptions={allSubscriptions} allUsers={allUsers} onCancelSubscription={handleCancelSubscription} onUpgradeSubscription={handleUpgradeSubscription} />;
       case 'notifications':
         return <NotificationsSection allNotifications={allNotifications} handleSendNotification={handleSendNotification} setConfirmDelete={setConfirmDelete} />;
       case 'settings':

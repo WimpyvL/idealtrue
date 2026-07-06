@@ -66,6 +66,8 @@ type DateSortDirection = 'asc' | 'desc';
 type ReferralFilter = 'all' | 'pending' | 'confirmed' | 'rewarded';
 type ReferralTab = 'guest' | 'host';
 type KycFilter = 'all' | 'pending' | 'verified' | 'rejected';
+type HostPlan = 'standard' | 'professional' | 'premium';
+type BillingInterval = 'monthly' | 'annual';
 
 function SortHeader({
   label,
@@ -1376,6 +1378,142 @@ export function FinancialsSection({
                 );
               })}
               {allCheckouts.length === 0 ? <tr><td colSpan={7} className="px-6 py-12 text-center text-sm text-slate-500">No checkouts yet. As soon as a Yoco checkout is created it will show up here.</td></tr> : null}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+const PLAN_ORDER: HostPlan[] = ['standard', 'professional', 'premium'];
+
+function getNextPlan(plan: HostPlan): HostPlan | null {
+  const currentIndex = PLAN_ORDER.indexOf(plan);
+  return currentIndex >= 0 && currentIndex < PLAN_ORDER.length - 1 ? PLAN_ORDER[currentIndex + 1] : null;
+}
+
+export function SubscriptionsSection({
+  allSubscriptions,
+  allUsers,
+  onCancelSubscription,
+  onUpgradeSubscription,
+}: {
+  allSubscriptions: Subscription[];
+  allUsers: UserProfile[];
+  onCancelSubscription: (subscriptionId: string) => Promise<void> | void;
+  onUpgradeSubscription: (subscriptionId: string, plan: HostPlan, billingInterval: BillingInterval) => Promise<void> | void;
+}) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const activeSubscriptions = allSubscriptions.filter((subscription) => subscription.status === 'active');
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-3xl font-bold tracking-tight text-[#1a1c1e]">Subscription Management</h1>
+        <p className="text-[#5e6064]">Act on the exact active subscription row. No vague plan-level guesswork.</p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <Card className="p-6">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">Active Subscriptions</p>
+          <h3 className="text-3xl font-bold">{activeSubscriptions.length}</h3>
+        </Card>
+        <Card className="p-6">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">All Subscription Rows</p>
+          <h3 className="text-3xl font-bold">{allSubscriptions.length}</h3>
+        </Card>
+        <Card className="p-6">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">Latest Active Plan</p>
+          <h3 className="text-3xl font-bold">{activeSubscriptions[0]?.plan || 'none'}</h3>
+        </Card>
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-left">
+            <thead>
+              <tr className="border-b border-slate-100 bg-[#f8fafc]">
+                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">User</th>
+                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Plan</th>
+                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Status</th>
+                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Amount</th>
+                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Dates</th>
+                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {activeSubscriptions.map((subscription) => {
+                const user = allUsers.find((candidate) => candidate.id === subscription.userId);
+                const nextPlan = getNextPlan(subscription.plan);
+                return (
+                  <tr key={subscription.id} className="transition-colors hover:bg-slate-50">
+                    <td className="px-6 py-4">
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold text-slate-900">{user?.displayName || 'Unknown user'}</p>
+                        <p className="text-xs text-slate-500">{user?.email || subscription.userId}</p>
+                        <p className="text-[10px] uppercase tracking-wider text-slate-400">Subscription ID: {subscription.id}</p>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="space-y-1">
+                        <Badge variant="secondary" className="text-[10px] font-bold uppercase">{subscription.plan}</Badge>
+                        <p className="text-xs text-slate-500">{subscription.billingInterval}</p>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <Badge variant="success" className="text-[10px] uppercase">{subscription.status}</Badge>
+                    </td>
+                    <td className="px-6 py-4"><p className="text-sm font-bold text-slate-900">{formatRand(subscription.amount)}</p></td>
+                    <td className="px-6 py-4">
+                      <p className="text-xs text-slate-500">Start: {new Date(subscription.startDate).toLocaleDateString()}</p>
+                      <p className="text-xs text-slate-500">End: {new Date(subscription.endDate).toLocaleDateString()}</p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!nextPlan || busyId === subscription.id}
+                          onClick={async () => {
+                            if (!nextPlan) return;
+                            setBusyId(subscription.id);
+                            try {
+                              await onUpgradeSubscription(subscription.id, nextPlan, subscription.plan === 'standard' ? 'monthly' : 'annual');
+                            } finally {
+                              setBusyId(null);
+                            }
+                          }}
+                        >
+                          {nextPlan ? `Upgrade to ${nextPlan}` : 'Max tier'}
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={busyId === subscription.id}
+                          onClick={async () => {
+                            setBusyId(subscription.id);
+                            try {
+                              await onCancelSubscription(subscription.id);
+                            } finally {
+                              setBusyId(null);
+                            }
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {activeSubscriptions.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-sm text-slate-500">
+                    No active subscriptions right now.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
