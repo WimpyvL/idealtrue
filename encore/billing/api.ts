@@ -241,6 +241,15 @@ type WebhookEventRow = {
   id: string;
 };
 
+type AdminSubscriptionUpgradePayment = {
+  paymentId: string;
+  provider: "yoco";
+  providerMode: "live" | "test";
+  status: CheckoutStatus;
+  redirectUrl: string;
+  providerReference: string;
+};
+
 type StoredWebhookEventRow = {
   event_type: string;
   payload_json: string;
@@ -1430,7 +1439,7 @@ export const cancelAdminSubscription = api<{ subscriptionId: string }, { subscri
   },
 );
 
-export const upgradeAdminSubscription = api<{ subscriptionId: string; plan: HostPlan; billingInterval: BillingInterval }, { payment: Awaited<ReturnType<typeof createBillingPaymentIntent>> }>(
+export const upgradeAdminSubscription = api<{ subscriptionId: string; plan: HostPlan; billingInterval: BillingInterval }, { payment: AdminSubscriptionUpgradePayment }>(
   { expose: true, method: "POST", path: "/admin/subscriptions/:subscriptionId/upgrade", auth: true },
   async ({ subscriptionId, plan, billingInterval }) => {
     requireRole("admin", "support");

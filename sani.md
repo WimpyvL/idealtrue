@@ -377,3 +377,10 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Extended the frontend subscription model with `billingInterval` so the dashboard and admin client can render the real billing cadence.
 - Verified with `npx tsc --noEmit -p encore/tsconfig.json`, `npm run lint:types`, and `npm run test:ui -- tests/ui/admin-dashboard-data.test.tsx tests/ui/admin-financials.test.tsx`.
 - Author signature: (|/) Klaasvaakie
+
+# 2026-07-06 encore compile fix
+
+- Replaced the Encore API generic response type that referenced `Awaited<ReturnType<...>>` with a concrete `AdminSubscriptionUpgradePayment` shape.
+- Kept the upgrade endpoint returning the existing payment object, which already includes the provider mode and checkout metadata needed by the dashboard.
+- Re-ran `npx tsc --noEmit -p encore/tsconfig.json` and `npx tsx --test tests/payment-yoco-contracts.test.ts`; both passed after the fix.
+- Author signature: (|/) Klaasvaakie
