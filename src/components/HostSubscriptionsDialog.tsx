@@ -4,9 +4,10 @@ import { CreditCard, ExternalLink, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { listMySubscriptions } from '@/lib/billing-client';
+import { getMyHostBillingAccount, listMySubscriptions } from '@/lib/billing-client';
 import { formatRand } from '@/lib/currency';
-import type { Subscription } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
+import type { HostBillingAccount, Subscription } from '@/types';
 
 function formatPlanLabel(plan: Subscription['plan']) {
   return `${plan.charAt(0).toUpperCase()}${plan.slice(1)}`;
@@ -22,7 +23,9 @@ export default function HostSubscriptionsDialog({
   onOpenChange: (open: boolean) => void;
   onOpenPricing: () => void;
 }) {
+  const { profile } = useAuth();
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [billingAccount, setBillingAccount] = useState<HostBillingAccount | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -36,9 +39,11 @@ export default function HostSubscriptionsDialog({
     setLoadError(null);
 
     listMySubscriptions()
-      .then((rows) => {
+      .then(async (rows) => {
+        const account = await getMyHostBillingAccount();
         if (!cancelled) {
           setSubscriptions(rows);
+          setBillingAccount(account);
         }
       })
       .catch((error) => {
@@ -61,6 +66,8 @@ export default function HostSubscriptionsDialog({
     () => subscriptions.filter((subscription) => subscription.status === 'active'),
     [subscriptions],
   );
+  const isManagedHost = profile?.managementMode === 'managed';
+  const currentAccessLabel = isManagedHost ? 'Managed Hosting' : activeSubscriptions[0] ? formatPlanLabel(activeSubscriptions[0].plan) : 'None';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -85,12 +92,31 @@ export default function HostSubscriptionsDialog({
             <p className="mt-2 text-3xl font-bold text-slate-950">{subscriptions.length}</p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Current Active Plan</p>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Current Access</p>
             <p className="mt-2 text-3xl font-bold text-slate-950">
-              {activeSubscriptions[0] ? formatPlanLabel(activeSubscriptions[0].plan) : 'None'}
+              {currentAccessLabel}
             </p>
           </div>
         </div>
+
+        {isManagedHost ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="warning" className="text-[10px] uppercase">managed</Badge>
+              <Badge variant="secondary" className="text-[10px] uppercase">
+                plan: {billingAccount?.plan ?? profile?.hostPlan ?? 'premium'}
+              </Badge>
+              <Badge variant={billingAccount?.billingStatus === 'active' ? 'success' : 'secondary'} className="text-[10px] uppercase">
+                billing: {billingAccount?.billingStatus ?? 'unknown'}
+              </Badge>
+            </div>
+            <p className="mt-3 text-sm text-amber-900">
+              This account is on Managed Hosting. In the current system that is tracked by the host account state and
+              `managementMode`, not by a normal subscription row. Seeing `Premium` as the underlying plan is expected,
+              because managed hosting upgrades the host into the managed operating lane on top of the premium plan.
+            </p>
+          </div>
+        ) : null}
 
         {isLoading ? (
           <div className="flex items-center justify-center rounded-2xl border border-dashed border-slate-200 p-12 text-slate-500">
