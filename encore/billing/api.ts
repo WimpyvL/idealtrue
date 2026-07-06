@@ -1,4 +1,5 @@
 import { api, APIError } from "encore.dev/api";
+import { CronJob } from "encore.dev/cron";
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { billingDB } from "./db";
@@ -26,6 +27,7 @@ import {
 } from "./yoco";
 import { rewardSubscriptionReferralConversion } from "../referrals/api";
 import {
+  deactivatePaidBillingAccount,
   getHostBillingAccount,
   listAdminHostBillingAccounts,
   markHostBillingSetupComplete,
@@ -126,6 +128,8 @@ type SubscriptionRow = {
   billing_interval: BillingInterval;
   starts_at: string;
   ends_at: string;
+  cancel_at_period_end: boolean;
+  cancelled_at: string | null;
   created_at: string;
 };
 
@@ -738,18 +742,20 @@ async function activatePlanFromBillingSession(session: FulfillableBillingSession
           amount = ${session.amount},
           billing_interval = ${session.billing_interval},
           starts_at = ${now.toISOString()},
-          ends_at = ${endsAt.toISOString()}
+          ends_at = ${endsAt.toISOString()},
+          cancel_at_period_end = ${false},
+          cancelled_at = ${null}
       WHERE id = ${subscriptionId}
     `;
   } else {
 
     await billingDB.exec`
       INSERT INTO subscriptions (
-        id, user_id, checkout_session_id, plan, status, amount, billing_interval, starts_at, ends_at, created_at
+        id, user_id, checkout_session_id, plan, status, amount, billing_interval, starts_at, ends_at, cancel_at_period_end, cancelled_at, created_at
       )
       VALUES (
         ${subscriptionId}, ${session.user_id}, ${session.id}, ${session.host_plan}, ${"active"}, ${session.amount},
-        ${session.billing_interval}, ${now.toISOString()}, ${endsAt.toISOString()}, ${now.toISOString()}
+        ${session.billing_interval}, ${now.toISOString()}, ${endsAt.toISOString()}, ${false}, ${null}, ${now.toISOString()}
       )
     `;
   }
@@ -1224,41 +1230,75 @@ async function cancelSubscriptionById(subscriptionId: string) {
   if (!subscription) {
     throw APIError.notFound("Subscription not found.");
   }
+  if (subscription.status !== "active") {
+    throw APIError.failedPrecondition("Only active subscriptions can be cancelled.");
+  }
+  if (subscription.cancel_at_period_end) {
+    throw APIError.failedPrecondition("Subscription is already scheduled to cancel at period end.");
+  }
 
   const now = new Date().toISOString();
   await billingDB.exec`
     UPDATE subscriptions
-    SET status = ${"cancelled"}
+    SET cancel_at_period_end = ${true},
+        cancelled_at = ${now}
     WHERE id = ${subscriptionId}
   `;
-
-  const hasOtherActiveSubscription = await billingDB.queryRow<{ count: number }>`
-    SELECT COUNT(*)::int AS count
-    FROM subscriptions
-    WHERE user_id = ${subscription.user_id}
-      AND status = ${"active"}
-      AND id <> ${subscriptionId}
-  `;
-
-  if (!hasOtherActiveSubscription || hasOtherActiveSubscription.count === 0) {
-    await identityDB.exec`
-      UPDATE users
-      SET host_plan = ${"standard"},
-          updated_at = ${now}
-      WHERE id = ${subscription.user_id}
-        AND host_plan <> ${"standard"}
-    `;
-  }
 
   await platformEvents.publish({
     type: "subscription.cancelled",
     aggregateId: subscriptionId,
     actorId: subscription.user_id,
     occurredAt: now,
-    payload: JSON.stringify({ plan: subscription.plan }),
+    payload: JSON.stringify({ plan: subscription.plan, cancelAtPeriodEnd: true, endsAt: subscription.ends_at }),
   });
 
-  return subscription;
+  const updated = await billingDB.queryRow<SubscriptionRow>`
+    SELECT *
+    FROM subscriptions
+    WHERE id = ${subscriptionId}
+  `;
+  if (!updated) {
+    throw APIError.internal("Cancelled subscription could not be reloaded.");
+  }
+  return updated;
+}
+
+async function expireEndedSubscriptions(nowIso = new Date().toISOString()) {
+  const rows = await billingDB.queryAll<SubscriptionRow>`
+    SELECT *
+    FROM subscriptions
+    WHERE status = ${"active"}
+      AND ends_at <= ${nowIso}
+    ORDER BY ends_at ASC
+  `;
+
+  for (const subscription of rows) {
+    await billingDB.exec`
+      UPDATE subscriptions
+      SET status = ${"expired"}
+      WHERE id = ${subscription.id}
+    `;
+
+    const stillActive = await billingDB.queryRow<{ count: number }>`
+      SELECT COUNT(*)::int AS count
+      FROM subscriptions
+      WHERE user_id = ${subscription.user_id}
+        AND status = ${"active"}
+        AND ends_at > ${nowIso}
+    `;
+
+    if (!stillActive || stillActive.count === 0) {
+      await identityDB.exec`
+        UPDATE users
+        SET host_plan = ${"standard"},
+            updated_at = ${nowIso}
+        WHERE id = ${subscription.user_id}
+          AND host_plan <> ${"standard"}
+      `;
+      await deactivatePaidBillingAccount({ userId: subscription.user_id, preserveCardOnFile: true });
+    }
+  }
 }
 
 async function reconcilePendingPaymentIntent(intent: PaymentIntentRow, billingStatus?: string | null) {
@@ -1452,6 +1492,7 @@ export const listMySubscriptions = api<void, { subscriptions: SubscriptionRow[] 
   { expose: true, method: "GET", path: "/billing/subscriptions", auth: true },
   async () => {
     const auth = requireAuth();
+    await expireEndedSubscriptions();
     const subscriptions = await billingDB.queryAll<SubscriptionRow>`
       SELECT *
       FROM subscriptions
@@ -1472,6 +1513,62 @@ export const listAdminSubscriptions = api<void, { subscriptions: SubscriptionRow
       ORDER BY created_at DESC
     `;
     return { subscriptions };
+  },
+);
+
+export const cancelMySubscription = api<{ subscriptionId: string }, { subscription: SubscriptionRow }>(
+  { expose: true, method: "POST", path: "/billing/subscriptions/:subscriptionId/cancel", auth: true },
+  async ({ subscriptionId }) => {
+    const auth = requireRole("host", "admin");
+    const subscription = await billingDB.queryRow<SubscriptionRow>`
+      SELECT *
+      FROM subscriptions
+      WHERE id = ${subscriptionId}
+    `;
+    if (!subscription) {
+      throw APIError.notFound("Subscription not found.");
+    }
+    if (subscription.user_id !== auth.userID) {
+      throw APIError.permissionDenied("You can only cancel your own subscription.");
+    }
+    return { subscription: await cancelSubscriptionById(subscriptionId) };
+  },
+);
+
+export const changeMySubscription = api<{ subscriptionId: string; plan: HostPlan; billingInterval: BillingInterval }, { payment: AdminSubscriptionUpgradePayment }>(
+  { expose: true, method: "POST", path: "/billing/subscriptions/:subscriptionId/change", auth: true },
+  async ({ subscriptionId, plan, billingInterval }) => {
+    const auth = requireRole("host", "admin");
+    const subscription = await billingDB.queryRow<SubscriptionRow>`
+      SELECT *
+      FROM subscriptions
+      WHERE id = ${subscriptionId}
+    `;
+
+    if (!subscription) {
+      throw APIError.notFound("Subscription not found.");
+    }
+    if (subscription.user_id !== auth.userID) {
+      throw APIError.permissionDenied("You can only change your own subscription.");
+    }
+    if (subscription.status !== "active") {
+      throw APIError.failedPrecondition("Only active subscriptions can be changed.");
+    }
+    if (subscription.plan === plan && subscription.billing_interval === billingInterval) {
+      throw APIError.failedPrecondition("Your subscription is already on that plan.");
+    }
+
+    const amount = getPlanAmount(plan, billingInterval);
+    const payment = await createBillingPaymentIntent({
+      userId: subscription.user_id,
+      purpose: "subscription",
+      amount,
+      hostPlan: plan,
+      billingInterval,
+      sourceSubscriptionId: subscriptionId,
+    });
+
+    return { payment };
   },
 );
 
@@ -1571,6 +1668,18 @@ export const listAdminCheckouts = api<void, { checkouts: CheckoutSessionRow[] }>
     return { checkouts };
   },
 );
+
+export const runSubscriptionExpiryCycle = api(
+  {},
+  async () => {
+    await expireEndedSubscriptions();
+  },
+);
+
+export const subscriptionExpiryCron = new CronJob("subscription-expiry-cycle", {
+  every: "24h",
+  endpoint: runSubscriptionExpiryCycle,
+});
 
 export const getMyHostBillingAccount = api<void, { account: HostBillingAccount }>(
   { expose: true, method: "GET", path: "/billing/host/account", auth: true },

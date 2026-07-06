@@ -69,7 +69,9 @@ export function deriveBillingTimeline(input: BillingTimelineInput, nowIso: strin
     nextAction = "greylist";
   } else if (inReminderWindow) {
     nextAction = "add_card";
-  } else if (input.billingSource === "none" || input.billingStatus === "inactive") {
+  } else if (input.billingStatus === "inactive") {
+    nextAction = input.billingSource === "paid" ? "choose_plan" : "redeem_voucher";
+  } else if (input.billingSource === "none") {
     nextAction = "redeem_voucher";
   }
 

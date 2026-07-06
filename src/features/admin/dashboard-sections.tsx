@@ -835,26 +835,51 @@ export function ListingsSection({
             <tbody className="divide-y divide-slate-100">
               {filteredListings.map((listing) => {
                 const host = allUsers.find((user) => user.id === listing.hostId);
+                const isManagedListing = host?.role === 'host' && host.managementMode === 'managed';
+                const hasSettlementProfile = Boolean(listing.settlementProfile?.paymentMethod?.trim()) && Boolean(listing.settlementProfile?.paymentInstructions?.trim());
                 return (
                   <tr key={listing.id} className="transition-colors hover:bg-slate-50">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <img src={listing.images[0]} className="h-12 w-12 rounded-lg object-cover" alt="" referrerPolicy="no-referrer" />
                         <div>
-                          <p className="text-sm font-bold text-slate-900">{listing.title}</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-bold text-slate-900">{listing.title}</p>
+                            {isManagedListing ? (
+                              <Badge variant="warning" className="text-[10px] uppercase">
+                                managed listing
+                              </Badge>
+                            ) : null}
+                          </div>
                           <p className="text-xs text-slate-500">{listing.location}</p>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-sm font-medium">{host?.displayName || 'Unknown Host'}</p>
-                      <p className="text-[10px] text-slate-400">{listing.hostId.slice(0, 8)}...</p>
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">{host?.displayName || 'Unknown Host'}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-[10px] text-slate-400">{listing.hostId.slice(0, 8)}...</p>
+                          {isManagedListing ? (
+                            <Badge variant="warning" className="text-[10px] uppercase">
+                              managed host
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-6 py-4"><p className="text-sm font-bold">{formatRand(listing.pricePerNight)}</p></td>
                     <td className="px-6 py-4">
-                      <Badge variant={listing.status === 'active' ? 'success' : 'neutral'} className="text-[10px] uppercase">
-                        {listing.status}
-                      </Badge>
+                      <div className="space-y-1">
+                        <Badge variant={listing.status === 'active' ? 'success' : 'neutral'} className="text-[10px] uppercase">
+                          {listing.status}
+                        </Badge>
+                        {isManagedListing ? (
+                          <Badge variant={hasSettlementProfile ? 'success' : 'warning'} className="text-[10px] uppercase">
+                            {hasSettlementProfile ? 'settlement ready' : 'needs settlement'}
+                          </Badge>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-6 py-4"><p className="text-xs text-slate-500">{new Date(listing.createdAt).toLocaleDateString()}</p></td>
                     <td className="px-6 py-4 text-right">

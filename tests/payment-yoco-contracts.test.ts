@@ -7,6 +7,8 @@ import { DEFAULT_ENCORE_API_URL } from '../src/lib/encore-client';
 import { classifyYocoWebhookOutcome, resolveYocoWebhookCheckoutId } from '../encore/billing/webhook-classification.ts';
 import { parseYocoSigningSecret, verifyYocoWebhookSignatureValue } from '../encore/billing/yoco-signature.ts';
 import {
+  cancelMySubscription,
+  changeMySubscription,
   createManagedHostingCheckout,
   getBillingPaymentStatus,
   parseBillingReturnParams,
@@ -265,6 +267,67 @@ test('payment success URLs route through backend reconciliation before returning
   );
 });
 
+test('subscription cancellation client posts to the host cancellation endpoint', async () => {
+  installFetch((url) => {
+    if (url.endsWith('/billing/subscriptions/subscription-1/cancel')) {
+      return createJsonResponse({
+        subscription: {
+          id: 'subscription-1',
+          user_id: 'host-1',
+          plan: 'professional',
+          status: 'active',
+          amount: 350,
+          billing_interval: 'monthly',
+          starts_at: '2026-07-01T00:00:00.000Z',
+          ends_at: '2026-08-01T00:00:00.000Z',
+          cancel_at_period_end: true,
+          cancelled_at: '2026-07-10T00:00:00.000Z',
+          created_at: '2026-07-01T00:00:00.000Z',
+        },
+      });
+    }
+    throw new Error(`Unhandled subscription cancellation endpoint: ${url}`);
+  });
+
+  const subscription = await cancelMySubscription('subscription-1');
+
+  assert.equal(subscription.cancelAtPeriodEnd, true);
+  assert.equal(fetchCalls[0]?.url, `${DEFAULT_ENCORE_API_URL}/billing/subscriptions/subscription-1/cancel`);
+  assert.equal(fetchCalls[0]?.init?.method, 'POST');
+});
+
+test('subscription change client posts the target plan and interval through the host change endpoint', async () => {
+  installFetch((url) => {
+    if (url.endsWith('/billing/subscriptions/subscription-1/change')) {
+      return createJsonResponse({
+        payment: {
+          paymentId: 'payment-change-1',
+          provider: 'yoco',
+          providerMode: 'test',
+          status: 'pending',
+          redirectUrl: 'https://pay.example/change-plan',
+          providerReference: 'checkout-change-1',
+        },
+      });
+    }
+    throw new Error(`Unhandled subscription change endpoint: ${url}`);
+  });
+
+  const payment = await changeMySubscription({
+    subscriptionId: 'subscription-1',
+    plan: 'standard',
+    billingInterval: 'monthly',
+  });
+
+  assert.equal(payment.redirectUrl, 'https://pay.example/change-plan');
+  assert.equal(fetchCalls[0]?.url, `${DEFAULT_ENCORE_API_URL}/billing/subscriptions/subscription-1/change`);
+  assert.deepEqual(requestBody(0), {
+    subscriptionId: 'subscription-1',
+    plan: 'standard',
+    billingInterval: 'monthly',
+  });
+});
+
 test('subscription fulfilment updates an existing checkout subscription row instead of leaving stale plan data behind', () => {
   const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
   const activationBlock = source.slice(
@@ -274,7 +337,30 @@ test('subscription fulfilment updates an existing checkout subscription row inst
 
   assert.match(activationBlock, /if \(existingSubscription\) \{/);
   assert.match(activationBlock, /UPDATE subscriptions[\s\S]*SET plan = \$\{session\.host_plan\},[\s\S]*billing_interval = \$\{session\.billing_interval\}/);
+  assert.match(activationBlock, /cancel_at_period_end = \$\{false\}/);
   assert.match(activationBlock, /AND checkout_session_id <> \$\{session\.id\}/);
+});
+
+test('subscription cancellation schedules end-of-period access instead of dropping the host immediately', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  const cancelBlock = source.slice(
+    source.indexOf('async function cancelSubscriptionById'),
+    source.indexOf('async function expireEndedSubscriptions'),
+  );
+
+  assert.match(cancelBlock, /if \(subscription\.status !== "active"\)/);
+  assert.match(cancelBlock, /if \(subscription\.cancel_at_period_end\)/);
+  assert.match(cancelBlock, /SET cancel_at_period_end = \$\{true\},[\s\S]*cancelled_at = \$\{now\}/);
+  assert.doesNotMatch(cancelBlock, /SET host_plan = \$\{"standard"\}/);
+});
+
+test('subscription expiry cycle exists to downgrade ended subscriptions after the paid window closes', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  assert.match(source, /async function expireEndedSubscriptions\(nowIso = new Date\(\)\.toISOString\(\)\)/);
+  assert.match(source, /WHERE status = \$\{"active"\}[\s\S]*AND ends_at <= \$\{nowIso\}/);
+  assert.match(source, /SET status = \$\{"expired"\}/);
+  assert.match(source, /await deactivatePaidBillingAccount\(\{ userId: subscription\.user_id, preserveCardOnFile: true \}\);/);
+  assert.match(source, /new CronJob\("subscription-expiry-cycle"/);
 });
 
 test('accepted Yoco webhook events classify into fulfilment-safe billing outcomes', () => {

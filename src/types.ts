@@ -310,6 +310,8 @@ export interface Subscription {
   billingInterval: 'monthly' | 'annual';
   startDate: string;
   endDate: string;
+  cancelAtPeriodEnd?: boolean;
+  cancelledAt?: string | null;
   createdAt: string;
 }
 

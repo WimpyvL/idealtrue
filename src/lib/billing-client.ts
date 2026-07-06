@@ -224,6 +224,33 @@ export async function listMySubscriptions(): Promise<Subscription[]> {
   return response.subscriptions.map((subscription) => mapEncoreSubscription(parseEncoreSubscription(subscription)));
 }
 
+export async function cancelMySubscription(subscriptionId: string): Promise<Subscription> {
+  const response = await encoreRequest<{ subscription: EncoreSubscription }>(
+    `/billing/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`,
+    {
+      method: 'POST',
+    },
+    { auth: true },
+  );
+  return mapEncoreSubscription(parseEncoreSubscription(response.subscription));
+}
+
+export async function changeMySubscription(params: {
+  subscriptionId: string;
+  plan: HostPlan;
+  billingInterval: BillingInterval;
+}) {
+  const response = await encoreRequest<{ payment: unknown }>(
+    `/billing/subscriptions/${encodeURIComponent(params.subscriptionId)}/change`,
+    {
+      method: 'POST',
+      body: JSON.stringify(params),
+    },
+    { auth: true },
+  );
+  return parseBillingClientResponse(billingPaymentSchema, response.payment, 'Subscription change payment response was invalid.');
+}
+
 export async function createManagedHostingCheckout() {
   return startBillingPayment({ purpose: 'managed_hosting' });
 }

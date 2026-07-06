@@ -598,6 +598,34 @@ export async function syncPaidBillingAccount(params: {
   });
 }
 
+export async function deactivatePaidBillingAccount(params: {
+  userId: string;
+  preserveCardOnFile?: boolean;
+}) {
+  const now = new Date().toISOString();
+  await billingDB.exec`
+    UPDATE host_billing_accounts
+    SET billing_status = ${"inactive"},
+        current_period_start = NULL,
+        current_period_end = NULL,
+        reminder_window_starts_at = NULL,
+        voucher_code = NULL,
+        voucher_redeemed_at = NULL,
+        greylisted_at = NULL,
+        greylist_reason = NULL,
+        card_on_file = ${params.preserveCardOnFile ?? true},
+        updated_at = ${now}
+    WHERE user_id = ${params.userId}
+      AND billing_source = ${"paid"}
+  `;
+
+  await appendBillingEvent({
+    userId: params.userId,
+    eventType: "paid_subscription_ended",
+    actorId: params.userId,
+  });
+}
+
 export async function listAdminHostBillingAccounts() {
   const accounts = await billingDB.queryAll<BillingAccountRow>`
     SELECT *

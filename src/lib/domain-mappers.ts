@@ -245,6 +245,8 @@ const encoreSubscriptionSchema = z.object({
   billing_interval: z.enum(['monthly', 'annual']),
   starts_at: z.string().min(1),
   ends_at: z.string().min(1),
+  cancel_at_period_end: z.boolean().optional().default(false),
+  cancelled_at: z.string().nullable().optional().default(null),
   created_at: z.string().min(1),
 });
 
@@ -444,6 +446,8 @@ export interface EncoreSubscription {
   billing_interval: 'monthly' | 'annual';
   starts_at: string;
   ends_at: string;
+  cancel_at_period_end: boolean;
+  cancelled_at: string | null;
   created_at: string;
 }
 
@@ -680,6 +684,8 @@ export function mapEncoreSubscription(subscription: EncoreSubscription): Subscri
     billingInterval: subscription.billing_interval,
     startDate: subscription.starts_at,
     endDate: subscription.ends_at,
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    cancelledAt: subscription.cancelled_at,
     createdAt: subscription.created_at,
   };
 }

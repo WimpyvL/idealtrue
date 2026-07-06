@@ -341,7 +341,7 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
     );
   }
 
-  const hasActiveHostPlan = billingAccount?.billingSource === "voucher" || billingAccount?.billingSource === "paid";
+  const hasActiveHostPlan = billingAccount?.billingStatus === "active" && (billingAccount.billingSource === "voucher" || billingAccount.billingSource === "paid");
   const showCurrentPlanState = profile?.role === "host" && hasActiveHostPlan;
 
   return (
