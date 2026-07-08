@@ -341,6 +341,25 @@ test('subscription fulfilment updates an existing checkout subscription row inst
   assert.match(activationBlock, /AND checkout_session_id <> \$\{session\.id\}/);
 });
 
+// (|/) Klaasvaakie - this gate keeps the checkout return path tied to real subscription activation instead of a dead-end paid flag.
+test('successful checkout return keeps the subscription activation chain wired end to end', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  const fulfilmentBlock = source.slice(
+    source.indexOf('async function fulfilSuccessfulPaymentIntent'),
+    source.indexOf('async function readRawBody'),
+  );
+  const returnBlock = source.slice(
+    source.indexOf('export const billingPaymentReturn = api.raw'),
+    source.indexOf('export async function generateContentDraft'),
+  );
+
+  assert.match(returnBlock, /await reconcilePendingPaymentIntent\(intent, safeStatus\);/);
+  assert.match(returnBlock, /buildBillingSuccessReturnUrl\(getAppUrl\(\), paymentId, safeStatus, intent\.purpose\)/);
+  assert.match(fulfilmentBlock, /if \(intent\.purpose === "subscription"\) \{/);
+  assert.match(fulfilmentBlock, /await activatePlanFromBillingSession\(billingSession\);/);
+  assert.match(fulfilmentBlock, /await markPaymentIntentPaid\(intent, providerPaymentId\);/);
+});
+
 test('subscription cancellation schedules end-of-period access instead of dropping the host immediately', () => {
   const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
   const cancelBlock = source.slice(
@@ -373,8 +392,29 @@ test('accepted Yoco webhook events classify into fulfilment-safe billing outcome
 test('Yoco webhook handler ignores non-fulfilment events before touching billing state', () => {
   const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
   assert.match(source, /function isFulfilmentSafeWebhookOutcome\(outcome: ReturnType<typeof classifyYocoWebhookOutcome>\)/);
-  assert.match(source, /if \(!isFulfilmentSafeWebhookOutcome\(outcome\)\) \{/);
-  assert.match(source, /resp\.end\(JSON\.stringify\(\{ ok: true, ignored: true \}\)\);\n        return;/);
+  const processorBlock = source.slice(source.indexOf('export async function processStoredYocoWebhookEvent'));
+  assert.match(processorBlock, /if \(!isFulfilmentSafeWebhookOutcome\(outcome\)\) \{/);
+  assert.match(processorBlock, /SET processed_at = \$\{new Date\(\)\.toISOString\(\)\}/);
+});
+
+test('Yoco webhook endpoint acknowledges quickly after persisting and publishing to Encore PubSub', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  const handlerBlock = source.slice(
+    source.indexOf('export const yocoWebhook = api.raw'),
+    source.indexOf('export async function processStoredYocoWebhookEvent'),
+  );
+
+  assert.match(handlerBlock, /INSERT INTO billing_webhook_events \(id, provider, event_type, signature, payload\)/);
+  assert.match(handlerBlock, /await billingWebhookEvents\.publish\(\{ eventId \}\);/);
+  assert.match(handlerBlock, /resp\.end\(JSON\.stringify\(\{ ok: true, accepted: true \}\)\);/);
+  assert.doesNotMatch(handlerBlock, /await fulfilSuccessfulPaymentIntent/);
+});
+
+test('Encore billing webhook subscription delegates stored event processing from PubSub', () => {
+  const source = readFileSync(new URL('../encore/billing/subscriptions.ts', import.meta.url), 'utf8');
+  assert.match(source, /new Subscription\(/);
+  assert.match(source, /billingWebhookEvents/);
+  assert.match(source, /await processStoredYocoWebhookEvent\(event\.eventId\);/);
 });
 
 test('Yoco webhook signature verification uses webhook id, timestamp, and raw body exactly', () => {
@@ -445,6 +485,25 @@ test('pending payment reconciliation falls back to direct checkout verification 
   assert.match(source, /const checkout = await fetchYocoCheckout\(intent\.provider_checkout_id\);/);
   assert.match(source, /const checkoutStatus = mapYocoCheckoutStatus\(checkout\.status\);/);
   assert.match(source, /await fulfilSuccessfulPaymentIntent\(intent, providerPaymentId \?\? intent\.provider_checkout_id\);/);
+});
+
+// (|/) Klaasvaakie - provider_order_id is the last lifeline when checkout-only polling misses the fulfilment event.
+test('provider order reconciliation persists and reuses provider_order_id before falling back to checkout-only polling', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  const reconciliationBlock = source.slice(
+    source.indexOf('async function reconcilePendingPaymentIntent'),
+    source.indexOf('async function findSuccessfulWebhookForPaymentIntent'),
+  );
+  const webhookBlock = source.slice(
+    source.indexOf('async function findPaymentIntentForWebhook'),
+    source.indexOf('function isFulfilmentSafeWebhookOutcome'),
+  );
+
+  assert.match(reconciliationBlock, /await storeProviderOrderId\(intent\.id, providerOrderId\);/);
+  assert.match(reconciliationBlock, /if \(!intent\.provider_order_id\) \{/);
+  assert.match(reconciliationBlock, /const order = await fetchYocoOrder\(intent\.provider_order_id\);/);
+  assert.match(reconciliationBlock, /await fulfilSuccessfulPaymentIntent\(intent, providerPaymentId\);/);
+  assert.match(webhookBlock, /WHERE provider_order_id = \$\{orderId\}/);
 });
 
 test('Yoco webhook handling rejects metadata ownership mismatches before subscription activation', () => {

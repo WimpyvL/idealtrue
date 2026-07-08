@@ -25,6 +25,7 @@ import {
   verifyYocoWebhookSignature,
   type YocoWebhookEvent,
 } from "./yoco";
+import { billingWebhookEvents } from "./webhook-events";
 import { rewardSubscriptionReferralConversion } from "../referrals/api";
 import {
   deactivatePaidBillingAccount,
@@ -244,6 +245,13 @@ type FulfillableBillingSession = {
 
 type WebhookEventRow = {
   id: string;
+};
+
+type StoredBillingWebhookEventRow = {
+  id: string;
+  event_type: string;
+  payload_json: string;
+  processed_at: string | null;
 };
 
 type AdminSubscriptionUpgradePayment = {
@@ -1968,55 +1976,11 @@ export const yocoWebhook = api.raw(
         INSERT INTO billing_webhook_events (id, provider, event_type, signature, payload)
         VALUES (${eventId}, ${"yoco"}, ${eventType}, ${signature ?? null}, ${rawBody}::jsonb)
       `;
-
-      const paymentIntent = await findPaymentIntentForWebhook(event);
-      const session = paymentIntent ? null : await findCheckoutForWebhook(event);
-      if (!paymentIntent && !session) {
-        resp.statusCode = 202;
-        resp.setHeader("Content-Type", "application/json");
-        resp.end(JSON.stringify({ ok: true, ignored: true }));
-        return;
-      }
-
-      const providerPaymentId = event.payload?.paymentId ?? event.payload?.id ?? null;
-      const providerOrderId = resolveProviderOrderId(event);
-      const outcome = classifyYocoWebhookOutcome(eventType, event.payload?.status);
-
-      if (!isFulfilmentSafeWebhookOutcome(outcome)) {
-        resp.statusCode = 202;
-        resp.setHeader("Content-Type", "application/json");
-        resp.end(JSON.stringify({ ok: true, ignored: true }));
-        return;
-      }
-
-      if (paymentIntent) {
-        assertWebhookIntentOwnership(paymentIntent, event);
-        await storeProviderOrderId(paymentIntent.id, providerOrderId);
-      }
-
-      if (paymentIntent && outcome === "paid") {
-        await fulfilSuccessfulPaymentIntent(paymentIntent, providerPaymentId);
-      } else if (paymentIntent && outcome === "failed") {
-        await markPaymentIntentStatus(paymentIntent, "failed");
-      } else if (paymentIntent && outcome === "cancelled") {
-        await markPaymentIntentStatus(paymentIntent, "cancelled");
-      } else if (session && outcome === "paid") {
-        await fulfilSuccessfulCheckout(session, providerPaymentId);
-      } else if (session && outcome === "failed") {
-        await markCheckoutStatus(session, "failed");
-      } else if (session && outcome === "cancelled") {
-        await markCheckoutStatus(session, "cancelled");
-      }
-
-      await billingDB.exec`
-        UPDATE billing_webhook_events
-        SET processed_at = ${new Date().toISOString()}
-        WHERE id = ${eventId}
-      `;
+      await billingWebhookEvents.publish({ eventId });
 
       resp.statusCode = 200;
       resp.setHeader("Content-Type", "application/json");
-      resp.end(JSON.stringify({ ok: true }));
+      resp.end(JSON.stringify({ ok: true, accepted: true }));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Webhook processing failed.";
       resp.statusCode = error instanceof APIError ? 400 : 500;
@@ -2025,3 +1989,68 @@ export const yocoWebhook = api.raw(
     }
   },
 );
+
+export async function processStoredYocoWebhookEvent(eventId: string) {
+  const stored = await billingDB.queryRow<StoredBillingWebhookEventRow>`
+    SELECT id, event_type, payload::text AS payload_json, processed_at
+    FROM billing_webhook_events
+    WHERE id = ${eventId}
+  `;
+
+  if (!stored || stored.processed_at) {
+    return;
+  }
+
+  const event = JSON.parse(stored.payload_json) as YocoWebhookEvent;
+  const eventType = stored.event_type || parseEventType(event);
+  const outcome = classifyYocoWebhookOutcome(eventType, event.payload?.status);
+
+  if (!isFulfilmentSafeWebhookOutcome(outcome)) {
+    await billingDB.exec`
+      UPDATE billing_webhook_events
+      SET processed_at = ${new Date().toISOString()}
+      WHERE id = ${eventId}
+    `;
+    return;
+  }
+
+  const paymentIntent = await findPaymentIntentForWebhook(event);
+  const session = paymentIntent ? null : await findCheckoutForWebhook(event);
+
+  if (!paymentIntent && !session) {
+    await billingDB.exec`
+      UPDATE billing_webhook_events
+      SET processed_at = ${new Date().toISOString()}
+      WHERE id = ${eventId}
+    `;
+    return;
+  }
+
+  const providerPaymentId = event.payload?.paymentId ?? event.payload?.id ?? null;
+  const providerOrderId = resolveProviderOrderId(event);
+
+  if (paymentIntent) {
+    assertWebhookIntentOwnership(paymentIntent, event);
+    await storeProviderOrderId(paymentIntent.id, providerOrderId);
+  }
+
+  if (paymentIntent && outcome === "paid") {
+    await fulfilSuccessfulPaymentIntent(paymentIntent, providerPaymentId);
+  } else if (paymentIntent && outcome === "failed") {
+    await markPaymentIntentStatus(paymentIntent, "failed");
+  } else if (paymentIntent && outcome === "cancelled") {
+    await markPaymentIntentStatus(paymentIntent, "cancelled");
+  } else if (session && outcome === "paid") {
+    await fulfilSuccessfulCheckout(session, providerPaymentId);
+  } else if (session && outcome === "failed") {
+    await markCheckoutStatus(session, "failed");
+  } else if (session && outcome === "cancelled") {
+    await markCheckoutStatus(session, "cancelled");
+  }
+
+  await billingDB.exec`
+    UPDATE billing_webhook_events
+    SET processed_at = ${new Date().toISOString()}
+    WHERE id = ${eventId}
+  `;
+}

@@ -400,3 +400,97 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Added a host-dashboard `Subscriptions` modal under the `Administration` group, backed by `GET /billing/subscriptions`, and changed successful subscription returns to land on `/host?modal=subscriptions`.
 - Updated payment contract tests and the host billing E2E fixture expectations to match the new return path; Encore typecheck, frontend typecheck, and `tests/payment-yoco-contracts.test.ts` passed. Playwright browser binaries were missing locally, so the E2E spec itself could not be executed to completion in this environment.
 - Author signature: (|/) Klaasvaakie
+
+# 2026-07-06 managed hosting status surfaced in host subscriptions modal
+
+- Traced the mismatch: managed hosting payments activate `users.management_mode = 'managed'` and keep the underlying host plan on `premium`, but the host subscriptions modal was only reading `subscriptions` rows.
+- Updated the host subscriptions modal to load the host billing account as well, detect managed hosts from the live profile, and surface `Managed Hosting` as the current access state instead of pretending everything must appear as a standard subscription row.
+- Added an explicit managed-hosting explanation block in the modal so the user sees the paid managed lane, billing status, and underlying premium plan together.
+- Re-ran `npm run lint:types` and `npx tsc --noEmit -p encore/tsconfig.json`; both passed.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-07-06 managed listings surfaced in admin listing management
+
+- Traced the admin blind spot to `ListingsSection`: the table rendered host and status data, but it never marked a listing as managed even when its owning host had `managementMode === 'managed'`.
+- Updated `src/features/admin/dashboard-sections.tsx` so admin listing rows now show `managed listing`, `managed host`, and managed settlement readiness badges directly in the main listing management table.
+- Added `tests/ui/admin-listings-managed-hosting.test.tsx` to lock the visibility contract in place, then verified with `npm run test:ui -- tests/ui/admin-listings-managed-hosting.test.tsx` and `npm run lint:types`.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-07-06 host subscription modal cancellation and plan-change flow
+
+- Reworked subscription cancellation so it now schedules `cancel_at_period_end` instead of dropping the host immediately, and added a subscription expiry cycle that marks ended rows `expired`, downgrades the user back to `standard`, and deactivates paid billing access only after the paid window actually closes.
+- Added host-facing billing endpoints for `/billing/subscriptions/:subscriptionId/cancel` and `/billing/subscriptions/:subscriptionId/change`, reusing the existing Yoco payment flow for both upgrades and downgrades from inside the host subscriptions modal.
+- Rebuilt `src/components/HostSubscriptionsDialog.tsx` so self-service hosts can see the active cycle, schedule end-of-period cancellation with confirmation, and switch between Standard, Professional, and Premium directly from the modal; managed-host accounts still show their managed-state explanation instead of fake self-service controls.
+- Tightened paid-host state handling so expired paid accounts no longer present as actively subscribed just because `billingSource` is still `paid`, and updated billing timeline logic so inactive paid hosts are pushed toward choosing a plan instead of the voucher path.
+- Verified with `npx tsx --test tests/payment-yoco-contracts.test.ts`, `npm run test:ui -- tests/ui/host-subscriptions-dialog.test.tsx tests/ui/admin-listings-managed-hosting.test.tsx`, `npm run lint:types`, and `npx tsc --noEmit -p encore/tsconfig.json`.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-07-08 encore deploy retry with replacement auth token
+
+- Confirmed the latest billing and admin changes were already pushed to `origin/main` in commit `7594009`, so the remaining work was only the Encore backend deploy.
+- Traced Encore local auth storage to `C:\\Users\\wimpi\\AppData\\Roaming\\encore\\.auth_token`, confirmed the helper expects a JSON-encoded OAuth token config rather than raw token text, and retried the deploy with the replacement token in structured config form.
+- The auth parsing problem was cleared, but `git push encore main` still failed with `fatal: internal error. git-remote-encore: exit status 1`, which means the new token is still not accepted for access to the `encore://ideal-stay-online-gh5i` remote from this machine.
+- No repo code changed in this pass; the deployment remains blocked on a valid Encore credential with access to the target app.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-07-08 encore MCP and skills local setup
+
+- Confirmed `.vscode/mcp.json` already contained the `encore-cloud` MCP server entry pointing at `https://api.encore.dev/mcp`, so no config patch was needed in the workspace.
+- Installed the Encore skill pack with the current command path `cmd /c "npx skills add encoredev/skills"` after the deprecated `npx add-skill` wrapper failed to respawn `npx` correctly in PowerShell.
+- The installer completed and copied 28 Encore skills into `C:\\Users\\wimpi\\Documents\\GitHub\\idealtrue\\.agents\\skills\\...`.
+- The remaining step is still VS Code-side authentication for the `encore-cloud` MCP server; that flow is editor-owned and was not completed from the terminal.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-07-08 encore.exe application control block diagnosis
+
+- Confirmed the `encore` command resolves to `C:\\Users\\wimpi\\.encore\\bin\\encore.exe`, which sits in a user-profile path commonly blocked by AppLocker or WDAC path rules.
+- Verified this is an OS application-control problem, not a repo problem: the command fails before project code runs, and no workspace change can override machine policy from user space.
+- I could not change the policy from this session; the practical fix is to have admin allow the Encore binary by publisher, hash, or an allowed install path such as `C:\\Program Files\\Encore\\`.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-07-08 Encore-managed payment webhook pipeline
+
+- Used the installed Encore webhook and Pub/Sub skill guidance against the existing Yoco billing flow instead of inventing a second payment path.
+- Kept the exposed Yoco webhook at `/billing/webhooks/yoco`, but changed it to verify the raw signature, persist the webhook event, publish the event id to an Encore Pub/Sub topic, and acknowledge immediately.
+- Added `encore/billing/webhook-events.ts` and `encore/billing/subscriptions.ts` so webhook fulfilment now runs in a background Encore subscription via `processStoredYocoWebhookEvent(...)`, with the same ownership checks, status transitions, provider-order capture, and idempotent `processed_at` marking as before.
+- Updated the payment contract tests to lock in the new fast-ack webhook pattern and verified with `npx tsc --noEmit -p encore/tsconfig.json` and `npx tsx --test tests/payment-yoco-contracts.test.ts`.
+- The `encore-cloud` MCP server is configured in the workspace, but it was not exposed as a callable tool in this Codex session, so the implementation work was done directly in-repo using the installed Encore skills.
+- Author signature: (|/) Klaasvaakie
+2026-07-08 20:37:31 +02:00 - Adjusted `.gitignore` to ignore local `.agents/` and `skills-lock.json` artifacts; verified they no longer appear as untracked in `git status`.
+# 2026-07-08 encore MCP auth attempt
+
+- Confirmed `sani.md` already existed, verified `.vscode/mcp.json` already points `encore-cloud` at `https://api.encore.dev/mcp`, and confirmed `encore.app` is linked to app id `ideal-stay-online-gh5i`.
+- Checked local Encore auth state: `C:\Users\wimpi\AppData\Roaming\encore\.auth_token` exists, but `encore auth whoami` returned a blank identity, so the stored token is not a trustworthy active session.
+- Started a fresh `encore auth login` device flow from the terminal. The CLI produced pairing code `jaws-panda-jolt-spur` and opened the browser handoff URL `https://www.encore.dev/auth/device/fc0a677b-16a5-4aaf-8554-a8f17c098fd9`.
+- The login process is still waiting for browser-side confirmation; terminal-side verification must resume after that handshake completes.
+
+# 2026-07-08 encore-cloud tool exposure check
+
+- Re-checked the live Codex tool surface after the auth handoff and `encore-cloud` still is not exposed in this session.
+- That means the workspace config is not enough on its own; the Codex/VS Code side still needs a reload or a fresh session after authentication so the MCP server is actually attached.
+- The next concrete step is to reopen or restart the Codex session in VS Code after the Encore auth flow finishes, then verify that `encore-cloud` tools appear before trying to push anything else.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-07-09 GitHub-driven Encore deployment clarification
+
+- Updated `docs/encore-deployment.md` to state the real GitHub-driven Encore path: GitHub pushes are the source of truth once the Encore app is connected to the repo and watching `main`.
+- Kept the distinction explicit between GitHub/Vercel frontend deploys and Encore backend deploys so the deployment story is not misrepresented in the repo.
+- No repo-local workflow was added because the actual Encore trigger lives in Encore Cloud connection settings, not in this worktree.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-07-08 encore MCP status recheck
+
+- Checked the current Codex tool surface again and there is still no exposed `encore-cloud` MCP namespace in this session.
+- The blocker is not the repo config anymore; it is session attachment after Encore auth.
+- The actionable fix remains the same: complete the Encore browser auth, then reload VS Code or start a new Codex session so the MCP server gets attached and the tools appear.
+- Author signature: (|/) Klaasvaakie
+- 2026-07-08: Traced the open dependency alert to a direct root dependency on `encore@^0.0.30-beta`, confirmed there are no runtime imports of the legacy `encore` npm package anywhere in this repo, and removed it with `npm uninstall encore`. That eliminated the exact vulnerable path `encore -> handlebars@1.2.1 -> uglify-js@2.3.6` from the root lockfile without touching the real backend package under `encore/`, which depends on `encore.dev` instead. Author signature: ( |╲ ) Klaasvaakie
+- 2026-07-08: Verification exposed one unrelated-but-real break in `tests/ui/dashboard-mobile-shell.test.tsx`: the dialog mock was missing `DialogDescription` after `HostSubscriptionsDialog` started rendering it. Added that export to the test mock so the UI suite reflects the current component contract instead of failing on the mock seam. Author signature: ( |╲ ) Klaasvaakie
+- 2026-07-08: Final verification after removing the vulnerable root `encore` package: `npm run build` passed, `npm run lint:types` passed, and `npm test` finished green with `213` unit tests and `54` UI tests passing. The only skipped step was the live smoke probe, which is intentionally gated behind `IDEAL_STAY_RUN_LIVE_SMOKE=true`. Author signature: ( |╲ ) Klaasvaakie
+
+# 2026-07-08 payment return regression gate
+
+- Added a focused contract test in `tests/payment-yoco-contracts.test.ts` to lock the successful checkout return path to `reconcilePendingPaymentIntent(...)` and `activatePlanFromBillingSession(...)`, so a regression back to "paid but no subscription" will fail the suite.
+- Added a companion contract assertion for the `provider_order_id` reconciliation branch so webhook persistence and later order-based recovery stay wired together.
+- Kept the change deterministic and repo-local by testing the billing source contract directly, with no external secrets or live Yoco dependency.
+- Author signature: (|/) Klaasvaakie

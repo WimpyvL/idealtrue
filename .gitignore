@@ -10,6 +10,8 @@ coverage/
 backend/
 .codex/
 .runlogs/
+.agents/
+skills-lock.json
 encore/**/*.js.map
 **/.git/
 

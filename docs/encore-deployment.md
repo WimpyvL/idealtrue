@@ -1,6 +1,6 @@
 # Encore Deployment Flow
 
-This repo deploys through Encore Cloud by pushing to the `encore` git remote.
+This repo can deploy through Encore Cloud from GitHub once the Encore app is connected to the GitHub repository and configured to watch the `main` branch.
 
 The frontend deploys separately through Vercel, which is linked to the GitHub repo.
 
@@ -9,13 +9,8 @@ The frontend deploys separately through Vercel, which is linked to the GitHub re
 1. You change code locally.
 2. You verify it with tests and lint.
 3. You commit the change.
-4. You push to the Encore remote:
-
-```bash
-git push encore main
-```
-
-5. Encore Cloud receives the push and starts deploys for the linked app.
+4. You push the commit to GitHub on `main`.
+5. Encore Cloud receives the GitHub update for the connected repo and starts deploys for the linked app.
 6. The app currently linked here is `ideal-stay-online-gh5i`.
 7. Encore creates environment deploy records for both `staging` and `prod`.
 8. You verify the deploy in the Encore Cloud dashboard.
@@ -33,8 +28,8 @@ That means a GitHub push can trigger the frontend deployment pipeline through Ve
 
 In practice:
 
-- `git push encore main` triggers Encore Cloud backend deploys
 - `git push origin main` updates GitHub
+- Encore Cloud can be configured to deploy from that GitHub branch
 - Vercel can then deploy the frontend from the GitHub-connected repo
 
 If the Vercel project is set to auto-deploy from the GitHub `main` branch, then yes, the frontend part works off GitHub commits.
@@ -48,9 +43,8 @@ This repo has a dedicated remote named `encore`:
 encore://ideal-stay-online-gh5i
 ```
 
-That remote is the deploy trigger. It is not a normal GitHub remote.
-
-When `main` is pushed to that remote, Encore Cloud starts the backend deployment pipeline for the linked app.
+That remote is a direct deploy trigger used when pushing locally to Encore.
+If GitHub is configured as the source of truth for the app, the GitHub push becomes the deploy trigger instead.
 
 ## What MCP is for
 
@@ -88,8 +82,8 @@ The clean release loop is:
 1. `npm run lint`
 2. `npm test`
 3. `git commit -m "..."`
-4. `git push origin main` if the frontend should deploy through Vercel
-5. `git push encore main` to trigger Encore backend deploys
+4. `git push origin main`
+5. Confirm Encore Cloud is connected to the GitHub repo and watching `main`
 6. Check both Vercel and Encore Cloud deploy status
 7. Run live smoke against the deployed frontend if the change touches the public flow
 
@@ -97,8 +91,8 @@ The clean release loop is:
 
 - Pushing to `origin` updates GitHub.
 - Pushing to `origin` can trigger Vercel if the project is GitHub-connected.
-- Pushing to `encore` triggers Encore Cloud deploys.
+- Encore Cloud can also be configured to trigger from GitHub directly.
 - The local Encore CLI in this environment does not expose a working `encore deploy` subcommand.
-- For this repo, the remote push path is the real deployment mechanism.
+- For this repo, the deployment source of truth should be GitHub once the Encore app connection is enabled.
 
 Author: (|/) Klaasvaakie
