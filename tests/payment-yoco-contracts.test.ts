@@ -566,10 +566,17 @@ test('successful Yoco webhook handling persists a provider order id for later re
 
 test('pending payment reconciliation falls back to direct checkout verification before giving up on live payments', () => {
   const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
-  assert.match(source, /if \(intent\.provider_checkout_id\) \{/);
-  assert.match(source, /const checkout = await fetchYocoCheckout\(intent\.provider_checkout_id\);/);
-  assert.match(source, /const checkoutStatus = mapYocoCheckoutStatus\(checkout\.status\);/);
-  assert.match(source, /await fulfilSuccessfulPaymentIntent\(intent, providerPaymentId \?\? intent\.provider_checkout_id\);/);
+  const reconciliationBlock = source.slice(
+    source.indexOf('async function reconcilePendingPaymentIntent'),
+    source.indexOf('async function reconcilePendingPaymentIntentsFromProvider'),
+  );
+
+  assert.match(reconciliationBlock, /if \(intent\.provider_checkout_id\) \{/);
+  assert.match(reconciliationBlock, /try \{[\s\S]*const checkout = await fetchYocoCheckout\(intent\.provider_checkout_id\);/);
+  assert.match(reconciliationBlock, /const checkoutStatus = mapYocoCheckoutStatus\(checkout\.status\);/);
+  assert.match(reconciliationBlock, /await fulfilSuccessfulPaymentIntent\(intent, providerPaymentId \?\? intent\.provider_checkout_id\);/);
+  assert.match(reconciliationBlock, /catch \(error\) \{[\s\S]*Yoco checkout lookup failed/);
+  assert.match(reconciliationBlock, /catch \(error\) \{[\s\S]*Yoco order lookup failed/);
 });
 
 // (|/) Klaasvaakie - provider_order_id is the last lifeline when checkout-only polling misses the fulfilment event.
@@ -589,6 +596,40 @@ test('provider order reconciliation persists and reuses provider_order_id before
   assert.match(reconciliationBlock, /const order = await fetchYocoOrder\(intent\.provider_order_id\);/);
   assert.match(reconciliationBlock, /await fulfilSuccessfulPaymentIntent\(intent, providerPaymentId\);/);
   assert.match(webhookBlock, /WHERE provider_order_id = \$\{orderId\}/);
+});
+
+test('stored Yoco webhook reconciliation matches direct and nested checkout references', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  const intentWebhookLookup = source.slice(
+    source.indexOf('async function findSuccessfulWebhookForPaymentIntent'),
+    source.indexOf('async function findSuccessfulWebhookForCheckout'),
+  );
+  const checkoutWebhookLookup = source.slice(
+    source.indexOf('async function findSuccessfulWebhookForCheckout'),
+    source.indexOf('async function reconcilePendingCheckout'),
+  );
+
+  for (const block of [intentWebhookLookup, checkoutWebhookLookup]) {
+    assert.match(block, /payload #>> '\{payload,metadata,checkoutId\}'/);
+    assert.match(block, /payload #>> '\{payload,checkoutId\}'/);
+    assert.match(block, /payload #>> '\{payload,checkout_id\}'/);
+    assert.match(block, /payload #>> '\{payload,checkout,id\}'/);
+    assert.match(block, /payload #>> '\{payload,checkout,checkoutId\}'/);
+    assert.match(block, /payload #>> '\{payload,checkout,checkout_id\}'/);
+  }
+});
+
+// ( |╲ ) Klaasvaakie
+test('Yoco provider requests retry transient fetch failures before surfacing provider unavailable errors', () => {
+  const source = readFileSync(new URL('../encore/billing/yoco.ts', import.meta.url), 'utf8');
+
+  assert.match(source, /const YOCO_FETCH_RETRY_DELAYS_MS = \[250, 750\];/);
+  assert.match(source, /async function fetchYocoWithRetry/);
+  assert.match(source, /return await fetch\(url, init\);/);
+  assert.match(source, /throw APIError\.unavailable\(`\$\{operation\} could not reach Yoco:/);
+  assert.match(source, /fetchYocoWithRetry\(`\$\{YOCO_API_BASE\}\/checkouts`/);
+  assert.match(source, /fetchYocoWithRetry\(`\$\{YOCO_API_BASE\}\/checkouts\/\$\{encodeURIComponent\(checkoutId\)\}`/);
+  assert.match(source, /fetchYocoWithRetry\(`\$\{YOCO_REST_API_BASE\}\/orders\/\$\{encodeURIComponent\(orderId\)\}`/);
 });
 
 test('Yoco webhook handling rejects metadata ownership mismatches before subscription activation', () => {

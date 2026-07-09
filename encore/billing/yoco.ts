@@ -11,6 +11,7 @@ export const yocoPaymentMode = secret<"YOCO_PAYMENT_MODE">("YOCO_PAYMENT_MODE");
 const YOCO_API_BASE = process.env.YOCO_API_BASE || "https://payments.yoco.com/api";
 const YOCO_REST_API_BASE = process.env.YOCO_REST_API_BASE || "https://api.yoco.com/v1";
 const DEFAULT_APP_URL = "https://idealstay.co.za";
+const YOCO_FETCH_RETRY_DELAYS_MS = [250, 750];
 
 export interface YocoCheckoutRequest {
   amount: number;
@@ -91,6 +92,33 @@ function getYocoApiKey() {
   return { apiKey, mode };
 }
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function wait(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Author: ( |╲ ) Klaasvaakie
+async function fetchYocoWithRetry(url: string, init: RequestInit, operation: string) {
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt <= YOCO_FETCH_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      lastError = error;
+      if (attempt === YOCO_FETCH_RETRY_DELAYS_MS.length) {
+        break;
+      }
+      await wait(YOCO_FETCH_RETRY_DELAYS_MS[attempt]);
+    }
+  }
+
+  throw APIError.unavailable(`${operation} could not reach Yoco: ${getErrorMessage(lastError)}`);
+}
+
 export function getAppUrl() {
   return (idealStayAppUrl() || DEFAULT_APP_URL).replace(/\/+$/, "");
 }
@@ -100,7 +128,7 @@ export async function createYocoCheckout(input: YocoCheckoutRequest): Promise<Yo
 
   const idempotencyKey = input.idempotencyKey || input.metadata.checkoutId || input.metadata.externalId;
 
-  const response = await fetch(`${YOCO_API_BASE}/checkouts`, {
+  const response = await fetchYocoWithRetry(`${YOCO_API_BASE}/checkouts`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -108,18 +136,18 @@ export async function createYocoCheckout(input: YocoCheckoutRequest): Promise<Yo
       ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
     },
     body: JSON.stringify(input),
-  });
+  }, "Yoco checkout creation");
 
   if (!response.ok) {
     const body = await response.text();
     const replayed = response.headers.get("Idempotent-Replayed");
     const replaySuffix = replayed === "true" ? " (idempotent replay)" : "";
-    throw APIError.internal(`Yoco checkout creation failed${replaySuffix}: ${body || response.statusText}`);
+    throw APIError.unavailable(`Yoco checkout creation failed${replaySuffix}: ${body || response.statusText}`);
   }
 
   const checkout = (await response.json()) as YocoCheckoutResponse;
   if (!checkout.id || !checkout.redirectUrl) {
-    throw APIError.internal("Yoco checkout creation returned an invalid response.");
+    throw APIError.unavailable("Yoco checkout creation returned an invalid response.");
   }
   return { ...checkout, processingMode: checkout.processingMode ?? mode };
 }
@@ -128,15 +156,15 @@ export async function createYocoCheckout(input: YocoCheckoutRequest): Promise<Yo
 export async function fetchYocoCheckout(checkoutId: string): Promise<YocoCheckoutStatusResponse> {
   const { apiKey } = getYocoApiKey();
 
-  const response = await fetch(`${YOCO_API_BASE}/checkouts/${encodeURIComponent(checkoutId)}`, {
+  const response = await fetchYocoWithRetry(`${YOCO_API_BASE}/checkouts/${encodeURIComponent(checkoutId)}`, {
     headers: {
       Authorization: `Bearer ${apiKey}`,
     },
-  });
+  }, "Yoco checkout lookup");
 
   if (!response.ok) {
     const body = await response.text();
-    throw APIError.internal(`Yoco checkout lookup failed: ${body || response.statusText}`);
+    throw APIError.unavailable(`Yoco checkout lookup failed: ${body || response.statusText}`);
   }
 
   return response.json() as Promise<YocoCheckoutStatusResponse>;
@@ -145,15 +173,15 @@ export async function fetchYocoCheckout(checkoutId: string): Promise<YocoCheckou
 export async function fetchYocoOrder(orderId: string): Promise<YocoOrderResponse> {
   const { apiKey } = getYocoApiKey();
 
-  const response = await fetch(`${YOCO_REST_API_BASE}/orders/${encodeURIComponent(orderId)}`, {
+  const response = await fetchYocoWithRetry(`${YOCO_REST_API_BASE}/orders/${encodeURIComponent(orderId)}`, {
     headers: {
       Authorization: `Bearer ${apiKey}`,
     },
-  });
+  }, "Yoco order lookup");
 
   if (!response.ok) {
     const body = await response.text();
-    throw APIError.internal(`Yoco order lookup failed: ${body || response.statusText}`);
+    throw APIError.unavailable(`Yoco order lookup failed: ${body || response.statusText}`);
   }
 
   return response.json() as Promise<YocoOrderResponse>;

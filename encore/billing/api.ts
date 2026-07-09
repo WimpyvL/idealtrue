@@ -1355,24 +1355,28 @@ async function reconcilePendingPaymentIntent(intent: PaymentIntentRow, billingSt
   }
 
   if (intent.provider_checkout_id) {
-    const checkout = await fetchYocoCheckout(intent.provider_checkout_id);
-    const checkoutStatus = mapYocoCheckoutStatus(checkout.status);
-    const providerPaymentId = checkout.paymentId ?? checkout.payment_id ?? null;
-    const providerOrderId = checkout.orderId ?? checkout.order_id ?? null;
+    try {
+      const checkout = await fetchYocoCheckout(intent.provider_checkout_id);
+      const checkoutStatus = mapYocoCheckoutStatus(checkout.status);
+      const providerPaymentId = checkout.paymentId ?? checkout.payment_id ?? null;
+      const providerOrderId = checkout.orderId ?? checkout.order_id ?? null;
 
-    await storeProviderOrderId(intent.id, providerOrderId);
+      await storeProviderOrderId(intent.id, providerOrderId);
 
-    if (checkoutStatus === "paid") {
-      await fulfilSuccessfulPaymentIntent(intent, providerPaymentId ?? intent.provider_checkout_id);
-      return (await getPaymentIntentById(intent.id)) ?? intent;
-    }
-    if (checkoutStatus === "failed") {
-      await markPaymentIntentStatus(intent, "failed");
-      return (await getPaymentIntentById(intent.id)) ?? intent;
-    }
-    if (checkoutStatus === "cancelled") {
-      await markPaymentIntentStatus(intent, "cancelled");
-      return (await getPaymentIntentById(intent.id)) ?? intent;
+      if (checkoutStatus === "paid") {
+        await fulfilSuccessfulPaymentIntent(intent, providerPaymentId ?? intent.provider_checkout_id);
+        return (await getPaymentIntentById(intent.id)) ?? intent;
+      }
+      if (checkoutStatus === "failed") {
+        await markPaymentIntentStatus(intent, "failed");
+        return (await getPaymentIntentById(intent.id)) ?? intent;
+      }
+      if (checkoutStatus === "cancelled") {
+        await markPaymentIntentStatus(intent, "cancelled");
+        return (await getPaymentIntentById(intent.id)) ?? intent;
+      }
+    } catch (error) {
+      console.error(`Yoco checkout lookup failed for billing payment intent ${intent.id}:`, error);
     }
   }
 
@@ -1380,19 +1384,23 @@ async function reconcilePendingPaymentIntent(intent: PaymentIntentRow, billingSt
     return intent;
   }
 
-  const order = await fetchYocoOrder(intent.provider_order_id);
-  const status = mapYocoOrderStatus(order.status);
-  const providerPaymentId =
-    order.payments?.find((payment) => payment.status?.trim().toLowerCase() === "approved")?.id ??
-    order.payments?.[0]?.id ??
-    null;
-  if (status === "paid") {
-    await fulfilSuccessfulPaymentIntent(intent, providerPaymentId);
-    return (await getPaymentIntentById(intent.id)) ?? intent;
-  }
-  if (status === "cancelled") {
-    await markPaymentIntentStatus(intent, "cancelled");
-    return (await getPaymentIntentById(intent.id)) ?? intent;
+  try {
+    const order = await fetchYocoOrder(intent.provider_order_id);
+    const status = mapYocoOrderStatus(order.status);
+    const providerPaymentId =
+      order.payments?.find((payment) => payment.status?.trim().toLowerCase() === "approved")?.id ??
+      order.payments?.[0]?.id ??
+      null;
+    if (status === "paid") {
+      await fulfilSuccessfulPaymentIntent(intent, providerPaymentId);
+      return (await getPaymentIntentById(intent.id)) ?? intent;
+    }
+    if (status === "cancelled") {
+      await markPaymentIntentStatus(intent, "cancelled");
+      return (await getPaymentIntentById(intent.id)) ?? intent;
+    }
+  } catch (error) {
+    console.error(`Yoco order lookup failed for billing payment intent ${intent.id}:`, error);
   }
 
   return intent;
@@ -1449,6 +1457,11 @@ async function findSuccessfulWebhookForPaymentIntent(intent: PaymentIntentRow): 
       AND (
         payload #>> '{payload,metadata,paymentIntentId}' = ${intent.id}
         OR (${intent.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,metadata,checkoutId}' = ${intent.provider_checkout_id ?? null})
+        OR (${intent.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkoutId}' = ${intent.provider_checkout_id ?? null})
+        OR (${intent.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkout_id}' = ${intent.provider_checkout_id ?? null})
+        OR (${intent.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkout,id}' = ${intent.provider_checkout_id ?? null})
+        OR (${intent.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkout,checkoutId}' = ${intent.provider_checkout_id ?? null})
+        OR (${intent.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkout,checkout_id}' = ${intent.provider_checkout_id ?? null})
         OR (${intent.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,id}' = ${intent.provider_checkout_id ?? null})
       )
     ORDER BY received_at DESC
@@ -1474,6 +1487,11 @@ async function findSuccessfulWebhookForCheckout(session: CheckoutSessionRow): Pr
       AND (
         payload #>> '{payload,metadata,checkoutId}' = ${session.id}
         OR (${session.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,metadata,checkoutId}' = ${session.provider_checkout_id ?? null})
+        OR (${session.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkoutId}' = ${session.provider_checkout_id ?? null})
+        OR (${session.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkout_id}' = ${session.provider_checkout_id ?? null})
+        OR (${session.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkout,id}' = ${session.provider_checkout_id ?? null})
+        OR (${session.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkout,checkoutId}' = ${session.provider_checkout_id ?? null})
+        OR (${session.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkout,checkout_id}' = ${session.provider_checkout_id ?? null})
         OR (${session.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,id}' = ${session.provider_checkout_id ?? null})
       )
     ORDER BY received_at DESC
