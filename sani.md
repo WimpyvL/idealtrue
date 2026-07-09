@@ -508,6 +508,13 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Verified with `npx tsc --noEmit -p encore\tsconfig.json`, `npx tsx --test tests\payment-yoco-contracts.test.ts tests\admin-financials-contract.test.ts`, and `npm run lint`.
 - Author signature: (|/) Klaasvaakie
 
+# 2026-07-09 deploy confirmation for billing reconciliation
+
+- Confirmed the worktree was clean at commit `bc59fb2` (`Add pending billing payment reconciliation`).
+- Re-ran `git push origin main`; GitHub reported `Everything up-to-date`.
+- Re-ran `git push encore main`; the Encore deploy remote also reported `Everything up-to-date`.
+- Author signature: (|/) Klaasvaakie
+
 # 2026-07-08 encore MCP status recheck
 
 - Checked the current Codex tool surface again and there is still no exposed `encore-cloud` MCP namespace in this session.
