@@ -1447,6 +1447,19 @@ async function expireEndedSubscriptions(nowIso = new Date().toISOString()) {
             deactivated_notified_at = ${null}
         WHERE id = ${subscription.id}
       `;
+      await identityDB.exec`
+        UPDATE users
+        SET host_plan = ${subscription.pending_plan},
+            management_mode = ${"self_service"},
+            updated_at = ${nowIso}
+        WHERE id = ${subscription.user_id}
+      `;
+      await syncPaidBillingAccount({
+        userId: subscription.user_id,
+        plan: subscription.pending_plan,
+        currentPeriodStart: nextStartsAt.toISOString(),
+        currentPeriodEnd: nextEndsAt.toISOString(),
+      });
       continue;
     } else {
       const graceEndsAt = addDays(new Date(subscription.ends_at), SUBSCRIPTION_GRACE_PERIOD_DAYS);
@@ -1482,9 +1495,10 @@ async function expireEndedSubscriptions(nowIso = new Date().toISOString()) {
       await identityDB.exec`
         UPDATE users
         SET host_plan = ${"standard"},
+            management_mode = ${"self_service"},
             updated_at = ${nowIso}
         WHERE id = ${subscription.user_id}
-          AND host_plan <> ${"standard"}
+          AND (host_plan <> ${"standard"} OR management_mode <> ${"self_service"})
       `;
       await deactivatePaidBillingAccount({ userId: subscription.user_id, preserveCardOnFile: true });
     }
@@ -1518,9 +1532,10 @@ async function expireEndedSubscriptions(nowIso = new Date().toISOString()) {
       await identityDB.exec`
         UPDATE users
         SET host_plan = ${"standard"},
+            management_mode = ${"self_service"},
             updated_at = ${nowIso}
         WHERE id = ${subscription.user_id}
-          AND host_plan <> ${"standard"}
+          AND (host_plan <> ${"standard"} OR management_mode <> ${"self_service"})
       `;
       await deactivatePaidBillingAccount({ userId: subscription.user_id, preserveCardOnFile: true });
       try {

@@ -364,6 +364,19 @@ test('subscription downgrades are scheduled for the next billing date without ch
   assert.match(changeEndpoint, /return \{ subscription: scheduled, changeType: "downgrade", effectiveAt: scheduled\.pending_change_effective_at \};/);
 });
 
+// ( |╲ ) Klaasvaakie - managed-hosting downgrades must flip profile and billing state when the next cycle starts.
+test('scheduled subscription downgrades clear managed mode when they become effective', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  const expiryBlock = source.slice(
+    source.indexOf('async function expireEndedSubscriptions'),
+    source.indexOf('async function reconcilePendingPaymentIntent'),
+  );
+
+  assert.match(expiryBlock, /SET plan = \$\{subscription\.pending_plan\}/);
+  assert.match(expiryBlock, /SET host_plan = \$\{subscription\.pending_plan\},[\s\S]*management_mode = \$\{"self_service"\}/);
+  assert.match(expiryBlock, /await syncPaidBillingAccount\(\{[\s\S]*plan: subscription\.pending_plan/);
+});
+
 test('subscription expiry gives users a seven day grace period before deactivation', () => {
   const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
   const expiryBlock = source.slice(

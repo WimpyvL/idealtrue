@@ -576,3 +576,11 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Added regression coverage for the backend activation seam and the modal screenshot case where Professional was active while the profile still claimed Managed Hosting.
 - Verified with encore typecheck, billing/admin contracts, focused modal UI test, lint, and production build.
 - Author signature: ( |╲ ) Klaasvaakie
+
+# 2026-07-09 managed downgrade state sync
+
+- Fixed the scheduled-downgrade expiry branch so when Managed Hosting moves down to a self-service plan at the next billing date, the subscription row, user host plan, user management mode, and host billing account all move together.
+- Hardened cancellation and grace expiry fallbacks so they clear `management_mode` to `self_service` even if `host_plan` was already Standard.
+- Added a contract test proving effective scheduled downgrades clear managed mode and resync paid billing account state.
+- Verified with Encore typecheck, billing/admin contracts, focused subscription modal UI test, lint, and production build.
+- Author signature: ( |╲ ) Klaasvaakie
