@@ -575,8 +575,24 @@ test('pending payment reconciliation falls back to direct checkout verification 
   assert.match(reconciliationBlock, /try \{[\s\S]*const checkout = await fetchYocoCheckout\(intent\.provider_checkout_id\);/);
   assert.match(reconciliationBlock, /const checkoutStatus = mapYocoCheckoutStatus\(checkout\.status\);/);
   assert.match(reconciliationBlock, /await fulfilSuccessfulPaymentIntent\(intent, providerPaymentId \?\? intent\.provider_checkout_id\);/);
+  assert.match(reconciliationBlock, /catch \(error\) \{[\s\S]*Stored Yoco webhook lookup failed/);
   assert.match(reconciliationBlock, /catch \(error\) \{[\s\S]*Yoco checkout lookup failed/);
   assert.match(reconciliationBlock, /catch \(error\) \{[\s\S]*Yoco order lookup failed/);
+});
+
+// ( |╲ ) Klaasvaakie - customer-facing status polling must never be the place where internal reconciliation throws a 500.
+test('billing payment status polling returns stored state when reconciliation fails internally', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  const statusEndpoint = source.slice(
+    source.indexOf('export const getBillingPaymentStatus'),
+    source.indexOf('export const billingPaymentReturn'),
+  );
+
+  assert.match(statusEndpoint, /let resolvedIntent: PaymentIntentRow;/);
+  assert.match(statusEndpoint, /try \{[\s\S]*resolvedIntent = await reconcilePendingPaymentIntent\(intent, billingStatus\);/);
+  assert.match(statusEndpoint, /catch \(error\) \{[\s\S]*Billing payment status reconciliation failed for \$\{paymentId\}/);
+  assert.match(statusEndpoint, /resolvedIntent = \(await getPaymentIntentById\(paymentId\)\) \?\? intent;/);
+  assert.match(statusEndpoint, /status: resolvedIntent\.status/);
 });
 
 // (|/) Klaasvaakie - provider_order_id is the last lifeline when checkout-only polling misses the fulfilment event.

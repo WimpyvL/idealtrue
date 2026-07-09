@@ -1342,10 +1342,14 @@ async function reconcilePendingPaymentIntent(intent: PaymentIntentRow, billingSt
     return intent;
   }
 
-  const successfulWebhook = await findSuccessfulWebhookForPaymentIntent(intent);
-  if (successfulWebhook) {
-    await fulfilSuccessfulPaymentIntent(intent, successfulWebhook.payload?.paymentId ?? successfulWebhook.payload?.id ?? null);
-    return (await getPaymentIntentById(intent.id)) ?? intent;
+  try {
+    const successfulWebhook = await findSuccessfulWebhookForPaymentIntent(intent);
+    if (successfulWebhook) {
+      await fulfilSuccessfulPaymentIntent(intent, successfulWebhook.payload?.paymentId ?? successfulWebhook.payload?.id ?? null);
+      return (await getPaymentIntentById(intent.id)) ?? intent;
+    }
+  } catch (error) {
+    console.error(`Stored Yoco webhook lookup failed for billing payment intent ${intent.id}:`, error);
   }
 
   const normalizedBillingStatus = billingStatus?.trim().toLowerCase();
@@ -1874,7 +1878,14 @@ export const getBillingPaymentStatus = api<{ paymentId: string; billingStatus?: 
       throw APIError.permissionDenied("You do not have access to this payment.");
     }
 
-    const resolvedIntent = await reconcilePendingPaymentIntent(intent, billingStatus);
+    let resolvedIntent: PaymentIntentRow;
+    try {
+      resolvedIntent = await reconcilePendingPaymentIntent(intent, billingStatus);
+    } catch (error) {
+      console.error(`Billing payment status reconciliation failed for ${paymentId}:`, error);
+      resolvedIntent = (await getPaymentIntentById(paymentId)) ?? intent;
+    }
+
     return {
       status: resolvedIntent.status,
       purpose: resolvedIntent.purpose,

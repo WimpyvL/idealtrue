@@ -539,6 +539,16 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Added retry handling around Yoco checkout creation, checkout lookup, and order lookup; exhausted provider/network failures now surface as provider unavailable instead of opaque internal errors.
 - Verified with `npx tsc --noEmit -p encore\tsconfig.json`, `npx tsx --test tests\payment-yoco-contracts.test.ts tests\admin-financials-contract.test.ts`, and `npm run lint`.
 - Author signature: ( |╲ ) Klaasvaakie
+
+# 2026-07-09 payment status 500 architecture pass
+
+- Re-mapped the real payment flow after live status polling still returned `500` for `/billing/payments/:paymentId?billingStatus=success`.
+- Added `docs/payment-subscription-flow-map.md` to record the actual current flow, fracture lines, and the target rule that browser polling must not be the brittle activation point.
+- Hardened `reconcilePendingPaymentIntent` so stored webhook lookup failures are logged and do not prevent checkout/order reconciliation from running.
+- Hardened `getBillingPaymentStatus` so customer-facing polling returns the latest stored intent state if internal reconciliation throws, instead of surfacing an Encore internal error.
+- Added regression coverage proving status polling fails closed and stored/provider reconciliation remains wired.
+- Verified with `npx tsc --noEmit -p encore\tsconfig.json`, `npx tsx --test tests\payment-yoco-contracts.test.ts tests\admin-financials-contract.test.ts`, and `npm run lint`.
+- Author signature: ( |╲ ) Klaasvaakie
 - 2026-07-08: Traced the open dependency alert to a direct root dependency on `encore@^0.0.30-beta`, confirmed there are no runtime imports of the legacy `encore` npm package anywhere in this repo, and removed it with `npm uninstall encore`. That eliminated the exact vulnerable path `encore -> handlebars@1.2.1 -> uglify-js@2.3.6` from the root lockfile without touching the real backend package under `encore/`, which depends on `encore.dev` instead. Author signature: ( |╲ ) Klaasvaakie
 - 2026-07-08: Verification exposed one unrelated-but-real break in `tests/ui/dashboard-mobile-shell.test.tsx`: the dialog mock was missing `DialogDescription` after `HostSubscriptionsDialog` started rendering it. Added that export to the test mock so the UI suite reflects the current component contract instead of failing on the mock seam. Author signature: ( |╲ ) Klaasvaakie
 - 2026-07-08: Final verification after removing the vulnerable root `encore` package: `npm run build` passed, `npm run lint:types` passed, and `npm test` finished green with `213` unit tests and `54` UI tests passing. The only skipped step was the live smoke probe, which is intentionally gated behind `IDEAL_STAY_RUN_LIVE_SMOKE=true`. Author signature: ( |╲ ) Klaasvaakie
