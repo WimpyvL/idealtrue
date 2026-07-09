@@ -32,6 +32,10 @@ function getChangeButtonLabel(currentPlan: HostPlan, selectedPlan: HostPlan) {
   return order.indexOf(selectedPlan) > order.indexOf(currentPlan) ? 'Upgrade' : 'Downgrade';
 }
 
+function getPlanRank(plan: HostPlan) {
+  return selfServicePlanOptions.indexOf(plan);
+}
+
 // Author: (|╲) Klaasvaakie
 export default function HostSubscriptionsDialog({
   open,
@@ -95,7 +99,7 @@ export default function HostSubscriptionsDialog({
   }, [open]);
 
   const activeSubscriptions = useMemo(
-    () => subscriptions.filter((subscription) => subscription.status === 'active'),
+    () => subscriptions.filter((subscription) => subscription.status === 'active' || subscription.status === 'grace_period'),
     [subscriptions],
   );
   const activeSelfServiceSubscription = useMemo(
@@ -175,7 +179,19 @@ export default function HostSubscriptionsDialog({
         plan: selectedPlan,
         billingInterval: activeSelfServiceSubscription.billingInterval,
       });
-      window.location.assign(payment.redirectUrl);
+      if (payment.changeType === 'downgrade' && payment.subscription) {
+        setSubscriptions((current) => current.map((subscription) => (
+          subscription.id === payment.subscription?.id ? payment.subscription : subscription
+        )));
+        toast.success(`Downgrade scheduled for ${new Date(payment.effectiveAt ?? payment.subscription.endDate).toLocaleDateString()}.`);
+        setIsProcessingChange(false);
+        return;
+      }
+      if (payment.payment) {
+        window.location.assign(payment.payment.redirectUrl);
+        return;
+      }
+      throw new Error('Subscription change response did not include a checkout or scheduled downgrade.');
     } catch (error) {
       setIsProcessingChange(false);
       toast.error(error instanceof Error ? error.message : 'Could not start the plan change checkout.');
@@ -183,6 +199,9 @@ export default function HostSubscriptionsDialog({
   }
 
   const scheduledCancellation = activeSelfServiceSubscription?.cancelAtPeriodEnd ?? false;
+  const pendingChange = activeSelfServiceSubscription?.pendingPlan
+    ? `${formatPlanLabel(activeSelfServiceSubscription.pendingPlan)} ${activeSelfServiceSubscription.pendingBillingInterval ?? activeSelfServiceSubscription.billingInterval}`
+    : null;
 
   return (
     <>
@@ -254,6 +273,16 @@ export default function HostSubscriptionsDialog({
                   <p className="text-sm font-semibold text-slate-900">
                     {formatRand(activeSelfServiceSubscription.amount)} / {activeSelfServiceSubscription.billingInterval === 'monthly' ? 'month' : 'year'}
                   </p>
+                  {pendingChange ? (
+                    <p className="text-sm font-semibold text-amber-700">
+                      Pending change: {pendingChange} on {new Date(activeSelfServiceSubscription.pendingChangeEffectiveAt ?? activeSelfServiceSubscription.endDate).toLocaleDateString()}
+                    </p>
+                  ) : null}
+                  {activeSelfServiceSubscription.status === 'grace_period' && activeSelfServiceSubscription.graceEndsAt ? (
+                    <p className="text-sm font-semibold text-rose-700">
+                      Grace access ends on {new Date(activeSelfServiceSubscription.graceEndsAt).toLocaleDateString()}.
+                    </p>
+                  ) : null}
                 </div>
                 <Button variant="outline" onClick={() => void handleRefreshState()} disabled={isLoading}>
                   <RefreshCw className="mr-2 h-4 w-4" />
@@ -287,7 +316,7 @@ export default function HostSubscriptionsDialog({
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-slate-500">
-                    Plan changes use the same checkout flow as a normal subscription payment and return you straight back here.
+                    Upgrades are charged only for the rounded unused-time difference. Downgrades are scheduled for the next billing date.
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 lg:justify-end">
@@ -297,7 +326,7 @@ export default function HostSubscriptionsDialog({
                   >
                     {isProcessingChange
                       ? 'Starting checkout...'
-                      : `${getChangeButtonLabel(activeSelfServiceSubscription.plan, selectedPlan)} to ${formatPlanLabel(selectedPlan)}`}
+                      : `${getChangeButtonLabel(activeSelfServiceSubscription.plan, selectedPlan)} to ${formatPlanLabel(selectedPlan)}${getPlanRank(selectedPlan) > getPlanRank(activeSelfServiceSubscription.plan) ? ' with prorated billing' : ' next cycle'}`}
                   </Button>
                   <Button
                     variant="outline"
@@ -351,6 +380,11 @@ export default function HostSubscriptionsDialog({
                                   ending soon
                                 </Badge>
                               ) : null}
+                              {subscription.pendingPlan ? (
+                                <Badge variant="warning" className="text-[10px] uppercase">
+                                  pending {subscription.pendingPlan}
+                                </Badge>
+                              ) : null}
                             </div>
                             <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
                               ID: {subscription.id}
@@ -364,6 +398,8 @@ export default function HostSubscriptionsDialog({
                                 ? subscription.cancelAtPeriodEnd
                                   ? 'warning'
                                   : 'success'
+                                : subscription.status === 'grace_period'
+                                  ? 'warning'
                                 : subscription.status === 'cancelled'
                                   ? 'danger'
                                   : 'secondary'
@@ -378,6 +414,8 @@ export default function HostSubscriptionsDialog({
                         <td className="px-4 py-4 text-xs text-slate-500">
                           <p>Start: {new Date(subscription.startDate).toLocaleDateString()}</p>
                           <p>End: {new Date(subscription.endDate).toLocaleDateString()}</p>
+                          {subscription.graceEndsAt ? <p>Grace: {new Date(subscription.graceEndsAt).toLocaleDateString()}</p> : null}
+                          {subscription.pendingChangeEffectiveAt ? <p>Change: {new Date(subscription.pendingChangeEffectiveAt).toLocaleDateString()}</p> : null}
                         </td>
                       </tr>
                     ))}

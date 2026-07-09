@@ -13,6 +13,9 @@ import {
   notifyCheckoutStatusChanged,
   notifyContentCreditsPurchased,
   notifySubscriptionActivated,
+  notifySubscriptionDeactivated,
+  notifySubscriptionGracePeriodStarted,
+  notifySubscriptionRenewalDue,
 } from "../ops/notifications";
 import { requireAuth, requireRole } from "../shared/auth";
 import { HOST_PLANS, HostPlan, SubscriptionPlan } from "../shared/domain";
@@ -124,13 +127,20 @@ type SubscriptionRow = {
   user_id: string;
   checkout_session_id: string | null;
   plan: HostPlan;
-  status: "active" | "expired" | "cancelled";
+  status: "active" | "grace_period" | "expired" | "cancelled";
   amount: number;
   billing_interval: BillingInterval;
   starts_at: string;
   ends_at: string;
   cancel_at_period_end: boolean;
   cancelled_at: string | null;
+  pending_plan: HostPlan | null;
+  pending_billing_interval: BillingInterval | null;
+  pending_change_effective_at: string | null;
+  grace_ends_at: string | null;
+  renewal_due_notified_at: string | null;
+  grace_started_notified_at: string | null;
+  deactivated_notified_at: string | null;
   created_at: string;
 };
 
@@ -263,6 +273,14 @@ type AdminSubscriptionUpgradePayment = {
   providerReference: string;
 };
 
+type SubscriptionChangeResponse = {
+  payment?: AdminSubscriptionUpgradePayment;
+  subscription?: SubscriptionRow;
+  changeType: "upgrade" | "downgrade";
+  effectiveAt?: string | null;
+  proratedAmount?: number | null;
+};
+
 type StoredWebhookEventRow = {
   event_type: string;
   payload_json: string;
@@ -273,6 +291,8 @@ type QueryExecutor = Pick<typeof billingDB, "queryRow" | "queryAll" | "exec">;
 const CONTENT_DRAFT_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const CONTENT_DRAFT_RATE_LIMIT_MAX = 5;
 const HOST_BILLING_SETUP_AMOUNT = 2;
+const SUBSCRIPTION_GRACE_PERIOD_DAYS = 7;
+const SUBSCRIPTION_RENEWAL_NOTICE_DAYS = 7;
 const contentDraftRateLimitStore = new Map<string, number[]>();
 
 function getCreditPrice(credits: number) {
@@ -294,6 +314,48 @@ function getSubscriptionDefinition(plan: HostPlan) {
 function getPlanAmount(plan: HostPlan, billingInterval: BillingInterval) {
   const definition = getSubscriptionDefinition(plan);
   return billingInterval === "monthly" ? definition.monthlyAmount : definition.annualAmount;
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function clampRatio(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.min(1, Math.max(0, value));
+}
+
+function compareSubscriptionPlans(subscription: SubscriptionRow, targetPlan: HostPlan, targetInterval: BillingInterval) {
+  const currentAmount = getPlanAmount(subscription.plan, subscription.billing_interval);
+  const targetAmount = getPlanAmount(targetPlan, targetInterval);
+  if (targetAmount > currentAmount) {
+    return "upgrade" as const;
+  }
+  if (targetAmount < currentAmount) {
+    return "downgrade" as const;
+  }
+  return "same" as const;
+}
+
+function calculateProratedUpgradeAmount(subscription: SubscriptionRow, targetPlan: HostPlan, targetInterval: BillingInterval, now = new Date()) {
+  const currentAmount = getPlanAmount(subscription.plan, subscription.billing_interval);
+  const targetAmount = getPlanAmount(targetPlan, targetInterval);
+  const planDifference = targetAmount - currentAmount;
+  if (planDifference <= 0) {
+    return 0;
+  }
+
+  const startsAt = new Date(subscription.starts_at).getTime();
+  const endsAt = new Date(subscription.ends_at).getTime();
+  const totalMs = Math.max(1, endsAt - startsAt);
+  const remainingMs = Math.max(0, endsAt - now.getTime());
+  const remainingRatio = clampRatio(remainingMs / totalMs);
+  const upgradeAmount = Math.ceil(remainingRatio * planDifference);
+  return Math.max(0, upgradeAmount);
 }
 
 function buildBillingUrls(kind: CheckoutType, id: string) {
@@ -769,18 +831,28 @@ async function activatePlanFromBillingSession(session: FulfillableBillingSession
           starts_at = ${now.toISOString()},
           ends_at = ${endsAt.toISOString()},
           cancel_at_period_end = ${false},
-          cancelled_at = ${null}
+          cancelled_at = ${null},
+          pending_plan = ${null},
+          pending_billing_interval = ${null},
+          pending_change_effective_at = ${null},
+          grace_ends_at = ${null},
+          renewal_due_notified_at = ${null},
+          grace_started_notified_at = ${null},
+          deactivated_notified_at = ${null}
       WHERE id = ${subscriptionId}
     `;
   } else {
 
     await billingDB.exec`
       INSERT INTO subscriptions (
-        id, user_id, checkout_session_id, plan, status, amount, billing_interval, starts_at, ends_at, cancel_at_period_end, cancelled_at, created_at
+        id, user_id, checkout_session_id, plan, status, amount, billing_interval, starts_at, ends_at, cancel_at_period_end, cancelled_at,
+        pending_plan, pending_billing_interval, pending_change_effective_at, grace_ends_at,
+        renewal_due_notified_at, grace_started_notified_at, deactivated_notified_at, created_at
       )
       VALUES (
         ${subscriptionId}, ${session.user_id}, ${session.id}, ${session.host_plan}, ${"active"}, ${session.amount},
-        ${session.billing_interval}, ${now.toISOString()}, ${endsAt.toISOString()}, ${false}, ${null}, ${now.toISOString()}
+        ${session.billing_interval}, ${now.toISOString()}, ${endsAt.toISOString()}, ${false}, ${null},
+        ${null}, ${null}, ${null}, ${null}, ${null}, ${null}, ${null}, ${now.toISOString()}
       )
     `;
   }
@@ -1300,8 +1372,42 @@ async function cancelSubscriptionById(subscriptionId: string) {
   return updated;
 }
 
+async function scheduleSubscriptionDowngrade(subscription: SubscriptionRow, plan: HostPlan, billingInterval: BillingInterval) {
+  const now = new Date().toISOString();
+  await billingDB.exec`
+    UPDATE subscriptions
+    SET pending_plan = ${plan},
+        pending_billing_interval = ${billingInterval},
+        pending_change_effective_at = ${subscription.ends_at}
+    WHERE id = ${subscription.id}
+  `;
+
+  await platformEvents.publish({
+    type: "subscription.changed",
+    aggregateId: subscription.id,
+    actorId: subscription.user_id,
+    occurredAt: now,
+    payload: JSON.stringify({
+      plan,
+      billingInterval,
+      pendingChangeEffectiveAt: subscription.ends_at,
+      changeType: "downgrade",
+    }),
+  });
+
+  const updated = await billingDB.queryRow<SubscriptionRow>`
+    SELECT *
+    FROM subscriptions
+    WHERE id = ${subscription.id}
+  `;
+  if (!updated) {
+    throw APIError.internal("Scheduled subscription downgrade could not be reloaded.");
+  }
+  return updated;
+}
+
 async function expireEndedSubscriptions(nowIso = new Date().toISOString()) {
-  const rows = await billingDB.queryAll<SubscriptionRow>`
+  const dueActiveRows = await billingDB.queryAll<SubscriptionRow>`
     SELECT *
     FROM subscriptions
     WHERE status = ${"active"}
@@ -1309,10 +1415,93 @@ async function expireEndedSubscriptions(nowIso = new Date().toISOString()) {
     ORDER BY ends_at ASC
   `;
 
-  for (const subscription of rows) {
+  for (const subscription of dueActiveRows) {
+    if (subscription.cancel_at_period_end) {
+      await billingDB.exec`
+        UPDATE subscriptions
+        SET status = ${"cancelled"}
+        WHERE id = ${subscription.id}
+      `;
+    } else if (subscription.pending_plan && subscription.pending_billing_interval) {
+      const nextStartsAt = new Date(subscription.ends_at);
+      const nextEndsAt = new Date(nextStartsAt);
+      if (subscription.pending_billing_interval === "monthly") {
+        nextEndsAt.setMonth(nextEndsAt.getMonth() + 1);
+      } else {
+        nextEndsAt.setFullYear(nextEndsAt.getFullYear() + 1);
+      }
+
+      await billingDB.exec`
+        UPDATE subscriptions
+        SET plan = ${subscription.pending_plan},
+            billing_interval = ${subscription.pending_billing_interval},
+            amount = ${getPlanAmount(subscription.pending_plan, subscription.pending_billing_interval)},
+            starts_at = ${nextStartsAt.toISOString()},
+            ends_at = ${nextEndsAt.toISOString()},
+            pending_plan = ${null},
+            pending_billing_interval = ${null},
+            pending_change_effective_at = ${null},
+            renewal_due_notified_at = ${null},
+            grace_started_notified_at = ${null},
+            deactivated_notified_at = ${null}
+        WHERE id = ${subscription.id}
+      `;
+      continue;
+    } else {
+      const graceEndsAt = addDays(new Date(subscription.ends_at), SUBSCRIPTION_GRACE_PERIOD_DAYS);
+      await billingDB.exec`
+        UPDATE subscriptions
+        SET status = ${"grace_period"},
+            grace_ends_at = ${graceEndsAt.toISOString()},
+            grace_started_notified_at = COALESCE(grace_started_notified_at, ${nowIso})
+        WHERE id = ${subscription.id}
+      `;
+
+      try {
+        await notifySubscriptionGracePeriodStarted({
+          userId: subscription.user_id,
+          plan: subscription.plan,
+          graceEndsAt: graceEndsAt.toISOString(),
+        });
+      } catch (error) {
+        console.error("Failed to notify subscription grace period:", error);
+      }
+      continue;
+    }
+
+    const stillActive = await billingDB.queryRow<{ count: number }>`
+      SELECT COUNT(*)::int AS count
+      FROM subscriptions
+      WHERE user_id = ${subscription.user_id}
+        AND status = ${"active"}
+        AND ends_at > ${nowIso}
+    `;
+
+    if (!stillActive || stillActive.count === 0) {
+      await identityDB.exec`
+        UPDATE users
+        SET host_plan = ${"standard"},
+            updated_at = ${nowIso}
+        WHERE id = ${subscription.user_id}
+          AND host_plan <> ${"standard"}
+      `;
+      await deactivatePaidBillingAccount({ userId: subscription.user_id, preserveCardOnFile: true });
+    }
+  }
+
+  const graceRows = await billingDB.queryAll<SubscriptionRow>`
+    SELECT *
+    FROM subscriptions
+    WHERE status = ${"grace_period"}
+      AND grace_ends_at <= ${nowIso}
+    ORDER BY grace_ends_at ASC
+  `;
+
+  for (const subscription of graceRows) {
     await billingDB.exec`
       UPDATE subscriptions
-      SET status = ${"expired"}
+      SET status = ${"expired"},
+          deactivated_notified_at = COALESCE(deactivated_notified_at, ${nowIso})
       WHERE id = ${subscription.id}
     `;
 
@@ -1333,6 +1522,42 @@ async function expireEndedSubscriptions(nowIso = new Date().toISOString()) {
           AND host_plan <> ${"standard"}
       `;
       await deactivatePaidBillingAccount({ userId: subscription.user_id, preserveCardOnFile: true });
+      try {
+        await notifySubscriptionDeactivated({ userId: subscription.user_id, plan: subscription.plan });
+      } catch (error) {
+        console.error("Failed to notify subscription deactivation:", error);
+      }
+    }
+  }
+}
+
+async function notifySubscriptionsDueSoon(nowIso = new Date().toISOString()) {
+  const noticeWindowEnd = addDays(new Date(nowIso), SUBSCRIPTION_RENEWAL_NOTICE_DAYS).toISOString();
+  const rows = await billingDB.queryAll<SubscriptionRow>`
+    SELECT *
+    FROM subscriptions
+    WHERE status = ${"active"}
+      AND cancel_at_period_end = ${false}
+      AND ends_at > ${nowIso}
+      AND ends_at <= ${noticeWindowEnd}
+      AND renewal_due_notified_at IS NULL
+    ORDER BY ends_at ASC
+  `;
+
+  for (const subscription of rows) {
+    try {
+      await notifySubscriptionRenewalDue({
+        userId: subscription.user_id,
+        plan: subscription.plan,
+        endsAt: subscription.ends_at,
+      });
+      await billingDB.exec`
+        UPDATE subscriptions
+        SET renewal_due_notified_at = ${nowIso}
+        WHERE id = ${subscription.id}
+      `;
+    } catch (error) {
+      console.error(`Failed to notify subscription renewal due for ${subscription.id}:`, error);
     }
   }
 }
@@ -1636,7 +1861,7 @@ export const cancelMySubscription = api<{ subscriptionId: string }, { subscripti
   },
 );
 
-export const changeMySubscription = api<{ subscriptionId: string; plan: HostPlan; billingInterval: BillingInterval }, { payment: AdminSubscriptionUpgradePayment }>(
+export const changeMySubscription = api<{ subscriptionId: string; plan: HostPlan; billingInterval: BillingInterval }, SubscriptionChangeResponse>(
   { expose: true, method: "POST", path: "/billing/subscriptions/:subscriptionId/change", auth: true },
   async ({ subscriptionId, plan, billingInterval }) => {
     const auth = requireRole("host", "admin");
@@ -1659,17 +1884,32 @@ export const changeMySubscription = api<{ subscriptionId: string; plan: HostPlan
       throw APIError.failedPrecondition("Your subscription is already on that plan.");
     }
 
-    const amount = getPlanAmount(plan, billingInterval);
+    const changeDirection = compareSubscriptionPlans(subscription, plan, billingInterval);
+    if (changeDirection === "same") {
+      throw APIError.failedPrecondition("Your subscription is already on an equivalent plan.");
+    }
+
+    if (changeDirection === "downgrade") {
+      const scheduled = await scheduleSubscriptionDowngrade(subscription, plan, billingInterval);
+      return { subscription: scheduled, changeType: "downgrade", effectiveAt: scheduled.pending_change_effective_at };
+    }
+
+    const proratedAmount = calculateProratedUpgradeAmount(subscription, plan, billingInterval);
+    if (proratedAmount <= 0) {
+      const scheduled = await scheduleSubscriptionDowngrade(subscription, plan, billingInterval);
+      return { subscription: scheduled, changeType: "downgrade", effectiveAt: scheduled.pending_change_effective_at, proratedAmount };
+    }
+
     const payment = await createBillingPaymentIntent({
       userId: subscription.user_id,
       purpose: "subscription",
-      amount,
+      amount: proratedAmount,
       hostPlan: plan,
       billingInterval,
       sourceSubscriptionId: subscriptionId,
     });
 
-    return { payment };
+    return { payment, changeType: "upgrade", proratedAmount };
   },
 );
 
@@ -1774,10 +2014,16 @@ export const runSubscriptionExpiryCycle = api(
   {},
   async () => {
     await expireEndedSubscriptions();
+    await notifySubscriptionsDueSoon();
   },
 );
 
 export const subscriptionExpiryCron = new CronJob("subscription-expiry-cycle", {
+  every: "24h",
+  endpoint: runSubscriptionExpiryCycle,
+});
+
+export const subscriptionNotificationCron = new CronJob("subscription-notification-cycle", {
   every: "24h",
   endpoint: runSubscriptionExpiryCycle,
 });

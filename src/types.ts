@@ -306,12 +306,16 @@ export interface Subscription {
   userId: string;
   plan: HostPlan;
   amount: number;
-  status: 'active' | 'expired' | 'cancelled';
+  status: 'active' | 'grace_period' | 'expired' | 'cancelled';
   billingInterval: 'monthly' | 'annual';
   startDate: string;
   endDate: string;
   cancelAtPeriodEnd?: boolean;
   cancelledAt?: string | null;
+  pendingPlan?: HostPlan | null;
+  pendingBillingInterval?: 'monthly' | 'annual' | null;
+  pendingChangeEffectiveAt?: string | null;
+  graceEndsAt?: string | null;
   createdAt: string;
 }
 

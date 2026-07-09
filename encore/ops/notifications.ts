@@ -17,6 +17,9 @@ import {
   buildPaymentProofSubmittedNotification,
   buildReferralRewardEarnedNotification,
   buildSubscriptionActivatedNotification,
+  buildSubscriptionDeactivatedNotification,
+  buildSubscriptionGracePeriodStartedNotification,
+  buildSubscriptionRenewalDueNotification,
   type NotificationInput,
 } from "./notification-builders";
 
@@ -164,6 +167,29 @@ export async function notifySubscriptionActivated(params: {
   billingInterval: "monthly" | "annual";
 }) {
   return createNotification(buildSubscriptionActivatedNotification(params));
+}
+
+export async function notifySubscriptionRenewalDue(params: {
+  userId: string;
+  plan: string;
+  endsAt: string;
+}) {
+  return createNotification(buildSubscriptionRenewalDueNotification(params));
+}
+
+export async function notifySubscriptionGracePeriodStarted(params: {
+  userId: string;
+  plan: string;
+  graceEndsAt: string;
+}) {
+  return createNotification(buildSubscriptionGracePeriodStartedNotification(params));
+}
+
+export async function notifySubscriptionDeactivated(params: {
+  userId: string;
+  plan: string;
+}) {
+  return createNotification(buildSubscriptionDeactivatedNotification(params));
 }
 
 export async function notifyContentCreditsPurchased(params: {

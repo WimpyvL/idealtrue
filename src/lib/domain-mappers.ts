@@ -31,7 +31,6 @@ const paymentStateSchema = z.enum(['UNPAID', 'INITIATED', 'COMPLETED', 'FAILED']
 const declineReasonSchema = z.enum(['DATES_UNAVAILABLE', 'GUEST_COUNT_NOT_SUPPORTED', 'BOOKING_REQUIREMENTS_NOT_MET', 'HOST_UNAVAILABLE', 'OTHER']);
 const availabilityBlockSourceSchema = z.enum(['MANUAL', 'APPROVED_HOLD', 'BOOKED']);
 const notificationTypeSchema = z.enum(['info', 'warning', 'success', 'error']);
-const subscriptionStatusSchema = z.enum(['active', 'expired', 'cancelled']);
 const referralTriggerSchema = z.enum(['signup', 'booking', 'subscription']);
 const referralProgramSchema = z.enum(['guest', 'host']);
 const referralRewardStatusSchema = z.enum(['pending', 'earned', 'paid', 'rejected']);
@@ -240,13 +239,17 @@ const encoreSubscriptionSchema = z.object({
   id: z.string().min(1),
   user_id: z.string().min(1),
   plan: hostPlanSchema,
-  status: subscriptionStatusSchema,
+  status: z.enum(['active', 'grace_period', 'expired', 'cancelled']),
   amount: z.number(),
   billing_interval: z.enum(['monthly', 'annual']),
   starts_at: z.string().min(1),
   ends_at: z.string().min(1),
   cancel_at_period_end: z.boolean().optional().default(false),
   cancelled_at: z.string().nullable().optional().default(null),
+  pending_plan: hostPlanSchema.nullable().optional().default(null),
+  pending_billing_interval: z.enum(['monthly', 'annual']).nullable().optional().default(null),
+  pending_change_effective_at: z.string().nullable().optional().default(null),
+  grace_ends_at: z.string().nullable().optional().default(null),
   created_at: z.string().min(1),
 });
 
@@ -448,6 +451,10 @@ export interface EncoreSubscription {
   ends_at: string;
   cancel_at_period_end: boolean;
   cancelled_at: string | null;
+  pending_plan: HostPlan | null;
+  pending_billing_interval: 'monthly' | 'annual' | null;
+  pending_change_effective_at: string | null;
+  grace_ends_at: string | null;
   created_at: string;
 }
 
@@ -686,6 +693,10 @@ export function mapEncoreSubscription(subscription: EncoreSubscription): Subscri
     endDate: subscription.ends_at,
     cancelAtPeriodEnd: subscription.cancel_at_period_end,
     cancelledAt: subscription.cancelled_at,
+    pendingPlan: subscription.pending_plan,
+    pendingBillingInterval: subscription.pending_billing_interval,
+    pendingChangeEffectiveAt: subscription.pending_change_effective_at,
+    graceEndsAt: subscription.grace_ends_at,
     createdAt: subscription.created_at,
   };
 }

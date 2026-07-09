@@ -57,6 +57,14 @@ const billingPaymentSchema = z.object({
   providerReference: z.string().trim().min(1),
 });
 
+const subscriptionChangeResponseSchema = z.object({
+  payment: billingPaymentSchema.optional(),
+  subscription: z.unknown().optional(),
+  changeType: z.enum(['upgrade', 'downgrade']),
+  effectiveAt: z.string().nullable().optional(),
+  proratedAmount: z.number().nullable().optional(),
+});
+
 const billingPaymentStatusSchema = z.object({
   status: z.enum(['pending', 'paid', 'failed', 'cancelled']),
   purpose: z.enum(['subscription', 'content_credits', 'host_billing_setup', 'managed_hosting']),
@@ -240,7 +248,7 @@ export async function changeMySubscription(params: {
   plan: HostPlan;
   billingInterval: BillingInterval;
 }) {
-  const response = await encoreRequest<{ payment: unknown }>(
+  const response = await encoreRequest<unknown>(
     `/billing/subscriptions/${encodeURIComponent(params.subscriptionId)}/change`,
     {
       method: 'POST',
@@ -248,7 +256,11 @@ export async function changeMySubscription(params: {
     },
     { auth: true },
   );
-  return parseBillingClientResponse(billingPaymentSchema, response.payment, 'Subscription change payment response was invalid.');
+  const parsed = parseBillingClientResponse(subscriptionChangeResponseSchema, response, 'Subscription change response was invalid.');
+  return {
+    ...parsed,
+    subscription: parsed.subscription ? mapEncoreSubscription(parseEncoreSubscription(parsed.subscription)) : undefined,
+  };
 }
 
 export async function createManagedHostingCheckout() {

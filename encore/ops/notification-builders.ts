@@ -227,6 +227,47 @@ export function buildSubscriptionActivatedNotification(params: {
   };
 }
 
+export function buildSubscriptionRenewalDueNotification(params: {
+  userId: string;
+  plan: string;
+  endsAt: string;
+}): NotificationInput {
+  return {
+    title: "Subscription renewal due",
+    message: `Your ${params.plan} subscription renews on ${new Date(params.endsAt).toLocaleDateString("en-ZA")}. Renew before then to avoid entering grace access.`,
+    type: "warning",
+    target: params.userId,
+    actionPath: "/host?modal=subscriptions",
+  };
+}
+
+export function buildSubscriptionGracePeriodStartedNotification(params: {
+  userId: string;
+  plan: string;
+  graceEndsAt: string;
+}): NotificationInput {
+  return {
+    title: "Subscription grace period started",
+    message: `Your ${params.plan} subscription is in a 7 day grace period. Renew by ${new Date(params.graceEndsAt).toLocaleDateString("en-ZA")} to keep access active.`,
+    type: "warning",
+    target: params.userId,
+    actionPath: "/host?modal=subscriptions",
+  };
+}
+
+export function buildSubscriptionDeactivatedNotification(params: {
+  userId: string;
+  plan: string;
+}): NotificationInput {
+  return {
+    title: "Subscription deactivated",
+    message: `Your ${params.plan} subscription grace period ended and paid host access has been deactivated.`,
+    type: "error",
+    target: params.userId,
+    actionPath: "/host?modal=subscriptions",
+  };
+}
+
 export function buildContentCreditsPurchasedNotification(params: {
   userId: string;
   credits: number;

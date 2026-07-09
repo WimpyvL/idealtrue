@@ -304,6 +304,8 @@ test('subscription change client posts the target plan and interval through the 
   installFetch((url) => {
     if (url.endsWith('/billing/subscriptions/subscription-1/change')) {
       return createJsonResponse({
+        changeType: 'upgrade',
+        proratedAmount: 120,
         payment: {
           paymentId: 'payment-change-1',
           provider: 'yoco',
@@ -323,13 +325,73 @@ test('subscription change client posts the target plan and interval through the 
     billingInterval: 'monthly',
   });
 
-  assert.equal(payment.redirectUrl, 'https://pay.example/change-plan');
+  assert.equal(payment.payment?.redirectUrl, 'https://pay.example/change-plan');
+  assert.equal(payment.changeType, 'upgrade');
   assert.equal(fetchCalls[0]?.url, `${DEFAULT_ENCORE_API_URL}/billing/subscriptions/subscription-1/change`);
   assert.deepEqual(requestBody(0), {
     subscriptionId: 'subscription-1',
     plan: 'standard',
     billingInterval: 'monthly',
   });
+});
+
+test('subscription upgrades charge only the rounded unused-time difference', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+
+  assert.match(source, /function calculateProratedUpgradeAmount/);
+  assert.match(source, /Math\.ceil\(remainingRatio \* planDifference\)/);
+  assert.match(source, /Math\.max\(0, upgradeAmount\)/);
+
+  const changeEndpoint = source.slice(
+    source.indexOf('export const changeMySubscription'),
+    source.indexOf('export const cancelAdminSubscription'),
+  );
+  assert.match(changeEndpoint, /const changeDirection = compareSubscriptionPlans\(subscription, plan, billingInterval\);/);
+  assert.match(changeEndpoint, /calculateProratedUpgradeAmount\(subscription, plan, billingInterval\)/);
+  assert.match(changeEndpoint, /amount: proratedAmount/);
+  assert.match(changeEndpoint, /return \{ payment, changeType: "upgrade", proratedAmount \};/);
+});
+
+test('subscription downgrades are scheduled for the next billing date without checkout', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  const changeEndpoint = source.slice(
+    source.indexOf('export const changeMySubscription'),
+    source.indexOf('export const cancelAdminSubscription'),
+  );
+
+  assert.match(changeEndpoint, /if \(changeDirection === "downgrade"\)/);
+  assert.match(changeEndpoint, /await scheduleSubscriptionDowngrade\(subscription, plan, billingInterval\)/);
+  assert.match(changeEndpoint, /return \{ subscription: scheduled, changeType: "downgrade", effectiveAt: scheduled\.pending_change_effective_at \};/);
+});
+
+test('subscription expiry gives users a seven day grace period before deactivation', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  const expiryBlock = source.slice(
+    source.indexOf('async function expireEndedSubscriptions'),
+    source.indexOf('async function reconcilePendingPaymentIntent'),
+  );
+
+  assert.match(source, /const SUBSCRIPTION_GRACE_PERIOD_DAYS = 7;/);
+  assert.match(expiryBlock, /const graceEndsAt = addDays\(new Date\(subscription\.ends_at\), SUBSCRIPTION_GRACE_PERIOD_DAYS\);/);
+  assert.match(expiryBlock, /status = \$\{"grace_period"\}/);
+  assert.match(expiryBlock, /WHERE status = \$\{"grace_period"\}/);
+  assert.match(expiryBlock, /grace_ends_at <= \$\{nowIso\}/);
+  assert.match(expiryBlock, /await deactivatePaidBillingAccount\(\{ userId: subscription\.user_id, preserveCardOnFile: true \}\);/);
+});
+
+test('subscription lifecycle notifications cover due soon grace and deactivation', () => {
+  const billingSource = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  const notificationsSource = readFileSync(new URL('../encore/ops/notifications.ts', import.meta.url), 'utf8');
+  const buildersSource = readFileSync(new URL('../encore/ops/notification-builders.ts', import.meta.url), 'utf8');
+
+  assert.match(notificationsSource, /notifySubscriptionRenewalDue/);
+  assert.match(notificationsSource, /notifySubscriptionGracePeriodStarted/);
+  assert.match(notificationsSource, /notifySubscriptionDeactivated/);
+  assert.match(buildersSource, /buildSubscriptionRenewalDueNotification/);
+  assert.match(buildersSource, /buildSubscriptionGracePeriodStartedNotification/);
+  assert.match(buildersSource, /buildSubscriptionDeactivatedNotification/);
+  assert.match(billingSource, /notifySubscriptionsDueSoon/);
+  assert.match(billingSource, /subscription-notification-cycle/);
 });
 
 test('subscription fulfilment updates an existing checkout subscription row instead of leaving stale plan data behind', () => {

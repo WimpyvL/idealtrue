@@ -549,6 +549,15 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Added regression coverage proving status polling fails closed and stored/provider reconciliation remains wired.
 - Verified with `npx tsc --noEmit -p encore\tsconfig.json`, `npx tsx --test tests\payment-yoco-contracts.test.ts tests\admin-financials-contract.test.ts`, and `npm run lint`.
 - Author signature: ( |╲ ) Klaasvaakie
+
+# 2026-07-09 subscription lifecycle upgrade downgrade grace
+
+- Added subscription lifecycle migration `14_subscription_lifecycle.up.sql` for pending downgrades, grace-period expiry, and notification marker fields.
+- Changed self-service subscription upgrades to charge the rounded prorated unused-time difference, while downgrades are scheduled for the next billing date without checkout.
+- Added a 7 day subscription grace period before deactivating paid host access, plus renewal due, grace started, and deactivated notifications.
+- Updated the subscription modal to show pending changes and grace access, redirect only for upgrade checkout, and stay in-place for scheduled downgrades.
+- Verified with `npx tsc --noEmit -p encore\tsconfig.json`, `npx tsx --test tests\payment-yoco-contracts.test.ts tests\admin-financials-contract.test.ts`, `npm run test:ui -- tests\ui\host-subscriptions-dialog.test.tsx`, `npm run lint`, and `npm run build`.
+- Author signature: ( |╲ ) Klaasvaakie
 - 2026-07-08: Traced the open dependency alert to a direct root dependency on `encore@^0.0.30-beta`, confirmed there are no runtime imports of the legacy `encore` npm package anywhere in this repo, and removed it with `npm uninstall encore`. That eliminated the exact vulnerable path `encore -> handlebars@1.2.1 -> uglify-js@2.3.6` from the root lockfile without touching the real backend package under `encore/`, which depends on `encore.dev` instead. Author signature: ( |╲ ) Klaasvaakie
 - 2026-07-08: Verification exposed one unrelated-but-real break in `tests/ui/dashboard-mobile-shell.test.tsx`: the dialog mock was missing `DialogDescription` after `HostSubscriptionsDialog` started rendering it. Added that export to the test mock so the UI suite reflects the current component contract instead of failing on the mock seam. Author signature: ( |╲ ) Klaasvaakie
 - 2026-07-08: Final verification after removing the vulnerable root `encore` package: `npm run build` passed, `npm run lint:types` passed, and `npm test` finished green with `213` unit tests and `54` UI tests passing. The only skipped step was the live smoke probe, which is intentionally gated behind `IDEAL_STAY_RUN_LIVE_SMOKE=true`. Author signature: ( |╲ ) Klaasvaakie
