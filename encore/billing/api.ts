@@ -638,7 +638,19 @@ async function storeProviderOrderId(intentId: string, providerOrderId: string | 
 
 function mapYocoOrderStatus(status?: string | null): CheckoutStatus {
   const normalized = status?.trim().toLowerCase();
-  if (normalized === "completed") return "paid";
+  if (
+    normalized === "completed" ||
+    normalized === "complete" ||
+    normalized === "successful" ||
+    normalized === "success" ||
+    normalized === "succeeded" ||
+    normalized === "approved" ||
+    normalized === "paid" ||
+    normalized === "captured" ||
+    normalized === "settled"
+  ) {
+    return "paid";
+  }
   if (normalized === "failed") return "failed";
   if (normalized === "cancelled") return "cancelled";
   return "pending";
@@ -649,9 +661,14 @@ function mapYocoCheckoutStatus(status?: string | null): CheckoutStatus {
   const normalized = status?.trim().toLowerCase();
   if (
     normalized === "completed" ||
+    normalized === "complete" ||
     normalized === "successful" ||
+    normalized === "success" ||
     normalized === "succeeded" ||
-    normalized === "paid"
+    normalized === "approved" ||
+    normalized === "paid" ||
+    normalized === "captured" ||
+    normalized === "settled"
   ) {
     return "paid";
   }
@@ -1381,6 +1398,49 @@ async function reconcilePendingPaymentIntent(intent: PaymentIntentRow, billingSt
   return intent;
 }
 
+async function reconcilePendingPaymentIntentsFromProvider(limit = 50) {
+  const pendingIntents = await billingDB.queryAll<PaymentIntentRow>`
+    SELECT *
+    FROM billing_payment_intents
+    WHERE status = ${"pending"}
+      AND provider = ${"yoco"}
+      AND provider_checkout_id IS NOT NULL
+    ORDER BY created_at ASC
+    LIMIT ${limit}
+  `;
+
+  let paid = 0;
+  let failed = 0;
+  let cancelled = 0;
+  let pending = 0;
+
+  for (const intent of pendingIntents) {
+    try {
+      const resolved = await reconcilePendingPaymentIntent(intent);
+      if (resolved.status === "paid") {
+        paid += 1;
+      } else if (resolved.status === "failed") {
+        failed += 1;
+      } else if (resolved.status === "cancelled") {
+        cancelled += 1;
+      } else {
+        pending += 1;
+      }
+    } catch (error) {
+      pending += 1;
+      console.error(`Failed to reconcile billing payment intent ${intent.id}:`, error);
+    }
+  }
+
+  return {
+    checked: pendingIntents.length,
+    paid,
+    failed,
+    cancelled,
+    pending,
+  };
+}
+
 async function findSuccessfulWebhookForPaymentIntent(intent: PaymentIntentRow): Promise<YocoWebhookEvent | null> {
   const matchingEvents = await billingDB.queryAll<StoredWebhookEventRow>`
     SELECT event_type, payload::text AS payload_json
@@ -1698,6 +1758,24 @@ export const runSubscriptionExpiryCycle = api(
 export const subscriptionExpiryCron = new CronJob("subscription-expiry-cycle", {
   every: "24h",
   endpoint: runSubscriptionExpiryCycle,
+});
+
+export const reconcilePendingBillingPayments = api<void, { checked: number; paid: number; failed: number; cancelled: number; pending: number }>(
+  { expose: true, method: "POST", path: "/admin/billing/payments/reconcile", auth: true },
+  async () => {
+    requireRole("admin", "support");
+    return reconcilePendingPaymentIntentsFromProvider();
+  },
+);
+
+export const runPendingBillingPaymentReconciliation = api<void, { checked: number; paid: number; failed: number; cancelled: number; pending: number }>(
+  {},
+  async () => reconcilePendingPaymentIntentsFromProvider(),
+);
+
+export const pendingBillingPaymentReconciliationCron = new CronJob("pending-billing-payment-reconciliation", {
+  every: "5m",
+  endpoint: runPendingBillingPaymentReconciliation,
 });
 
 export const getMyHostBillingAccount = api<void, { account: HostBillingAccount }>(

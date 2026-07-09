@@ -407,6 +407,38 @@ test('accepted Yoco webhook events classify into fulfilment-safe billing outcome
   assert.equal(classifyYocoWebhookOutcome('payment.refunded', 'refunded'), 'failed');
 });
 
+test('provider status mapping accepts common paid status variants before leaving payments pending', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  const checkoutStatusBlock = source.slice(
+    source.indexOf('function mapYocoCheckoutStatus'),
+    source.indexOf('async function createBillingPaymentIntent'),
+  );
+  const orderStatusBlock = source.slice(
+    source.indexOf('function mapYocoOrderStatus'),
+    source.indexOf('// Author:', source.indexOf('function mapYocoOrderStatus')),
+  );
+
+  for (const status of ['complete', 'success', 'approved', 'captured', 'settled']) {
+    assert.match(checkoutStatusBlock, new RegExp(`normalized === "${status}"`));
+    assert.match(orderStatusBlock, new RegExp(`normalized === "${status}"`));
+  }
+});
+
+test('pending billing payment reconciliation cron retries provider lookups for every package type', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  const reconciliationBlock = source.slice(
+    source.indexOf('async function reconcilePendingPaymentIntentsFromProvider'),
+    source.indexOf('async function findSuccessfulWebhookForPaymentIntent'),
+  );
+
+  assert.match(reconciliationBlock, /FROM billing_payment_intents/);
+  assert.match(reconciliationBlock, /WHERE status = \$\{"pending"\}/);
+  assert.match(reconciliationBlock, /provider_checkout_id IS NOT NULL/);
+  assert.match(reconciliationBlock, /await reconcilePendingPaymentIntent\(intent\)/);
+  assert.match(source, /new CronJob\("pending-billing-payment-reconciliation"/);
+  assert.match(source, /path: "\/admin\/billing\/payments\/reconcile"/);
+});
+
 test('Yoco webhook handler ignores non-fulfilment events before touching billing state', () => {
   const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
   assert.match(source, /function isFulfilmentSafeWebhookOutcome\(outcome: ReturnType<typeof classifyYocoWebhookOutcome>\)/);

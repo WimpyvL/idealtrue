@@ -500,6 +500,14 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Verified with `npx tsc --noEmit -p encore\tsconfig.json`, `npx tsx --test tests\payment-yoco-contracts.test.ts tests\admin-financials-contract.test.ts`, `npm run test:ui -- tests\ui\host-subscriptions-dialog.test.tsx tests\ui\pricing-page.test.tsx`, and `npm run lint`.
 - Author signature: (|/) Klaasvaakie
 
+# 2026-07-09 package-wide billing reconciliation fix
+
+- Added a shared pending billing payment reconciliation cycle so subscription, managed hosting, content credits, and host billing setup payments can still fulfil after the Yoco return/webhook timing window.
+- Broadened Yoco paid status mapping to include `complete`, `success`, `approved`, `captured`, and `settled` across checkout and order lookups.
+- Added an admin-only manual reconciliation endpoint at `/admin/billing/payments/reconcile` and a `pending-billing-payment-reconciliation` cron that checks pending provider-backed payment intents every five minutes.
+- Verified with `npx tsc --noEmit -p encore\tsconfig.json`, `npx tsx --test tests\payment-yoco-contracts.test.ts tests\admin-financials-contract.test.ts`, and `npm run lint`.
+- Author signature: (|/) Klaasvaakie
+
 # 2026-07-08 encore MCP status recheck
 
 - Checked the current Codex tool surface again and there is still no exposed `encore-cloud` MCP namespace in this session.
