@@ -568,3 +568,11 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Added a companion contract assertion for the `provider_order_id` reconciliation branch so webhook persistence and later order-based recovery stay wired together.
 - Kept the change deterministic and repo-local by testing the billing source contract directly, with no external secrets or live Yoco dependency.
 - Author signature: (|/) Klaasvaakie
+
+# 2026-07-09 subscription plan state reconciliation
+
+- Fixed normal self-service subscription fulfilment so it resets stale managed-hosting profile state by writing management_mode self_service when a plan payment activates.
+- Tightened the subscription modal so a stale managed flag cannot override a conflicting active self-service subscription row; it now shows the active plan and a stale-state warning.
+- Added regression coverage for the backend activation seam and the modal screenshot case where Professional was active while the profile still claimed Managed Hosting.
+- Verified with encore typecheck, billing/admin contracts, focused modal UI test, lint, and production build.
+- Author signature: ( |╲ ) Klaasvaakie

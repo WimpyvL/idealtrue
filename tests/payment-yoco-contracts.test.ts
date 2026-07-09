@@ -407,6 +407,17 @@ test('subscription fulfilment updates an existing checkout subscription row inst
   assert.match(activationBlock, /AND checkout_session_id <> \$\{session\.id\}/);
 });
 
+// ( |╲ ) Klaasvaakie - a normal plan purchase must reclaim the account from stale managed-hosting state.
+test('self-service subscription fulfilment clears managed mode on the host profile', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  const activationBlock = source.slice(
+    source.indexOf('async function activatePlanFromBillingSession'),
+    source.indexOf('async function creditWalletFromBillingSession'),
+  );
+
+  assert.match(activationBlock, /SET host_plan = \$\{session\.host_plan\},[\s\S]*management_mode = \$\{"self_service"\}/);
+});
+
 // (|/) Klaasvaakie - this gate keeps the checkout return path tied to real subscription activation instead of a dead-end paid flag.
 test('successful checkout return keeps the subscription activation chain wired end to end', () => {
   const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');

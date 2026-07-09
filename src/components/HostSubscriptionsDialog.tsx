@@ -107,7 +107,15 @@ export default function HostSubscriptionsDialog({
     [activeSubscriptions],
   );
   const effectiveProfile = refreshedProfile ?? profile;
-  const isManagedHost = effectiveProfile?.managementMode === 'managed';
+  const hasManagedProfileFlag = effectiveProfile?.managementMode === 'managed';
+  const hasActiveManagedBillingAccount = billingAccount?.billingSource === 'paid'
+    && billingAccount.billingStatus === 'active'
+    && billingAccount.plan === 'premium';
+  const hasConflictingSelfServicePlan = Boolean(
+    activeSelfServiceSubscription && activeSelfServiceSubscription.plan !== billingAccount?.plan,
+  );
+  const isManagedHost = hasManagedProfileFlag && hasActiveManagedBillingAccount && !hasConflictingSelfServicePlan;
+  const hasStaleManagedState = hasManagedProfileFlag && !isManagedHost;
   const currentAccessLabel = isManagedHost
     ? 'Managed Hosting'
     : activeSelfServiceSubscription
@@ -247,6 +255,12 @@ export default function HostSubscriptionsDialog({
                 This account is on Managed Hosting. In the current system that lane is tracked by account state and
                 `managementMode`, not by a normal self-service subscription row. Managed Hosting plan changes still need to be handled through ops.
               </p>
+            </div>
+          ) : null}
+
+          {hasStaleManagedState ? (
+            <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+              Stored managed-hosting state is stale. Current access is being taken from the active subscription row, and the next successful self-service plan payment will reset this host back to self-service mode.
             </div>
           ) : null}
 

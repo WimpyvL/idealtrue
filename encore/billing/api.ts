@@ -860,6 +860,7 @@ async function activatePlanFromBillingSession(session: FulfillableBillingSession
   await identityDB.exec`
     UPDATE users
     SET host_plan = ${session.host_plan},
+        management_mode = ${"self_service"},
         updated_at = ${now.toISOString()}
     WHERE id = ${session.user_id}
   `;
