@@ -203,6 +203,6 @@ test('managed hosting uses the current checkout flow and returns through payment
 
   await page.goto('/pricing?billing_status=success&payment_id=payment-managed_hosting-1');
 
-  await expect(page).toHaveURL(/\/host$/);
+  await expect(page).toHaveURL(/\/host\?modal=subscriptions$/);
   expect(calls.some((call) => call.path === '/billing/payments/payment-managed_hosting-1?billingStatus=success')).toBe(true);
 });

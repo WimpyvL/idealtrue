@@ -10,7 +10,7 @@ import { ConfirmationDialog } from '@/components/ui/confirmation-dialog';
 import { cancelMySubscription, changeMySubscription, getMyHostBillingAccount, listMySubscriptions } from '@/lib/billing-client';
 import { formatRand } from '@/lib/currency';
 import { useAuth } from '@/contexts/AuthContext';
-import type { HostBillingAccount, HostPlan, Subscription } from '@/types';
+import type { HostBillingAccount, HostPlan, Subscription, UserProfile } from '@/types';
 
 const planLabels: Record<HostPlan, string> = {
   standard: 'Standard',
@@ -47,6 +47,7 @@ export default function HostSubscriptionsDialog({
   const [billingAccount, setBillingAccount] = useState<HostBillingAccount | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshedProfile, setRefreshedProfile] = useState<UserProfile | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<HostPlan>('standard');
   const [isProcessingCancel, setIsProcessingCancel] = useState(false);
   const [isProcessingChange, setIsProcessingChange] = useState(false);
@@ -68,10 +69,12 @@ export default function HostSubscriptionsDialog({
           listMySubscriptions(),
           getMyHostBillingAccount(),
         ]);
+        const nextProfile = await refreshProfile();
 
         if (!cancelled) {
           setSubscriptions(rows);
           setBillingAccount(account);
+          setRefreshedProfile(nextProfile ?? null);
         }
       } catch (error) {
         if (!cancelled) {
@@ -99,7 +102,8 @@ export default function HostSubscriptionsDialog({
     () => activeSubscriptions[0] ?? null,
     [activeSubscriptions],
   );
-  const isManagedHost = profile?.managementMode === 'managed';
+  const effectiveProfile = refreshedProfile ?? profile;
+  const isManagedHost = effectiveProfile?.managementMode === 'managed';
   const currentAccessLabel = isManagedHost
     ? 'Managed Hosting'
     : activeSelfServiceSubscription
@@ -123,6 +127,7 @@ export default function HostSubscriptionsDialog({
       ]);
       setSubscriptions(rows);
       setBillingAccount(account);
+      setRefreshedProfile(nextProfile ?? null);
       if (nextProfile?.hostPlan && !isManagedHost) {
         setSelectedPlan(nextProfile.hostPlan);
       }

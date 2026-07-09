@@ -265,6 +265,10 @@ test('payment success URLs route through backend reconciliation before returning
     buildBillingSuccessReturnUrl('https://www.idealstay.co.za/', 'payment 123', 'success', 'subscription'),
     'https://www.idealstay.co.za/host?modal=subscriptions&billing_status=success&payment_id=payment+123',
   );
+  assert.equal(
+    buildBillingSuccessReturnUrl('https://www.idealstay.co.za/', 'payment 123', 'success', 'managed_hosting'),
+    'https://www.idealstay.co.za/host?modal=subscriptions&billing_status=success&payment_id=payment+123',
+  );
 });
 
 test('subscription cancellation client posts to the host cancellation endpoint', async () => {
@@ -358,6 +362,20 @@ test('successful checkout return keeps the subscription activation chain wired e
   assert.match(fulfilmentBlock, /if \(intent\.purpose === "subscription"\) \{/);
   assert.match(fulfilmentBlock, /await activatePlanFromBillingSession\(billingSession\);/);
   assert.match(fulfilmentBlock, /await markPaymentIntentPaid\(intent, providerPaymentId\);/);
+});
+
+test('managed hosting fulfilment creates a visible premium subscription row', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  const functionSource = source.slice(
+    source.indexOf('async function activateManagedHostingFromPaymentIntent'),
+    source.indexOf('async function markCheckoutPaid'),
+  );
+
+  assert.match(functionSource, /await activatePlanFromBillingSession\(\{/);
+  assert.match(functionSource, /id: intent\.id/);
+  assert.match(functionSource, /host_plan: "premium"/);
+  assert.match(functionSource, /billing_interval: "monthly"/);
+  assert.match(functionSource, /management_mode = \$\{"managed"\}/);
 });
 
 test('subscription cancellation schedules end-of-period access instead of dropping the host immediately', () => {

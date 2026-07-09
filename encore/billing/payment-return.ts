@@ -83,5 +83,5 @@ export function buildBillingSuccessReturnUrl(
   if (purpose === "host_billing_setup") {
     return buildAccountBillingReturnUrl(appUrl, paymentId, status, "host_card_setup");
   }
-  return buildHostDashboardReturnUrl(appUrl, paymentId, status);
+  return buildHostSubscriptionsReturnUrl(appUrl, paymentId, status);
 }

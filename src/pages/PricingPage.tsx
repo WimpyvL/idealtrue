@@ -273,7 +273,7 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
             );
             // Author: (|╲) Klaasvaakie
             navigate(
-              "purpose" in result && result.purpose === "subscription"
+              "purpose" in result && (result.purpose === "subscription" || result.purpose === "managed_hosting")
                 ? "/host?modal=subscriptions"
                 : "/host",
               { replace: true },

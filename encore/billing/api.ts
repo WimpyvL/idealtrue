@@ -858,6 +858,17 @@ async function creditWalletFromBillingSession(session: FulfillableBillingSession
 async function activateManagedHostingFromPaymentIntent(intent: PaymentIntentRow) {
   const now = new Date().toISOString();
 
+  await activatePlanFromBillingSession({
+    id: intent.id,
+    user_id: intent.user_id,
+    type: "subscription",
+    status: intent.status,
+    amount: intent.amount,
+    host_plan: "premium",
+    billing_interval: "monthly",
+    credit_quantity: null,
+  });
+
   await identityDB.exec`
     UPDATE users
     SET host_plan = ${"premium"},

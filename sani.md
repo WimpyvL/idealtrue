@@ -478,6 +478,28 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - No repo-local workflow was added because the actual Encore trigger lives in Encore Cloud connection settings, not in this worktree.
 - Author signature: (|/) Klaasvaakie
 
+# 2026-07-09 GitHub push deploy attempt
+
+- Created commit `e7045ec` with the current repo changes and pushed `main` to GitHub `origin`.
+- GitHub accepted the push to `https://github.com/WimpyvL/idealtrue.git`.
+- If Encore Cloud is connected to the GitHub repo and watching `main`, that push is now the deploy trigger; if not, the missing piece is still the Encore-side connection, not the repo.
+- Author signature: (|/) Klaasvaakie
+
+# 2026-07-09 Encore browser auth recheck
+
+- Opened the Encore device-auth URL in the in-app browser and verified it resolves to the Encore Cloud sign-in screen.
+- The visible page is the login gate with GitHub, Google, email/password, and passkey options, so the browser is not yet past auth.
+- Exact screen to use: `https://encore.dev/auth/device/fc0a677b-16a5-4aaf-8554-a8f17c098fd9`
+- Author signature: (|/) Klaasvaakie
+
+# 2026-07-09 Managed hosting payment reflection fix
+
+- Fixed the paid-but-not-reflected Managed Hosting path by making `activateManagedHostingFromPaymentIntent` also create/update the visible premium monthly subscription row through `activatePlanFromBillingSession`.
+- Routed Managed Hosting successful returns to `/host?modal=subscriptions` and updated the pricing-page reconciliation to keep the user inside the subscription modal after payment.
+- Updated `HostSubscriptionsDialog` to refresh the profile on modal load so `managementMode = managed` is reflected immediately after checkout instead of depending on stale auth context.
+- Verified with `npx tsc --noEmit -p encore\tsconfig.json`, `npx tsx --test tests\payment-yoco-contracts.test.ts tests\admin-financials-contract.test.ts`, `npm run test:ui -- tests\ui\host-subscriptions-dialog.test.tsx tests\ui\pricing-page.test.tsx`, and `npm run lint`.
+- Author signature: (|/) Klaasvaakie
+
 # 2026-07-08 encore MCP status recheck
 
 - Checked the current Codex tool surface again and there is still no exposed `encore-cloud` MCP namespace in this session.
