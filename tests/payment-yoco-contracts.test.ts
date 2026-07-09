@@ -523,6 +523,41 @@ test('Yoco Checkout payment webhooks expose the checkout id inside payload metad
   assert.equal(resolveYocoWebhookCheckoutId(event), 'ch_checkout_123');
 });
 
+test('Yoco Checkout payment webhooks expose checkout references outside metadata too', () => {
+  assert.equal(
+    resolveYocoWebhookCheckoutId({
+      id: 'evt-payment-succeeded-1',
+      payload: {
+        id: 'pay_123',
+        checkoutId: 'ch_direct_123',
+      },
+    }),
+    'ch_direct_123',
+  );
+
+  assert.equal(
+    resolveYocoWebhookCheckoutId({
+      id: 'evt-payment-succeeded-2',
+      payload: {
+        id: 'pay_456',
+        checkout_id: 'ch_snake_456',
+      },
+    }),
+    'ch_snake_456',
+  );
+
+  assert.equal(
+    resolveYocoWebhookCheckoutId({
+      id: 'evt-payment-succeeded-3',
+      payload: {
+        id: 'pay_789',
+        checkout: { id: 'ch_nested_789' },
+      },
+    }),
+    'ch_nested_789',
+  );
+});
+
 test('successful Yoco webhook handling persists a provider order id for later reconciliation', () => {
   const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
   assert.match(source, /const providerOrderId = resolveProviderOrderId\(event\);/);

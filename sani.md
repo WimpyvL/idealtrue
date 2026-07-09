@@ -515,6 +515,15 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Re-ran `git push encore main`; the Encore deploy remote also reported `Everything up-to-date`.
 - Author signature: (|/) Klaasvaakie
 
+# 2026-07-09 payment account update root cause
+
+- Ran a systematic debugging pass across the shared Yoco fulfilment path after package payments still failed to update accounts.
+- Verified the live backend return route on `https://www.idealstay.co.za/api/encore/billing/payments/probe-payment-id/return?billingStatus=success` returns `303`, so the return endpoint itself is not dead.
+- Found the cross-package root cause in webhook matching: `resolveYocoWebhookCheckoutId` only read `payload.metadata.checkoutId` and then fell back to `payload.id`, which can be the payment id rather than the checkout id. Real webhook shapes with `payload.checkoutId`, `payload.checkout_id`, or nested `payload.checkout.id` would not match `billing_payment_intents.provider_checkout_id`, leaving subscription, managed hosting, content credits, and host billing setup intents pending.
+- Fixed the resolver to read metadata, direct checkout fields, and nested checkout fields before falling back.
+- Verified with `npx tsc --noEmit -p encore\tsconfig.json`, `npx tsx --test tests\payment-yoco-contracts.test.ts`, `npx tsx --test tests\payment-yoco-contracts.test.ts tests\admin-financials-contract.test.ts tests\workflow-coverage.test.ts`, and `npm run lint`.
+- Author signature: (|/) Klaasvaakie
+
 # 2026-07-08 encore MCP status recheck
 
 - Checked the current Codex tool surface again and there is still no exposed `encore-cloud` MCP namespace in this session.

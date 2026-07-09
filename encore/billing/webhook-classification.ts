@@ -37,14 +37,38 @@ export type YocoWebhookCheckoutReferenceEvent = {
   id?: string;
   payload?: {
     id?: string;
+    checkoutId?: string;
+    checkout_id?: string;
+    checkout?: {
+      id?: string;
+      checkoutId?: string;
+      checkout_id?: string;
+    };
     metadata?: Record<string, unknown>;
   };
 };
 
+function readNonEmptyString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 export function resolveYocoWebhookCheckoutId(event: YocoWebhookCheckoutReferenceEvent) {
-  const metadataCheckoutId = event.payload?.metadata?.checkoutId;
-  if (typeof metadataCheckoutId === "string" && metadataCheckoutId.trim()) {
-    return metadataCheckoutId.trim();
+  const metadataCheckoutId = readNonEmptyString(event.payload?.metadata?.checkoutId);
+  if (metadataCheckoutId) {
+    return metadataCheckoutId;
+  }
+
+  const directCheckoutId = readNonEmptyString(event.payload?.checkoutId) ?? readNonEmptyString(event.payload?.checkout_id);
+  if (directCheckoutId) {
+    return directCheckoutId;
+  }
+
+  const nestedCheckoutId =
+    readNonEmptyString(event.payload?.checkout?.id) ??
+    readNonEmptyString(event.payload?.checkout?.checkoutId) ??
+    readNonEmptyString(event.payload?.checkout?.checkout_id);
+  if (nestedCheckoutId) {
+    return nestedCheckoutId;
   }
 
   return event.payload?.id ?? event.id ?? null;
