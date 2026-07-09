@@ -150,4 +150,31 @@ describe('HostSubscriptionsDialog', () => {
     expect(screen.getByText(/Stored managed-hosting state is stale/i)).toBeInTheDocument();
     expect(screen.getByText(/Current cycle:/)).toBeInTheDocument();
   });
+
+  // ( |╲ ) Klaasvaakie - Premium self-service is R499; only R650 premium is Managed Hosting.
+  it('does not treat an active premium self-service subscription as managed hosting', async () => {
+    mockProfile = {
+      id: 'host-1',
+      displayName: 'Host Example',
+      email: 'host@example.com',
+      role: 'host',
+      hostPlan: 'premium',
+      managementMode: 'managed',
+    };
+    mockRefreshProfile.mockResolvedValue(mockProfile);
+
+    render(
+      <HostSubscriptionsDialog
+        open
+        onOpenChange={vi.fn()}
+        onOpenPricing={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText('Subscription Management')).toBeInTheDocument();
+    expect(screen.getAllByText('Premium').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Managed Hosting')).not.toBeInTheDocument();
+    expect(screen.getByText(/Stored managed-hosting state is stale/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Cancel at period end/i })).toBeInTheDocument();
+  });
 });

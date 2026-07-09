@@ -19,6 +19,7 @@ const planLabels: Record<HostPlan, string> = {
 };
 
 const selfServicePlanOptions: HostPlan[] = ['standard', 'professional', 'premium'];
+const managedHostingMonthlyAmount = 650;
 
 function formatPlanLabel(plan: HostPlan) {
   return planLabels[plan];
@@ -111,10 +112,16 @@ export default function HostSubscriptionsDialog({
   const hasActiveManagedBillingAccount = billingAccount?.billingSource === 'paid'
     && billingAccount.billingStatus === 'active'
     && billingAccount.plan === 'premium';
+  const hasManagedHostingSubscription = activeSelfServiceSubscription?.plan === 'premium'
+    && activeSelfServiceSubscription.billingInterval === 'monthly'
+    && activeSelfServiceSubscription.amount === managedHostingMonthlyAmount;
   const hasConflictingSelfServicePlan = Boolean(
     activeSelfServiceSubscription && activeSelfServiceSubscription.plan !== billingAccount?.plan,
   );
-  const isManagedHost = hasManagedProfileFlag && hasActiveManagedBillingAccount && !hasConflictingSelfServicePlan;
+  const isManagedHost = hasManagedProfileFlag
+    && hasActiveManagedBillingAccount
+    && hasManagedHostingSubscription
+    && !hasConflictingSelfServicePlan;
   const hasStaleManagedState = hasManagedProfileFlag && !isManagedHost;
   const currentAccessLabel = isManagedHost
     ? 'Managed Hosting'

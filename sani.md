@@ -584,3 +584,11 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Added a contract test proving effective scheduled downgrades clear managed mode and resync paid billing account state.
 - Verified with Encore typecheck, billing/admin contracts, focused subscription modal UI test, lint, and production build.
 - Author signature: ( |╲ ) Klaasvaakie
+
+# 2026-07-09 premium versus managed modal distinction
+
+- Fixed the subscription modal so Premium self-service at R499 is not classified as Managed Hosting just because stale profile/account state still says managed.
+- Managed Hosting display now requires the premium monthly subscription to match the managed-hosting R650 amount in addition to the managed profile and active paid billing account.
+- Added a regression test for the screenshot case: active Premium R499 with stale managed state must show Premium controls, not Managed Hosting.
+- Verified with Encore typecheck, billing/admin contracts, focused subscription modal UI test, lint, and production build.
+- Author signature: ( |╲ ) Klaasvaakie
