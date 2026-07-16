@@ -59,6 +59,8 @@ type BillingInterval = "monthly" | "annual";
 type ContentDraftStatus = "draft" | "scheduled" | "published";
 type CheckoutType = "subscription" | "content_credits" | "host_billing_setup" | "managed_hosting";
 type CheckoutStatus = "pending" | "paid" | "failed" | "cancelled";
+type BillingTx = Awaited<ReturnType<typeof billingDB.begin>>;
+let currentBillingFulfilmentTx: BillingTx | undefined;
 
 interface CreateBillingPaymentParams {
   purpose: CheckoutType;
@@ -683,13 +685,14 @@ async function storeProviderPaymentIntent(params: {
   `;
 }
 
-async function storeProviderOrderId(intentId: string, providerOrderId: string | null) {
+async function storeProviderOrderId(intentId: string, providerOrderId: string | null, tx?: BillingTx) {
   if (!providerOrderId) {
     return;
   }
 
+  const db = tx ?? billingDB;
   const now = new Date().toISOString();
-  await billingDB.exec`
+  await db.exec`
     UPDATE billing_payment_intents
     SET provider_order_id = ${providerOrderId},
         updated_at = ${now}
@@ -791,7 +794,7 @@ async function createBillingPaymentIntent(params: {
   };
 }
 
-async function activatePlanFromBillingSession(session: FulfillableBillingSession) {
+async function activatePlanFromBillingSession(session: FulfillableBillingSession, tx?: BillingTx) {
   if (!session.host_plan || !session.billing_interval) {
     throw APIError.internal("Subscription checkout is missing plan metadata.");
   }
@@ -804,7 +807,9 @@ async function activatePlanFromBillingSession(session: FulfillableBillingSession
     endsAt.setFullYear(endsAt.getFullYear() + 1);
   }
 
-  const existingSubscription = await billingDB.queryRow<{ id: string }>`
+  const db = tx ?? billingDB;
+
+  const existingSubscription = await db.queryRow<{ id: string }>`
     SELECT id
     FROM subscriptions
     WHERE checkout_session_id = ${session.id}
@@ -813,7 +818,7 @@ async function activatePlanFromBillingSession(session: FulfillableBillingSession
 
   const subscriptionId = existingSubscription?.id ?? randomUUID();
 
-  await billingDB.exec`
+  await db.exec`
     UPDATE subscriptions
     SET status = ${"cancelled"}
     WHERE user_id = ${session.user_id}
@@ -822,7 +827,7 @@ async function activatePlanFromBillingSession(session: FulfillableBillingSession
   `;
 
   if (existingSubscription) {
-    await billingDB.exec`
+    await db.exec`
       UPDATE subscriptions
       SET plan = ${session.host_plan},
           status = ${"active"},
@@ -843,7 +848,7 @@ async function activatePlanFromBillingSession(session: FulfillableBillingSession
     `;
   } else {
 
-    await billingDB.exec`
+    await db.exec`
       INSERT INTO subscriptions (
         id, user_id, checkout_session_id, plan, status, amount, billing_interval, starts_at, ends_at, cancel_at_period_end, cancelled_at,
         pending_plan, pending_billing_interval, pending_change_effective_at, grace_ends_at,
@@ -945,7 +950,7 @@ async function creditWalletFromBillingSession(session: FulfillableBillingSession
   }
 }
 
-async function activateManagedHostingFromPaymentIntent(intent: PaymentIntentRow) {
+async function activateManagedHostingFromPaymentIntent(intent: PaymentIntentRow, tx?: BillingTx) {
   const now = new Date().toISOString();
 
   await activatePlanFromBillingSession({
@@ -957,7 +962,7 @@ async function activateManagedHostingFromPaymentIntent(intent: PaymentIntentRow)
     host_plan: "premium",
     billing_interval: "monthly",
     credit_quantity: null,
-  });
+  }, tx ?? currentBillingFulfilmentTx);
 
   await identityDB.exec`
     UPDATE users
@@ -1017,10 +1022,11 @@ async function activateManagedHostingFromPaymentIntent(intent: PaymentIntentRow)
   });
 }
 
-async function markCheckoutPaid(session: CheckoutSessionRow, providerPaymentId?: string | null) {
+async function markCheckoutPaid(session: CheckoutSessionRow, providerPaymentId?: string | null, tx?: BillingTx) {
+  const db = tx ?? billingDB;
   const now = new Date().toISOString();
 
-  await billingDB.exec`
+  await db.exec`
     UPDATE billing_checkout_sessions
     SET status = ${"paid"},
         provider_payment_id = ${providerPaymentId ?? null},
@@ -1030,14 +1036,14 @@ async function markCheckoutPaid(session: CheckoutSessionRow, providerPaymentId?:
   `;
 }
 
-async function fulfilSuccessfulCheckout(session: CheckoutSessionRow, providerPaymentId?: string | null) {
+async function fulfilSuccessfulCheckout(session: CheckoutSessionRow, providerPaymentId?: string | null, tx?: BillingTx) {
   if (session.status === "paid") {
     return;
   }
 
   const billingSession = toFulfillableCheckoutSession(session);
   if (session.checkout_type === "subscription") {
-    await activatePlanFromBillingSession(billingSession);
+    await activatePlanFromBillingSession(billingSession, tx ?? currentBillingFulfilmentTx);
     if (session.host_plan && session.billing_interval) {
       try {
         await notifySubscriptionActivated({
@@ -1070,16 +1076,17 @@ async function fulfilSuccessfulCheckout(session: CheckoutSessionRow, providerPay
     });
   }
 
-  await markCheckoutPaid(session, providerPaymentId);
+  await markCheckoutPaid(session, providerPaymentId, tx ?? currentBillingFulfilmentTx);
 }
 
-async function markCheckoutStatus(session: CheckoutSessionRow, status: "failed" | "cancelled") {
+async function markCheckoutStatus(session: CheckoutSessionRow, status: "failed" | "cancelled", tx?: BillingTx) {
   if (session.status !== "pending") {
     return;
   }
 
+  const db = tx ?? billingDB;
   const now = new Date().toISOString();
-  await billingDB.exec`
+  await db.exec`
     UPDATE billing_checkout_sessions
     SET status = ${status},
         updated_at = ${now}
@@ -1100,10 +1107,11 @@ async function markCheckoutStatus(session: CheckoutSessionRow, status: "failed" 
   }
 }
 
-async function markPaymentIntentPaid(intent: PaymentIntentRow, providerPaymentId?: string | null) {
+async function markPaymentIntentPaid(intent: PaymentIntentRow, providerPaymentId?: string | null, tx?: BillingTx) {
+  const db = tx ?? billingDB;
   const now = new Date().toISOString();
 
-  await billingDB.exec`
+  await db.exec`
     UPDATE billing_payment_intents
     SET status = ${"paid"},
         provider_payment_id = ${providerPaymentId ?? null},
@@ -1113,13 +1121,14 @@ async function markPaymentIntentPaid(intent: PaymentIntentRow, providerPaymentId
   `;
 }
 
-async function markPaymentIntentStatus(intent: PaymentIntentRow, status: "failed" | "cancelled") {
+async function markPaymentIntentStatus(intent: PaymentIntentRow, status: "failed" | "cancelled", tx?: BillingTx) {
   if (intent.status !== "pending") {
     return;
   }
 
+  const db = tx ?? billingDB;
   const now = new Date().toISOString();
-  await billingDB.exec`
+  await db.exec`
     UPDATE billing_payment_intents
     SET status = ${status},
         updated_at = ${now}
@@ -1140,14 +1149,14 @@ async function markPaymentIntentStatus(intent: PaymentIntentRow, status: "failed
   }
 }
 
-async function fulfilSuccessfulPaymentIntent(intent: PaymentIntentRow, providerPaymentId?: string | null) {
+async function fulfilSuccessfulPaymentIntent(intent: PaymentIntentRow, providerPaymentId?: string | null, tx?: BillingTx) {
   if (intent.status === "paid") {
     return;
   }
 
   const billingSession = toFulfillablePaymentIntent(intent);
   if (intent.purpose === "subscription") {
-    await activatePlanFromBillingSession(billingSession);
+    await activatePlanFromBillingSession(billingSession, tx ?? currentBillingFulfilmentTx);
     if (intent.host_plan && intent.billing_interval) {
       try {
         await notifySubscriptionActivated({
@@ -1179,10 +1188,10 @@ async function fulfilSuccessfulPaymentIntent(intent: PaymentIntentRow, providerP
       providerPaymentId,
     });
   } else if (intent.purpose === "managed_hosting") {
-    await activateManagedHostingFromPaymentIntent(intent);
+    await activateManagedHostingFromPaymentIntent(intent, tx ?? currentBillingFulfilmentTx);
   }
 
-  await markPaymentIntentPaid(intent, providerPaymentId);
+  await markPaymentIntentPaid(intent, providerPaymentId, tx ?? currentBillingFulfilmentTx);
 }
 
 async function readRawBody(req: IncomingMessage) {
@@ -1258,16 +1267,18 @@ async function findCheckoutForWebhook(event: YocoWebhookEvent) {
   return null;
 }
 
-async function getCheckoutSessionById(checkoutId: string) {
-  return billingDB.queryRow<CheckoutSessionRow>`
+async function getCheckoutSessionById(checkoutId: string, tx?: BillingTx) {
+  const db = tx ?? billingDB;
+  return db.queryRow<CheckoutSessionRow>`
     SELECT *
     FROM billing_checkout_sessions
     WHERE id = ${checkoutId}
   `;
 }
 
-async function getPaymentIntentById(paymentId: string) {
-  return billingDB.queryRow<PaymentIntentRow>`
+async function getPaymentIntentById(paymentId: string, tx?: BillingTx) {
+  const db = tx ?? billingDB;
+  return db.queryRow<PaymentIntentRow>`
     SELECT *
     FROM billing_payment_intents
     WHERE id = ${paymentId}
@@ -1579,32 +1590,35 @@ async function notifySubscriptionsDueSoon(nowIso = new Date().toISOString()) {
 }
 
 // Author: ( |╲ ) Klaasvaakie
-async function withBillingFulfilmentLock<T>(resourceType: "payment" | "checkout", resourceId: string, work: () => Promise<T>) {
+async function withBillingFulfilmentLock<T>(resourceType: "payment" | "checkout", resourceId: string, work: (tx: BillingTx) => Promise<T>) {
   const tx = await billingDB.begin();
+  currentBillingFulfilmentTx = tx;
   try {
     await tx.rawQueryRow<{ locked: null }>(
       "SELECT pg_advisory_xact_lock(hashtextextended($1, 0)) AS locked",
       `yoco:${resourceType}:${resourceId}`,
     );
-    const result = await work();
+    const result = await work(tx);
     await tx.commit();
     return result;
   } catch (error) {
     await tx.rollback();
     throw error;
+  } finally {
+    currentBillingFulfilmentTx = undefined;
   }
 }
 
-async function reconcilePendingPaymentIntentUnlocked(intent: PaymentIntentRow, billingStatus?: string | null) {
+async function reconcilePendingPaymentIntentUnlocked(intent: PaymentIntentRow, billingStatus?: string | null, tx?: BillingTx) {
   if (intent.status !== "pending") {
     return intent;
   }
 
   try {
-    const successfulWebhook = await findSuccessfulWebhookForPaymentIntent(intent);
+    const successfulWebhook = await findSuccessfulWebhookForPaymentIntent(intent, tx);
     if (successfulWebhook) {
-      await fulfilSuccessfulPaymentIntent(intent, successfulWebhook.payload?.paymentId ?? successfulWebhook.payload?.id ?? null);
-      return (await getPaymentIntentById(intent.id)) ?? intent;
+      await fulfilSuccessfulPaymentIntent(intent, successfulWebhook.payload?.paymentId ?? successfulWebhook.payload?.id ?? null, tx);
+      return (await getPaymentIntentById(intent.id, tx)) ?? intent;
     }
   } catch (error) {
     console.error(`Stored Yoco webhook lookup failed for billing payment intent ${intent.id}:`, error);
@@ -1612,8 +1626,8 @@ async function reconcilePendingPaymentIntentUnlocked(intent: PaymentIntentRow, b
 
   const normalizedBillingStatus = billingStatus?.trim().toLowerCase();
   if (intent.provider_mode === "test" && normalizedBillingStatus === "success") {
-    await fulfilSuccessfulPaymentIntent(intent, intent.provider_payment_id ?? intent.provider_checkout_id ?? null);
-    return (await getPaymentIntentById(intent.id)) ?? intent;
+    await fulfilSuccessfulPaymentIntent(intent, intent.provider_payment_id ?? intent.provider_checkout_id ?? null, tx);
+    return (await getPaymentIntentById(intent.id, tx)) ?? intent;
   }
 
   if (intent.provider_checkout_id) {
@@ -1623,19 +1637,19 @@ async function reconcilePendingPaymentIntentUnlocked(intent: PaymentIntentRow, b
       const providerPaymentId = checkout.paymentId ?? checkout.payment_id ?? null;
       const providerOrderId = checkout.orderId ?? checkout.order_id ?? null;
 
-      await storeProviderOrderId(intent.id, providerOrderId);
+      await storeProviderOrderId(intent.id, providerOrderId, tx);
 
       if (checkoutStatus === "paid") {
-        await fulfilSuccessfulPaymentIntent(intent, providerPaymentId ?? intent.provider_checkout_id);
-        return (await getPaymentIntentById(intent.id)) ?? intent;
+        await fulfilSuccessfulPaymentIntent(intent, providerPaymentId ?? intent.provider_checkout_id, tx);
+        return (await getPaymentIntentById(intent.id, tx)) ?? intent;
       }
       if (checkoutStatus === "failed") {
-        await markPaymentIntentStatus(intent, "failed");
-        return (await getPaymentIntentById(intent.id)) ?? intent;
+        await markPaymentIntentStatus(intent, "failed", tx);
+        return (await getPaymentIntentById(intent.id, tx)) ?? intent;
       }
       if (checkoutStatus === "cancelled") {
-        await markPaymentIntentStatus(intent, "cancelled");
-        return (await getPaymentIntentById(intent.id)) ?? intent;
+        await markPaymentIntentStatus(intent, "cancelled", tx);
+        return (await getPaymentIntentById(intent.id, tx)) ?? intent;
       }
     } catch (error) {
       console.error(`Yoco checkout lookup failed for billing payment intent ${intent.id}:`, error);
@@ -1654,12 +1668,12 @@ async function reconcilePendingPaymentIntentUnlocked(intent: PaymentIntentRow, b
       order.payments?.[0]?.id ??
       null;
     if (status === "paid") {
-      await fulfilSuccessfulPaymentIntent(intent, providerPaymentId);
-      return (await getPaymentIntentById(intent.id)) ?? intent;
+      await fulfilSuccessfulPaymentIntent(intent, providerPaymentId, tx);
+      return (await getPaymentIntentById(intent.id, tx)) ?? intent;
     }
     if (status === "cancelled") {
-      await markPaymentIntentStatus(intent, "cancelled");
-      return (await getPaymentIntentById(intent.id)) ?? intent;
+      await markPaymentIntentStatus(intent, "cancelled", tx);
+      return (await getPaymentIntentById(intent.id, tx)) ?? intent;
     }
   } catch (error) {
     console.error(`Yoco order lookup failed for billing payment intent ${intent.id}:`, error);
@@ -1718,8 +1732,9 @@ async function reconcilePendingPaymentIntentsFromProvider(limit = 50) {
   };
 }
 
-async function findSuccessfulWebhookForPaymentIntent(intent: PaymentIntentRow): Promise<YocoWebhookEvent | null> {
-  const matchingEvents = await billingDB.queryAll<StoredWebhookEventRow>`
+async function findSuccessfulWebhookForPaymentIntent(intent: PaymentIntentRow, tx?: BillingTx): Promise<YocoWebhookEvent | null> {
+  const db = tx ?? billingDB;
+  const matchingEvents = await db.queryAll<StoredWebhookEventRow>`
     SELECT event_type, payload::text AS payload_json
     FROM billing_webhook_events
     WHERE provider = ${"yoco"}
@@ -1748,8 +1763,9 @@ async function findSuccessfulWebhookForPaymentIntent(intent: PaymentIntentRow): 
   return null;
 }
 
-async function findSuccessfulWebhookForCheckout(session: CheckoutSessionRow): Promise<YocoWebhookEvent | null> {
-  const matchingEvents = await billingDB.queryAll<StoredWebhookEventRow>`
+async function findSuccessfulWebhookForCheckout(session: CheckoutSessionRow, tx?: BillingTx): Promise<YocoWebhookEvent | null> {
+  const db = tx ?? billingDB;
+  const matchingEvents = await db.queryAll<StoredWebhookEventRow>`
     SELECT event_type, payload::text AS payload_json
     FROM billing_webhook_events
     WHERE provider = ${"yoco"}
@@ -1778,18 +1794,18 @@ async function findSuccessfulWebhookForCheckout(session: CheckoutSessionRow): Pr
   return null;
 }
 
-async function reconcilePendingCheckoutUnlocked(session: CheckoutSessionRow) {
+async function reconcilePendingCheckoutUnlocked(session: CheckoutSessionRow, tx?: BillingTx) {
   if (session.status !== "pending") {
     return session;
   }
 
-  const successfulWebhook = await findSuccessfulWebhookForCheckout(session);
+  const successfulWebhook = await findSuccessfulWebhookForCheckout(session, tx);
   if (!successfulWebhook) {
     return session;
   }
 
-  await fulfilSuccessfulCheckout(session, successfulWebhook.payload?.paymentId ?? null);
-  return (await getCheckoutSessionById(session.id)) ?? session;
+  await fulfilSuccessfulCheckout(session, successfulWebhook.payload?.paymentId ?? null, tx);
+  return (await getCheckoutSessionById(session.id, tx)) ?? session;
 }
 
 async function reconcilePendingCheckout(session: CheckoutSessionRow) {

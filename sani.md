@@ -612,7 +612,7 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Confirmed large videos still use a single signed PUT with a one-hour URL and no resumable protocol or orphan reconciliation ledger.
 - Confirmed availability was already migrated to `listing_availability_blocks` in migration 5; remaining hardening is a range/exclusion constraint and removal of the legacy `blocked_dates` mirror, not creation of the table from scratch.
 - Ran the focused billing, AI server, and API client contracts: 60 passed, 0 failed.
-- Author: Klaasvaakie. Signature: ( |â•² )
+- Author: Klaasvaakie. Signature: ( |╲ )
 
 ## 2026-07-14 - Vanta Codex pet hatched
 
@@ -620,13 +620,13 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Built the full Codex v2 8x11 atlas with nine animation states and sixteen clockwise look directions.
 - Rejected unsafe mirroring because the gold chest mark is asymmetric, repaired cardinal spacing after deterministic edge failure, and regenerated the first look row after blind QA found the original up cardinal ambiguous.
 - Final gates passed: 1536x2288 atlas, spriteVersionNumber 2, chroma despill, atlas validation, hard cardinal blind QA, zero semantic failures, and independent final visual QA.
-- Installed package: `C:\Users\wimpi\.codex\pets\vanta`.
+- Installed package: `vanta`.
 - Author: Klaasvaakie. Signature: ( |╲ )
 
 ## 2026-07-14 - Payment, AI, media, and availability resilience fixes
 
 - Serialized Yoco payment-intent and legacy checkout fulfilment with PostgreSQL transaction advisory locks and a post-lock state refresh across webhook, return, polling, and reconciliation paths.
-- Added 12-second Gemini and DeepSeek request deadlines, per-provider circuit breakers, and deterministic local trip-planner and review-summary fallbacks.
+- Added 12-second Gemini and DeepSeek request deadlines, best-effort per-provider circuit breakers that provide process/instance-local protection only, and deterministic local trip-planner and review-summary fallbacks.
 - Added durable listing-media upload intents, three-attempt browser upload retry, backend byte-size verification before commit, and an hourly orphan-object reconciliation job.
 - Added a PostgreSQL `daterange` GiST exclusion constraint for listing availability and made manual/booking block replacement plus the legacy `blocked_dates` mirror update one locked transaction.
 - Prevented unexpected availability failures from silently falling back to the unsafe legacy array path.
@@ -640,4 +640,4 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Final verdict: pass with no repair rows required.
 - Explained Glyph's animation-extension boundary: richer choreography can replace the existing nine state loops immediately, while genuinely new named states require a renderer/schema change beyond the fixed Codex v2 8x11 atlas. Author: Klaasvaakie. Signature: ( |╲ )
 - Author: Klaasvaakie. Signature: ( |╲ )
-- Author: Klaasvaakie. Signature: ( |â•² )
+- Author: Klaasvaakie. Signature: ( |\)

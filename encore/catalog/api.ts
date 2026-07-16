@@ -1702,40 +1702,59 @@ export const commitListingMediaUpload = api<CommitMediaUploadParams, { objectKey
   { expose: true, method: "POST", path: "/host/listings/media/uploads/:uploadId/commit", auth: true },
   async ({ uploadId }) => {
     const auth = requireRole("host", "admin", "support");
-    const intent = await catalogDB.queryRow<{
-      object_key: string;
-      user_id: string;
-      expected_size: number;
-      status: "pending" | "committed" | "abandoned";
-      expires_at: string;
-    }>`
-      SELECT object_key, user_id, expected_size::int, status, expires_at
-      FROM listing_media_upload_intents
-      WHERE id = ${uploadId}
-    `;
+    const tx = await catalogDB.begin();
+    try {
+      const intent = await tx.queryRow<{
+        object_key: string;
+        user_id: string;
+        expected_size: number;
+        status: "pending" | "committed" | "abandoned";
+        expires_at: string;
+      }>`
+        SELECT object_key, user_id, expected_size::int, status, expires_at
+        FROM listing_media_upload_intents
+        WHERE id = ${uploadId}
+        FOR UPDATE
+      `;
 
-    if (!intent) throw APIError.notFound("Media upload was not found.");
-    if (intent.user_id !== auth.userID && auth.role !== "admin" && auth.role !== "support") {
-      throw APIError.permissionDenied("You cannot commit another host's media upload.");
+      if (!intent) {
+        await tx.rollback();
+        throw APIError.notFound("Media upload was not found.");
+      }
+      if (intent.user_id !== auth.userID && auth.role !== "admin" && auth.role !== "support") {
+        await tx.rollback();
+        throw APIError.permissionDenied("You cannot commit another host's media upload.");
+      }
+      if (intent.status === "abandoned" || new Date(intent.expires_at).getTime() <= Date.now()) {
+        await tx.rollback();
+        throw APIError.failedPrecondition("Media upload expired before it was committed.");
+      }
+
+      const attributes = await listingMediaBucket.attrs(intent.object_key);
+      if (attributes.size !== intent.expected_size) {
+        await tx.rollback();
+        throw APIError.failedPrecondition("Uploaded media is incomplete. Retry the upload before committing it.");
+      }
+
+      const now = new Date().toISOString();
+      const claimed = await tx.queryRow<{ id: string }>`
+        UPDATE listing_media_upload_intents
+        SET status = ${"committed"}, committed_at = COALESCE(committed_at, ${now}), updated_at = ${now}
+        WHERE id = ${uploadId}
+          AND status = ${"pending"}
+        RETURNING id
+      `;
+      if (!claimed) {
+        await tx.rollback();
+        throw APIError.failedPrecondition("Media upload could not be committed.");
+      }
+
+      await tx.commit();
+      return { objectKey: intent.object_key, publicUrl: listingMediaBucket.publicUrl(intent.object_key) };
+    } catch (error) {
+      await tx.rollback();
+      throw error;
     }
-    if (intent.status === "abandoned" || new Date(intent.expires_at).getTime() <= Date.now()) {
-      throw APIError.failedPrecondition("Media upload expired before it was committed.");
-    }
-
-    const attributes = await listingMediaBucket.attrs(intent.object_key);
-    if (attributes.size !== intent.expected_size) {
-      throw APIError.failedPrecondition("Uploaded media is incomplete. Retry the upload before committing it.");
-    }
-
-    const now = new Date().toISOString();
-    await catalogDB.exec`
-      UPDATE listing_media_upload_intents
-      SET status = ${"committed"}, committed_at = COALESCE(committed_at, ${now}), updated_at = ${now}
-      WHERE id = ${uploadId}
-        AND status <> ${"abandoned"}
-    `;
-
-    return { objectKey: intent.object_key, publicUrl: listingMediaBucket.publicUrl(intent.object_key) };
   },
 );
 
@@ -1752,18 +1771,26 @@ export const reconcileAbandonedListingMediaUploads = api<void, { checked: number
     `;
     let removed = 0;
     for (const intent of expired) {
+      const tx = await catalogDB.begin();
       try {
-        if (await listingMediaBucket.exists(intent.object_key)) {
-          await listingMediaBucket.remove(intent.object_key);
-        }
-        await catalogDB.exec`
+        const claimed = await tx.queryRow<{ id: string; object_key: string }>`
           UPDATE listing_media_upload_intents
           SET status = ${"abandoned"}, updated_at = ${new Date().toISOString()}
           WHERE id = ${intent.id}
             AND status = ${"pending"}
+          RETURNING id, object_key
         `;
+        if (!claimed) {
+          await tx.rollback();
+          continue;
+        }
+        if (await listingMediaBucket.exists(claimed.object_key)) {
+          await listingMediaBucket.remove(claimed.object_key);
+        }
+        await tx.commit();
         removed += 1;
       } catch (error) {
+        await tx.rollback();
         console.warn(`Failed to reconcile abandoned media upload ${intent.id}:`, error);
       }
     }

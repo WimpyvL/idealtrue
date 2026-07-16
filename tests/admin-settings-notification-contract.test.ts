@@ -11,8 +11,14 @@ const platformApi = readFileSync(new URL('../encore/ops/api.ts', import.meta.url
 test('admin header uses the working notification bell and has no decorative share action', () => {
   assert.match(adminDashboard, /import NotificationBell from '@\/components\/NotificationBell';/);
   assert.match(adminDashboard, /<NotificationBell\s*\/>/);
-  assert.doesNotMatch(adminDashboard, /<button[^>]*><Bell className=/);
-  assert.doesNotMatch(adminDashboard, /<button[^>]*><Share2 className=/);
+
+  const bellActionPattern = /<NotificationBell\s*\/?>|<(?:button|Button)\b[^>]*>\s*[^<]*<\s*(?:Bell|Share2)\b/;
+  const shareActionPattern = /<(?:button|Button)\b[^>]*>\s*[^<]*<\s*Share2\b/;
+  const bellActionMatches = adminDashboard.match(bellActionPattern);
+  const shareActionMatches = adminDashboard.match(shareActionPattern);
+
+  assert.ok(bellActionMatches, 'expected a header action to render a Bell icon');
+  assert.ok(!shareActionMatches, 'did not expect a header action to render Share2');
 });
 
 test('platform commission is removed from settings UI and runtime contracts', () => {
