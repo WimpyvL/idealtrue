@@ -1,3 +1,4 @@
+// ( |╲ ) Author: Klaasvaakie
 import type {
   AccountStatus,
   Booking,
@@ -223,7 +224,6 @@ const encoreNotificationSchema = z.object({
 const encorePlatformSettingsSchema = z.object({
   id: z.literal('global').optional().default('global'),
   referralRewardAmount: z.number().optional().default(0),
-  commissionRate: z.number().optional().default(0),
   minWithdrawalAmount: z.number().optional().default(0),
   platformName: z.string().min(1).optional().default('Ideal Stay'),
   supportEmail: z.string().min(1),
@@ -428,7 +428,6 @@ export interface EncoreNotification {
 export interface EncorePlatformSettings {
   id: 'global';
   referralRewardAmount: number;
-  commissionRate: number;
   minWithdrawalAmount: number;
   platformName: string;
   supportEmail: string;
@@ -718,7 +717,6 @@ export function mapEncorePlatformSettings(settings: EncorePlatformSettings): Pla
   return {
     id: settings.id,
     referralRewardAmount: settings.referralRewardAmount,
-    commissionRate: settings.commissionRate,
     minWithdrawalAmount: settings.minWithdrawalAmount,
     platformName: settings.platformName,
     supportEmail: settings.supportEmail,

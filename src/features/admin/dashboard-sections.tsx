@@ -1,3 +1,4 @@
+// ( |╲ ) Author: Klaasvaakie
 import React, { useState } from 'react';
 import {
   AlertCircle,
@@ -1721,16 +1722,6 @@ export function SettingsSection({
           </div>
 
           <div className="space-y-6 border-t border-slate-100 pt-8">
-            <h2 className="text-xl font-bold text-slate-900">Business Rules</h2>
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase text-slate-500">Platform Commission (%)</label>
-              <div className="relative">
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">%</span>
-                <Input type="number" className="pr-8" defaultValue={platformSettings?.commissionRate || 15} onBlur={(event) => handleUpdateSettings({ commissionRate: Number(event.target.value) })} />
-              </div>
-              <p className="text-[10px] italic text-slate-400">Percentage taken from each booking transaction.</p>
-            </div>
-
             <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
               <div className="flex gap-3">
                 <AlertCircle className="h-5 w-5 shrink-0 text-blue-600" />

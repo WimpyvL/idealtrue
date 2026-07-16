@@ -1,3 +1,4 @@
+// ( |╲ ) Author: Klaasvaakie
 import { api, APIError } from "encore.dev/api";
 import { Counter, Gauge, GaugeGroup } from "encore.dev/metrics";
 import { randomUUID } from "node:crypto";
@@ -39,7 +40,6 @@ interface NotificationRecord {
 interface PlatformSettingsRecord {
   id: "global";
   referralRewardAmount: number;
-  commissionRate: number;
   minWithdrawalAmount: number;
   platformName: string;
   supportEmail: string;
@@ -72,7 +72,6 @@ interface ObservabilitySnapshot {
 
 interface UpdatePlatformSettingsParams {
   referralRewardAmount?: number;
-  commissionRate?: number;
   minWithdrawalAmount?: number;
   platformName?: string;
   supportEmail?: string;
@@ -156,7 +155,6 @@ type NotificationRow = {
 type PlatformSettingsRow = {
   id: "global";
   referral_reward_amount: number;
-  commission_rate: number;
   min_withdrawal_amount: number;
   platform_name: string;
   support_email: string;
@@ -223,7 +221,6 @@ function mapPlatformSettings(row: PlatformSettingsRow): PlatformSettingsRecord {
   return {
     id: row.id,
     referralRewardAmount: row.referral_reward_amount,
-    commissionRate: row.commission_rate,
     minWithdrawalAmount: row.min_withdrawal_amount,
     platformName: row.platform_name,
     supportEmail: row.support_email,
@@ -343,9 +340,6 @@ function decodeBase64Payload(dataBase64: string) {
 function validatePlatformSettings(settings: PlatformSettingsRecord) {
   if (!Number.isFinite(settings.referralRewardAmount) || settings.referralRewardAmount < 0) {
     throw APIError.invalidArgument("Referral reward amount must be zero or positive.");
-  }
-  if (!Number.isFinite(settings.commissionRate) || settings.commissionRate < 0 || settings.commissionRate > 100) {
-    throw APIError.invalidArgument("Commission rate must be between 0 and 100.");
   }
   if (!Number.isFinite(settings.minWithdrawalAmount) || settings.minWithdrawalAmount <= 0) {
     throw APIError.invalidArgument("Minimum withdrawal amount must be positive.");
@@ -962,7 +956,6 @@ export const updatePlatformSettings = api<UpdatePlatformSettingsParams, { settin
     await opsDB.exec`
       UPDATE platform_settings
       SET referral_reward_amount = ${updated.referralRewardAmount},
-          commission_rate = ${updated.commissionRate},
           min_withdrawal_amount = ${updated.minWithdrawalAmount},
           platform_name = ${updated.platformName},
           support_email = ${updated.supportEmail},

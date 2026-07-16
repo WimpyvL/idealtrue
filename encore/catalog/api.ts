@@ -1,4 +1,5 @@
 import { api, APIError } from "encore.dev/api";
+import { CronJob } from "encore.dev/cron";
 import { getAuthData } from "encore.dev/internal/codegen/auth";
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -154,6 +155,11 @@ interface UploadUrlParams {
   listingId?: string;
   filename: string;
   contentType: string;
+  fileSize: number;
+}
+
+interface CommitMediaUploadParams {
+  uploadId: string;
 }
 
 interface UploadListingImageParams {
@@ -609,31 +615,65 @@ async function insertManualAvailabilityDates(listingId: string, dates: string[])
   }
 }
 
-async function insertManualAvailabilityBlocks(listingId: string, manualBlocks: ListingAvailabilityManualBlockInput[]) {
-  for (const manualBlock of manualBlocks) {
-    const startsOn = normalizeAvailabilityDateKey(manualBlock.startsOn);
-    const endsOn = normalizeAvailabilityDateKey(manualBlock.endsOn);
-    const nights = enumerateAvailabilityNights(startsOn, endsOn);
-    const now = new Date().toISOString();
-    const sourceId = nights.length === 1 ? nights[0]! : `${startsOn}:${endsOn}`;
+type AvailabilityReplacement = {
+  sourceType: AvailabilityBlockSource;
+  sourceId: string;
+  startsOn: string;
+  endsOn: string;
+  nights: string[];
+  note?: string | null;
+};
 
-    await catalogDB.exec`
-      INSERT INTO listing_availability_blocks (
-        id, listing_id, source_type, source_id, starts_on, ends_on, nights, note, created_at, updated_at
-      )
-      VALUES (
-        ${randomUUID()},
-        ${listingId},
-        ${"MANUAL"},
-        ${sourceId},
-        ${startsOn},
-        ${endsOn},
-        ${nights},
-        ${manualBlock.note?.trim() || null},
-        ${now},
-        ${now}
-      )
-    `;
+// Author: ( |╲ ) Klaasvaakie
+async function replaceAvailabilityBlocksTransactionally(
+  listingId: string,
+  replacedSourceTypes: AvailabilityBlockSource[],
+  replacements: AvailabilityReplacement[],
+) {
+  const tx = await catalogDB.begin();
+  try {
+    await tx.rawQueryRow<{ locked: null }>(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0)) AS locked",
+      `availability:${listingId}`,
+    );
+    await tx.rawExec(
+      "DELETE FROM listing_availability_blocks WHERE listing_id = $1 AND source_type = ANY($2::text[])",
+      listingId,
+      replacedSourceTypes,
+    );
+    for (const replacement of replacements) {
+      const now = new Date().toISOString();
+      await tx.rawExec(
+        `INSERT INTO listing_availability_blocks
+          (id, listing_id, source_type, source_id, starts_on, ends_on, nights, note, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)`,
+        randomUUID(),
+        listingId,
+        replacement.sourceType,
+        replacement.sourceId,
+        replacement.startsOn,
+        replacement.endsOn,
+        replacement.nights,
+        replacement.note ?? null,
+        now,
+      );
+    }
+    await tx.rawExec(
+      `UPDATE listings
+       SET blocked_dates = COALESCE((
+         SELECT array_agg(DISTINCT day::date::text ORDER BY day::date::text)
+         FROM listing_availability_blocks block
+         CROSS JOIN LATERAL generate_series(block.starts_on, block.ends_on - 1, interval '1 day') AS day
+         WHERE block.listing_id = $1
+       ), '{}'::text[]),
+       updated_at = NOW()
+       WHERE id = $1`,
+      listingId,
+    );
+    await tx.commit();
+  } catch (error) {
+    await tx.rollback();
+    throw error;
   }
 }
 
@@ -948,19 +988,27 @@ export async function replaceManualListingAvailability(listingId: string, blocke
     );
   }
 
-  await catalogDB.exec`
-    DELETE FROM listing_availability_blocks
-    WHERE listing_id = ${listingId}
-      AND source_type = ${"MANUAL"}
-  `;
-
   const manualIntervals = buildIntervalsFromDateKeys(normalizedBlockedDates).map((interval) => ({
     startsOn: interval.startsOn,
     endsOn: interval.endsOn,
     note: null,
   }));
 
-  await insertManualAvailabilityBlocks(listingId, manualIntervals);
+  await replaceAvailabilityBlocksTransactionally(
+    listingId,
+    ["MANUAL"],
+    manualIntervals.map((block) => {
+      const nights = enumerateAvailabilityNights(block.startsOn, block.endsOn);
+      return {
+      sourceType: "MANUAL",
+      sourceId: nights.length === 1 ? nights[0]! : `${block.startsOn}:${block.endsOn}`,
+      startsOn: block.startsOn,
+      endsOn: block.endsOn,
+      nights,
+      note: block.note,
+      };
+    }),
+  );
 
   const refreshed = await refreshListingBlockedDatesFromAvailability(listingId);
 
@@ -1037,17 +1085,15 @@ export async function replaceManualListingAvailabilityBlocks(
     }
   }
 
-  await catalogDB.exec`
-    DELETE FROM listing_availability_blocks
-    WHERE listing_id = ${listingId}
-      AND source_type = ${"MANUAL"}
-  `;
-
-  await insertManualAvailabilityBlocks(
+  await replaceAvailabilityBlocksTransactionally(
     listingId,
+    ["MANUAL"],
     normalizedManualBlocks.map((block) => ({
+      sourceType: "MANUAL",
+      sourceId: block.nights.length === 1 ? block.nights[0]! : `${block.startsOn}:${block.endsOn}`,
       startsOn: block.startsOn,
       endsOn: block.endsOn,
+      nights: block.nights,
       note: block.note,
     })),
   );
@@ -1131,31 +1177,11 @@ export async function replaceBookingAvailabilityBlocks(listingId: string, entrie
     }
   }
 
-  await catalogDB.exec`
-    DELETE FROM listing_availability_blocks
-    WHERE listing_id = ${listingId}
-      AND (source_type = ${"APPROVED_HOLD"} OR source_type = ${"BOOKED"})
-  `;
-
-  for (const entry of normalizedEntries) {
-    const now = new Date().toISOString();
-    await catalogDB.exec`
-      INSERT INTO listing_availability_blocks (
-        id, listing_id, source_type, source_id, starts_on, ends_on, nights, created_at, updated_at
-      )
-      VALUES (
-        ${randomUUID()},
-        ${listingId},
-        ${entry.sourceType},
-        ${entry.sourceId},
-        ${entry.startsOn},
-        ${entry.endsOn},
-        ${entry.nights},
-        ${now},
-        ${now}
-      )
-    `;
-  }
+  await replaceAvailabilityBlocksTransactionally(
+    listingId,
+    ["APPROVED_HOLD", "BOOKED"],
+    normalizedEntries,
+  );
 
   return refreshListingBlockedDatesFromAvailability(listingId);
 }
@@ -1197,11 +1223,10 @@ export async function syncBookingAvailabilityWithCompatibility(
     if (error instanceof APIError && error.code === "not_found") {
       throw error;
     }
-    const fallbackReason = isAvailabilityLedgerSchemaError(error)
-      ? "Availability ledger schema is unavailable"
-      : error instanceof APIError
-        ? `Availability ledger sync failed with ${error.code}`
-        : "Availability ledger sync failed unexpectedly";
+    if (!isAvailabilityLedgerSchemaError(error)) {
+      throw error;
+    }
+    const fallbackReason = "Availability ledger schema is unavailable";
     console.warn(
       `${fallbackReason} for listing ${listingId}. Falling back to legacy blocked_dates sync.`,
       error,
@@ -1635,28 +1660,122 @@ export const getListingAvailabilitySummary = api<{ listingId: string }, { summar
   },
 );
 
-export const requestListingMediaUpload = api<UploadUrlParams, { objectKey: string; uploadUrl: string; publicUrl: string }>(
+export const requestListingMediaUpload = api<UploadUrlParams, { uploadId: string; objectKey: string; uploadUrl: string }>(
   { expose: true, method: "POST", path: "/host/listings/media/upload-url", auth: true },
-  async ({ listingId, filename, contentType }) => {
+  async ({ listingId, filename, contentType, fileSize }) => {
     const auth = requireRole("host", "admin", "support");
     if (!ALLOWED_LISTING_MEDIA_CONTENT_TYPES.has(contentType)) {
       throw APIError.invalidArgument("Unsupported listing media content type.");
     }
+    if (!Number.isSafeInteger(fileSize) || fileSize <= 0 || fileSize > 250 * 1024 * 1024) {
+      throw APIError.invalidArgument("Listing media must be between 1 byte and 250MB.");
+    }
     const normalizedListingId = normalizeDraftListingId(listingId);
     await assertCanUploadMedia(auth, normalizedListingId);
     const objectKey = buildListingMediaObjectKey({ auth, listingId: normalizedListingId, filename });
+    const uploadId = randomUUID();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString();
+    await catalogDB.exec`
+      INSERT INTO listing_media_upload_intents (
+        id, object_key, listing_id, user_id, content_type, expected_size, status, expires_at, created_at, updated_at
+      )
+      VALUES (
+        ${uploadId}, ${objectKey}, ${normalizedListingId ?? null}, ${auth.userID}, ${contentType}, ${fileSize},
+        ${"pending"}, ${expiresAt}, ${now.toISOString()}, ${now.toISOString()}
+      )
+    `;
     const signed = await listingMediaBucket.signedUploadUrl(objectKey, {
       // Large video uploads on slower uplinks routinely exceed 15 minutes.
       ttl: 60 * 60,
     });
 
     return {
+      uploadId,
       objectKey,
       uploadUrl: signed.url,
-      publicUrl: listingMediaBucket.publicUrl(objectKey),
     };
   },
 );
+
+export const commitListingMediaUpload = api<CommitMediaUploadParams, { objectKey: string; publicUrl: string }>(
+  { expose: true, method: "POST", path: "/host/listings/media/uploads/:uploadId/commit", auth: true },
+  async ({ uploadId }) => {
+    const auth = requireRole("host", "admin", "support");
+    const intent = await catalogDB.queryRow<{
+      object_key: string;
+      user_id: string;
+      expected_size: number;
+      status: "pending" | "committed" | "abandoned";
+      expires_at: string;
+    }>`
+      SELECT object_key, user_id, expected_size::int, status, expires_at
+      FROM listing_media_upload_intents
+      WHERE id = ${uploadId}
+    `;
+
+    if (!intent) throw APIError.notFound("Media upload was not found.");
+    if (intent.user_id !== auth.userID && auth.role !== "admin" && auth.role !== "support") {
+      throw APIError.permissionDenied("You cannot commit another host's media upload.");
+    }
+    if (intent.status === "abandoned" || new Date(intent.expires_at).getTime() <= Date.now()) {
+      throw APIError.failedPrecondition("Media upload expired before it was committed.");
+    }
+
+    const attributes = await listingMediaBucket.attrs(intent.object_key);
+    if (attributes.size !== intent.expected_size) {
+      throw APIError.failedPrecondition("Uploaded media is incomplete. Retry the upload before committing it.");
+    }
+
+    const now = new Date().toISOString();
+    await catalogDB.exec`
+      UPDATE listing_media_upload_intents
+      SET status = ${"committed"}, committed_at = COALESCE(committed_at, ${now}), updated_at = ${now}
+      WHERE id = ${uploadId}
+        AND status <> ${"abandoned"}
+    `;
+
+    return { objectKey: intent.object_key, publicUrl: listingMediaBucket.publicUrl(intent.object_key) };
+  },
+);
+
+export const reconcileAbandonedListingMediaUploads = api<void, { checked: number; removed: number }>(
+  { expose: false },
+  async () => {
+    const expired = await catalogDB.queryAll<{ id: string; object_key: string }>`
+      SELECT id, object_key
+      FROM listing_media_upload_intents
+      WHERE status = ${"pending"}
+        AND expires_at <= NOW()
+      ORDER BY expires_at ASC
+      LIMIT 200
+    `;
+    let removed = 0;
+    for (const intent of expired) {
+      try {
+        if (await listingMediaBucket.exists(intent.object_key)) {
+          await listingMediaBucket.remove(intent.object_key);
+        }
+        await catalogDB.exec`
+          UPDATE listing_media_upload_intents
+          SET status = ${"abandoned"}, updated_at = ${new Date().toISOString()}
+          WHERE id = ${intent.id}
+            AND status = ${"pending"}
+        `;
+        removed += 1;
+      } catch (error) {
+        console.warn(`Failed to reconcile abandoned media upload ${intent.id}:`, error);
+      }
+    }
+    return { checked: expired.length, removed };
+  },
+);
+
+const _mediaUploadReconciliationCron = new CronJob("reconcile-abandoned-listing-media", {
+  title: "Remove abandoned listing media uploads",
+  every: "1h",
+  endpoint: reconcileAbandonedListingMediaUploads,
+});
 
 export const uploadListingImage = api<UploadListingImageParams, { objectKey: string; publicUrl: string }>(
   { expose: true, method: "POST", path: "/host/listings/media/images", auth: true },

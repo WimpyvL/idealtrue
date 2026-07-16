@@ -592,3 +592,52 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Added a regression test for the screenshot case: active Premium R499 with stale managed state must show Premium controls, not Managed Hosting.
 - Verified with Encore typecheck, billing/admin contracts, focused subscription modal UI test, lint, and production build.
 - Author signature: ( |╲ ) Klaasvaakie
+## 2026-07-13 - Full codebase PRD
+
+- Analysed the frontend routes, domain types, Encore service boundaries, API inventory, SQL-backed workflow documentation, billing flow, tests, deployment contracts, and security surface.
+- Created `docs/PRODUCT_REQUIREMENTS_DOCUMENT.md` as the source PRD and `docs/Ideal-Stay-Product-Requirements-Document.docx` as the polished delivery document.
+- The PRD separates implemented behavior, partial capabilities, forward requirements, risks, metrics, release acceptance criteria, roadmap, and open product decisions.
+- Word generation succeeded. Visual rendering was attempted with the mandated document renderer but could not run because LibreOffice is unavailable in the environment; structural validation remains required before handoff.
+- Author: Klaasvaakie. Signature: ( |╲ )
+## 2026-07-13 — Architecture evaluation intake
+
+- Began a GitHub-backed repository architecture comparison.
+- Requested the exact architectural question, options, and evaluation criteria before inspecting code.
+
+## 2026-07-14 - Yoco, AI, media, and availability risk audit
+
+- Traced the four reported failure claims through the live repository paths instead of accepting the stated file locations at face value.
+- Confirmed a real missing per-payment fulfilment lock, while the existing event-id dedupe, provider reconciliation, and pricing-page short polling already cover part of the alleged Yoco race.
+- Confirmed Gemini-to-DeepSeek fallback exists, but no circuit breaker or local terminal fallback exists; the reviewed trip-planner and review-summary paths return markdown rather than structural JSON.
+- Confirmed large videos still use a single signed PUT with a one-hour URL and no resumable protocol or orphan reconciliation ledger.
+- Confirmed availability was already migrated to `listing_availability_blocks` in migration 5; remaining hardening is a range/exclusion constraint and removal of the legacy `blocked_dates` mirror, not creation of the table from scratch.
+- Ran the focused billing, AI server, and API client contracts: 60 passed, 0 failed.
+- Author: Klaasvaakie. Signature: ( |â•² )
+
+## 2026-07-14 - Vanta Codex pet hatched
+
+- Created and installed Vanta, a midnight jackal-panther sentinel based on Klaasvaakie's strategic, relentless, protective working style.
+- Built the full Codex v2 8x11 atlas with nine animation states and sixteen clockwise look directions.
+- Rejected unsafe mirroring because the gold chest mark is asymmetric, repaired cardinal spacing after deterministic edge failure, and regenerated the first look row after blind QA found the original up cardinal ambiguous.
+- Final gates passed: 1536x2288 atlas, spriteVersionNumber 2, chroma despill, atlas validation, hard cardinal blind QA, zero semantic failures, and independent final visual QA.
+- Installed package: `C:\Users\wimpi\.codex\pets\vanta`.
+- Author: Klaasvaakie. Signature: ( |╲ )
+
+## 2026-07-14 - Payment, AI, media, and availability resilience fixes
+
+- Serialized Yoco payment-intent and legacy checkout fulfilment with PostgreSQL transaction advisory locks and a post-lock state refresh across webhook, return, polling, and reconciliation paths.
+- Added 12-second Gemini and DeepSeek request deadlines, per-provider circuit breakers, and deterministic local trip-planner and review-summary fallbacks.
+- Added durable listing-media upload intents, three-attempt browser upload retry, backend byte-size verification before commit, and an hourly orphan-object reconciliation job.
+- Added a PostgreSQL `daterange` GiST exclusion constraint for listing availability and made manual/booking block replacement plus the legacy `blocked_dates` mirror update one locked transaction.
+- Prevented unexpected availability failures from silently falling back to the unsafe legacy array path.
+- Verified Encore and frontend typechecks, lint, production build, 230 unit/contract tests, and focused resilience/media tests. The Vitest UI runner started but did not return a completion result in this environment, so it was not claimed as passed.
+
+## 2026-07-14 - Glyph final visual QA
+
+- Inspected both contact sheets, the focused 16-direction sheet, all nine motion previews, blind direction evidence, continuity metrics, review output, extended atlas validation, and final chroma despill report.
+- Confirmed one consistent hooded code-elf identity across all 11 rows, correct state semantics, clean silhouettes, and no detached effects, shadows, text, clipping, or animation-breaking pops.
+- Accepted the blind ambiguity at 022.5 degrees as an intermediate-only warning because the labeled clockwise loop clearly reads up-right; all hard cardinals pass.
+- Final verdict: pass with no repair rows required.
+- Explained Glyph's animation-extension boundary: richer choreography can replace the existing nine state loops immediately, while genuinely new named states require a renderer/schema change beyond the fixed Codex v2 8x11 atlas. Author: Klaasvaakie. Signature: ( |╲ )
+- Author: Klaasvaakie. Signature: ( |╲ )
+- Author: Klaasvaakie. Signature: ( |â•² )

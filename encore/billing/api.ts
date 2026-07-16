@@ -1578,7 +1578,24 @@ async function notifySubscriptionsDueSoon(nowIso = new Date().toISOString()) {
   }
 }
 
-async function reconcilePendingPaymentIntent(intent: PaymentIntentRow, billingStatus?: string | null) {
+// Author: ( |╲ ) Klaasvaakie
+async function withBillingFulfilmentLock<T>(resourceType: "payment" | "checkout", resourceId: string, work: () => Promise<T>) {
+  const tx = await billingDB.begin();
+  try {
+    await tx.rawQueryRow<{ locked: null }>(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0)) AS locked",
+      `yoco:${resourceType}:${resourceId}`,
+    );
+    const result = await work();
+    await tx.commit();
+    return result;
+  } catch (error) {
+    await tx.rollback();
+    throw error;
+  }
+}
+
+async function reconcilePendingPaymentIntentUnlocked(intent: PaymentIntentRow, billingStatus?: string | null) {
   if (intent.status !== "pending") {
     return intent;
   }
@@ -1649,6 +1666,13 @@ async function reconcilePendingPaymentIntent(intent: PaymentIntentRow, billingSt
   }
 
   return intent;
+}
+
+async function reconcilePendingPaymentIntent(intent: PaymentIntentRow, billingStatus?: string | null) {
+  return withBillingFulfilmentLock("payment", intent.id, async () => {
+    const current = (await getPaymentIntentById(intent.id)) ?? intent;
+    return reconcilePendingPaymentIntentUnlocked(current, billingStatus);
+  });
 }
 
 async function reconcilePendingPaymentIntentsFromProvider(limit = 50) {
@@ -1754,7 +1778,7 @@ async function findSuccessfulWebhookForCheckout(session: CheckoutSessionRow): Pr
   return null;
 }
 
-async function reconcilePendingCheckout(session: CheckoutSessionRow) {
+async function reconcilePendingCheckoutUnlocked(session: CheckoutSessionRow) {
   if (session.status !== "pending") {
     return session;
   }
@@ -1766,6 +1790,13 @@ async function reconcilePendingCheckout(session: CheckoutSessionRow) {
 
   await fulfilSuccessfulCheckout(session, successfulWebhook.payload?.paymentId ?? null);
   return (await getCheckoutSessionById(session.id)) ?? session;
+}
+
+async function reconcilePendingCheckout(session: CheckoutSessionRow) {
+  return withBillingFulfilmentLock("checkout", session.id, async () => {
+    const current = (await getCheckoutSessionById(session.id)) ?? session;
+    return reconcilePendingCheckoutUnlocked(current);
+  });
 }
 
 export const listPlans = api<void, { plans: SubscriptionPlan[] }>(
@@ -2414,18 +2445,28 @@ export async function processStoredYocoWebhookEvent(eventId: string) {
     await storeProviderOrderId(paymentIntent.id, providerOrderId);
   }
 
-  if (paymentIntent && outcome === "paid") {
-    await fulfilSuccessfulPaymentIntent(paymentIntent, providerPaymentId);
-  } else if (paymentIntent && outcome === "failed") {
-    await markPaymentIntentStatus(paymentIntent, "failed");
-  } else if (paymentIntent && outcome === "cancelled") {
-    await markPaymentIntentStatus(paymentIntent, "cancelled");
-  } else if (session && outcome === "paid") {
-    await fulfilSuccessfulCheckout(session, providerPaymentId);
-  } else if (session && outcome === "failed") {
-    await markCheckoutStatus(session, "failed");
-  } else if (session && outcome === "cancelled") {
-    await markCheckoutStatus(session, "cancelled");
+  if (paymentIntent) {
+    await withBillingFulfilmentLock("payment", paymentIntent.id, async () => {
+      const current = (await getPaymentIntentById(paymentIntent.id)) ?? paymentIntent;
+      if (outcome === "paid") {
+        await fulfilSuccessfulPaymentIntent(current, providerPaymentId);
+      } else if (outcome === "failed") {
+        await markPaymentIntentStatus(current, "failed");
+      } else if (outcome === "cancelled") {
+        await markPaymentIntentStatus(current, "cancelled");
+      }
+    });
+  } else if (session) {
+    await withBillingFulfilmentLock("checkout", session.id, async () => {
+      const current = (await getCheckoutSessionById(session.id)) ?? session;
+      if (outcome === "paid") {
+        await fulfilSuccessfulCheckout(current, providerPaymentId);
+      } else if (outcome === "failed") {
+        await markCheckoutStatus(current, "failed");
+      } else if (outcome === "cancelled") {
+        await markCheckoutStatus(current, "cancelled");
+      }
+    });
   }
 
   await billingDB.exec`

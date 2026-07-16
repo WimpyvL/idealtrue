@@ -1,3 +1,4 @@
+// ( |╲ ) Author: Klaasvaakie
 import { expect, test, type Page } from '@playwright/test';
 import { fixedNow, workflowKyc, workflowUsers } from '../fixtures/workflows';
 
@@ -21,7 +22,6 @@ function platformSettings() {
   return {
     id: 'global',
     referralRewardAmount: 50,
-    commissionRate: 15,
     minWithdrawalAmount: 100,
     platformName: 'Ideal Stay',
     supportEmail: 'support@idealstay.test',

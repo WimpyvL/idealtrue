@@ -747,3 +747,11 @@ test('Yoco webhook duplicate delivery guard keys off event ids before insertion'
   assert.match(source, /WHERE id = \$\{eventId\}/);
   assert.match(source, /duplicate: true/);
 });
+
+test('Yoco fulfilment is serialized by payment or checkout id before stale state can mutate billing', () => {
+  const source = readFileSync(new URL('../encore/billing/api.ts', import.meta.url), 'utf8');
+  assert.match(source, /pg_advisory_xact_lock\(hashtextextended\(\$1, 0\)\)/);
+  assert.match(source, /withBillingFulfilmentLock\("payment", intent\.id/);
+  assert.match(source, /withBillingFulfilmentLock\("checkout", session\.id/);
+  assert.match(source, /const current = \(await getPaymentIntentById\(paymentIntent\.id\)\) \?\? paymentIntent/);
+});

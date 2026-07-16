@@ -1,3 +1,4 @@
+// ( |╲ ) Author: Klaasvaakie
 export type UserRole = 'host' | 'guest' | 'admin' | 'support';
 export type ReferralTier = 'bronze' | 'silver' | 'gold';
 export type KycStatus = 'none' | 'pending' | 'verified' | 'rejected';
@@ -289,7 +290,6 @@ export interface Notification {
 export interface PlatformSettings {
   id: 'global';
   referralRewardAmount: number;
-  commissionRate: number;
   minWithdrawalAmount: number;
   platformName: string;
   supportEmail: string;

@@ -1,3 +1,4 @@
+// ( |╲ ) Author: Klaasvaakie
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -567,14 +568,21 @@ test('uploadListingMedia uses a signed upload URL instead of proxying the video 
   installFetch((url, init) => {
     if (url.endsWith('/host/listings/media/upload-url')) {
       return createJsonResponse({
+        uploadId: 'upload-1',
         objectKey: 'listing-1/demo-video.mp4',
         uploadUrl: 'https://storage.example.com/listing-1/demo-video.mp4?signature=abc',
-        publicUrl: 'https://cdn.example.com/listing-1/demo-video.mp4',
       });
     }
 
     if (url.startsWith('https://storage.example.com/')) {
       return new Response(null, { status: 200 });
+    }
+
+    if (url.endsWith('/host/listings/media/uploads/upload-1/commit')) {
+      return createJsonResponse({
+        objectKey: 'listing-1/demo-video.mp4',
+        publicUrl: 'https://cdn.example.com/listing-1/demo-video.mp4',
+      });
     }
 
     throw new Error(`Unexpected URL: ${url} ${init?.method || 'GET'}`);
@@ -593,21 +601,24 @@ test('uploadListingMedia uses a signed upload URL instead of proxying the video 
     listingId: 'listing-1',
     filename: 'demo-video.mp4',
     contentType: 'video/mp4',
+    fileSize: 4,
   });
   assert.equal(fetchCalls[1]?.url, 'https://storage.example.com/listing-1/demo-video.mp4?signature=abc');
   assert.equal(fetchCalls[1]?.init?.method, 'PUT');
   assert.equal(getHeaders(fetchCalls[1]?.init).get('Content-Type'), 'video/mp4');
   assert.equal(fetchCalls[1]?.init?.body, file);
+  assert.equal(fetchCalls[2]?.url, `${DEFAULT_ENCORE_API_URL}/host/listings/media/uploads/upload-1/commit`);
+  assert.equal(fetchCalls[2]?.init?.method, 'POST');
 });
 
 test('uploadListingMedia surfaces bucket CORS failures clearly for direct browser uploads', async () => {
   installFetch((url, init) => {
     if (url.endsWith('/host/listings/media/upload-url')) {
       return createJsonResponse({
+        uploadId: 'upload-2',
         objectKey: 'listing-1/demo-video.mp4',
         uploadUrl:
           'https://storage.googleapis.com/example-bucket/listing-1/demo-video.mp4?signature=abc',
-        publicUrl: 'https://cdn.example.com/listing-1/demo-video.mp4',
       });
     }
 
@@ -626,7 +637,7 @@ test('uploadListingMedia surfaces bucket CORS failures clearly for direct browse
         listingId: 'listing-1',
         file,
       }),
-    /missing browser CORS/i,
+    /CORS policy/i,
   );
 });
 
@@ -659,7 +670,6 @@ test('admin notification and settings helpers hit the ops endpoints via the prox
         settings: {
           id: 'global',
           referralRewardAmount: 250,
-          commissionRate: 12,
           minWithdrawalAmount: 500,
           platformName: 'Ideal Stay',
           supportEmail: 'support@example.com',

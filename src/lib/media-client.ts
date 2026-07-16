@@ -138,29 +138,30 @@ async function prepareImageUpload(
 }
 
 async function uploadToSignedUrl(uploadUrl: string, file: File) {
-  let response: Response;
-
-  try {
-    response = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': file.type || 'application/octet-stream',
-      },
-      body: file,
-    });
-  } catch (error) {
-    if (error instanceof TypeError && uploadUrl.includes('storage.googleapis.com')) {
-      throw new Error(
-        'Direct storage upload failed before the file reached the bucket. The listing media bucket is missing browser CORS for this frontend origin.',
-      );
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+        },
+        body: file,
+      });
+      if (response.ok) return;
+      lastError = new Error(`Upload failed with status ${response.status}`);
+      if (response.status < 500 && response.status !== 408 && response.status !== 429) break;
+    } catch (error) {
+      lastError = error;
     }
-
-    throw error;
+    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
   }
-
-  if (!response.ok) {
-    throw new Error(`Upload failed with status ${response.status}`);
+  if (lastError instanceof TypeError && uploadUrl.includes('storage.googleapis.com')) {
+    throw new Error(
+      'Direct storage upload failed after retries. Check the listing media bucket CORS policy and the current network connection.',
+    );
   }
+  throw lastError instanceof Error ? lastError : new Error('Upload failed before completion.');
 }
 
 function normalizeListingId(listingId?: string) {
@@ -203,7 +204,7 @@ export async function uploadListingImage(params: { listingId?: string; file: Fil
 
 export async function uploadListingMedia(params: { listingId?: string; file: File }) {
   const listingId = normalizeListingId(params.listingId);
-  const signed = await encoreRequest<{ objectKey: string; uploadUrl: string; publicUrl: string }>(
+  const signed = await encoreRequest<{ uploadId: string; objectKey: string; uploadUrl: string }>(
     '/host/listings/media/upload-url',
     {
       method: 'POST',
@@ -211,11 +212,17 @@ export async function uploadListingMedia(params: { listingId?: string; file: Fil
         ...(listingId ? { listingId } : {}),
         filename: params.file.name,
         contentType: params.file.type || 'application/octet-stream',
+        fileSize: params.file.size,
       }),
     },
     { auth: true },
   );
 
   await uploadToSignedUrl(signed.uploadUrl, params.file);
-  return signed.publicUrl;
+  const committed = await encoreRequest<{ objectKey: string; publicUrl: string }>(
+    `/host/listings/media/uploads/${encodeURIComponent(signed.uploadId)}/commit`,
+    { method: 'POST' },
+    { auth: true },
+  );
+  return committed.publicUrl;
 }

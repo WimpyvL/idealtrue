@@ -1,3 +1,4 @@
+// ( |╲ ) Author: Klaasvaakie
 import React, { useState } from 'react';
 import {
   Activity,
@@ -61,6 +62,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import BrandLogo from '@/components/BrandLogo';
+import NotificationBell from '@/components/NotificationBell';
 import {
   Dialog,
   DialogContent,
@@ -664,8 +666,7 @@ export default function AdminDashboard() {
             <span className="truncate text-sm font-medium capitalize text-slate-500">{activeMenu}</span>
           </div>
           <div className="flex items-center gap-2 sm:gap-4 lg:gap-6">
-            <button className="p-2 text-slate-400 transition-colors hover:text-slate-900"><Bell className="h-5 w-5" /></button>
-            <button className="hidden p-2 text-slate-400 transition-colors hover:text-slate-900 sm:inline-flex"><Share2 className="h-5 w-5" /></button>
+            <NotificationBell />
             <div className="mx-1 hidden h-4 w-px bg-slate-200 sm:block" />
             <Button variant="ghost" size="sm" className="text-xs font-bold text-slate-500 hover:text-red-500" onClick={() => navigate('/')}>
               Exit Admin

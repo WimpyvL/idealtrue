@@ -157,3 +157,23 @@ test("generateTextWithFallback falls back to DeepSeek when Gemini auth is invali
     });
   }
 });
+
+test("generateTextWithFallback returns deterministic local output when both providers fail", async () => {
+  const originalFetch = globalThis.fetch;
+  Object.defineProperty(globalThis, "fetch", {
+    value: async () => new Response(JSON.stringify({ error: { message: "Provider unavailable" } }), { status: 503 }),
+    configurable: true,
+    writable: true,
+  });
+
+  try {
+    const result = await generateTextWithFallback({
+      prompt: "Plan a trip",
+      env: { GEMINI_API_KEY: "gemini-key", DEEPSEEK_API_KEY: "deepseek-key" },
+      localFallback: () => "Local safe answer",
+    });
+    assert.equal(result, "Local safe answer");
+  } finally {
+    Object.defineProperty(globalThis, "fetch", { value: originalFetch, configurable: true, writable: true });
+  }
+});
