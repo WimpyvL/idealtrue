@@ -614,14 +614,8 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Ran the focused billing, AI server, and API client contracts: 60 passed, 0 failed.
 - Author: Klaasvaakie. Signature: ( |╲ )
 
-## 2026-07-14 - Vanta Codex pet hatched
 
-- Created and installed Vanta, a midnight jackal-panther sentinel based on Klaasvaakie's strategic, relentless, protective working style.
-- Built the full Codex v2 8x11 atlas with nine animation states and sixteen clockwise look directions.
-- Rejected unsafe mirroring because the gold chest mark is asymmetric, repaired cardinal spacing after deterministic edge failure, and regenerated the first look row after blind QA found the original up cardinal ambiguous.
-- Final gates passed: 1536x2288 atlas, spriteVersionNumber 2, chroma despill, atlas validation, hard cardinal blind QA, zero semantic failures, and independent final visual QA.
-- Installed package: `vanta`.
-- Author: Klaasvaakie. Signature: ( |╲ )
+
 
 ## 2026-07-14 - Payment, AI, media, and availability resilience fixes
 
@@ -641,3 +635,19 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Explained Glyph's animation-extension boundary: richer choreography can replace the existing nine state loops immediately, while genuinely new named states require a renderer/schema change beyond the fixed Codex v2 8x11 atlas. Author: Klaasvaakie. Signature: ( |╲ )
 - Author: Klaasvaakie. Signature: ( |╲ )
 - Author: Klaasvaakie. Signature: ( |\)
+
+## 2026-07-18 - Social advertising simplification audit
+
+- Traced the live host Content Studio from sign-in through the current creation surface and compared the visible workflow with its frontend and backend contracts.
+- Confirmed the product currently generates content assets and tracks manual distribution; it does not yet publish ads or manage paid social campaigns.
+- Identified the main simplification target: replace overlapping idea and generator choices with one guided Create Post flow, then separate creation, drafts, and calendar into clear work states.
+- Captured current live UI evidence for the audit; no product code was changed in this pass.
+- Author: Klaasvaakie. Signature: ( |╲ )
+
+## 2026-07-18 - Figma social marketing audit board
+
+- Installed and connected the official Figma integration after the user approved a visual audit board.
+- Created the Figma design file `Ideal Stay — Social Marketing Simplification Audit` in the ABC Wize workspace.
+- Placed the accepted live Content Studio screenshot, three evidence-backed friction findings, and the simplified Create Post / Drafts / Calendar structure inside one named section.
+- Rendered and visually inspected the final section; the screenshot, headings, findings, and workflow cards are present without visible clipping or overlap.
+- Author: Klaasvaakie. Signature: ( |╲ )
