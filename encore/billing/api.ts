@@ -1,3 +1,4 @@
+// ( |╲ ) Author: Klaasvaakie
 import { api, APIError } from "encore.dev/api";
 import { CronJob } from "encore.dev/cron";
 import { randomUUID } from "node:crypto";
@@ -690,15 +691,20 @@ async function storeProviderOrderId(intentId: string, providerOrderId: string | 
     return;
   }
 
-  const db = tx ?? billingDB;
   const now = new Date().toISOString();
-  await db.exec`
-    UPDATE billing_payment_intents
-    SET provider_order_id = ${providerOrderId},
-        updated_at = ${now}
-    WHERE id = ${intentId}
-      AND provider_order_id IS NULL
-  `;
+  if (tx) {
+    await tx.exec`
+      UPDATE billing_payment_intents
+      SET provider_order_id = ${providerOrderId}, updated_at = ${now}
+      WHERE id = ${intentId} AND provider_order_id IS NULL
+    `;
+  } else {
+    await billingDB.exec`
+      UPDATE billing_payment_intents
+      SET provider_order_id = ${providerOrderId}, updated_at = ${now}
+      WHERE id = ${intentId} AND provider_order_id IS NULL
+    `;
+  }
 }
 
 function mapYocoOrderStatus(status?: string | null): CheckoutStatus {
@@ -807,59 +813,62 @@ async function activatePlanFromBillingSession(session: FulfillableBillingSession
     endsAt.setFullYear(endsAt.getFullYear() + 1);
   }
 
-  const db = tx ?? billingDB;
-
-  const existingSubscription = await db.queryRow<{ id: string }>`
-    SELECT id
-    FROM subscriptions
-    WHERE checkout_session_id = ${session.id}
-    LIMIT 1
-  `;
+  const existingSubscription = tx
+    ? await tx.queryRow<{ id: string }>`SELECT id FROM subscriptions WHERE checkout_session_id = ${session.id} LIMIT 1`
+    : await billingDB.queryRow<{ id: string }>`SELECT id FROM subscriptions WHERE checkout_session_id = ${session.id} LIMIT 1`;
 
   const subscriptionId = existingSubscription?.id ?? randomUUID();
 
-  await db.exec`
-    UPDATE subscriptions
-    SET status = ${"cancelled"}
-    WHERE user_id = ${session.user_id}
-      AND status = ${"active"}
-      AND checkout_session_id <> ${session.id}
-  `;
+  if (tx) {
+    await tx.exec`UPDATE subscriptions SET status = ${"cancelled"} WHERE user_id = ${session.user_id} AND status = ${"active"} AND checkout_session_id <> ${session.id}`;
+  } else {
+    await billingDB.exec`UPDATE subscriptions SET status = ${"cancelled"} WHERE user_id = ${session.user_id} AND status = ${"active"} AND checkout_session_id <> ${session.id}`;
+  }
 
   if (existingSubscription) {
-    await db.exec`
-      UPDATE subscriptions
-      SET plan = ${session.host_plan},
-          status = ${"active"},
-          amount = ${session.amount},
-          billing_interval = ${session.billing_interval},
-          starts_at = ${now.toISOString()},
-          ends_at = ${endsAt.toISOString()},
-          cancel_at_period_end = ${false},
-          cancelled_at = ${null},
-          pending_plan = ${null},
-          pending_billing_interval = ${null},
-          pending_change_effective_at = ${null},
-          grace_ends_at = ${null},
-          renewal_due_notified_at = ${null},
-          grace_started_notified_at = ${null},
-          deactivated_notified_at = ${null}
-      WHERE id = ${subscriptionId}
-    `;
+    if (tx) {
+      await tx.exec`
+        UPDATE subscriptions
+        SET plan = ${session.host_plan}, status = ${"active"}, amount = ${session.amount}, billing_interval = ${session.billing_interval},
+            starts_at = ${now.toISOString()}, ends_at = ${endsAt.toISOString()}, cancel_at_period_end = ${false}, cancelled_at = ${null},
+            pending_plan = ${null}, pending_billing_interval = ${null}, pending_change_effective_at = ${null}, grace_ends_at = ${null},
+            renewal_due_notified_at = ${null}, grace_started_notified_at = ${null}, deactivated_notified_at = ${null}
+        WHERE id = ${subscriptionId}
+      `;
+    } else {
+      await billingDB.exec`
+        UPDATE subscriptions
+        SET plan = ${session.host_plan}, status = ${"active"}, amount = ${session.amount}, billing_interval = ${session.billing_interval},
+            starts_at = ${now.toISOString()}, ends_at = ${endsAt.toISOString()}, cancel_at_period_end = ${false}, cancelled_at = ${null},
+            pending_plan = ${null}, pending_billing_interval = ${null}, pending_change_effective_at = ${null}, grace_ends_at = ${null},
+            renewal_due_notified_at = ${null}, grace_started_notified_at = ${null}, deactivated_notified_at = ${null}
+        WHERE id = ${subscriptionId}
+      `;
+    }
   } else {
-
-    await db.exec`
-      INSERT INTO subscriptions (
-        id, user_id, checkout_session_id, plan, status, amount, billing_interval, starts_at, ends_at, cancel_at_period_end, cancelled_at,
-        pending_plan, pending_billing_interval, pending_change_effective_at, grace_ends_at,
-        renewal_due_notified_at, grace_started_notified_at, deactivated_notified_at, created_at
-      )
-      VALUES (
-        ${subscriptionId}, ${session.user_id}, ${session.id}, ${session.host_plan}, ${"active"}, ${session.amount},
-        ${session.billing_interval}, ${now.toISOString()}, ${endsAt.toISOString()}, ${false}, ${null},
-        ${null}, ${null}, ${null}, ${null}, ${null}, ${null}, ${null}, ${now.toISOString()}
-      )
-    `;
+    if (tx) {
+      await tx.exec`
+        INSERT INTO subscriptions (
+          id, user_id, checkout_session_id, plan, status, amount, billing_interval, starts_at, ends_at, cancel_at_period_end, cancelled_at,
+          pending_plan, pending_billing_interval, pending_change_effective_at, grace_ends_at,
+          renewal_due_notified_at, grace_started_notified_at, deactivated_notified_at, created_at
+        ) VALUES (
+          ${subscriptionId}, ${session.user_id}, ${session.id}, ${session.host_plan}, ${"active"}, ${session.amount}, ${session.billing_interval},
+          ${now.toISOString()}, ${endsAt.toISOString()}, ${false}, ${null}, ${null}, ${null}, ${null}, ${null}, ${null}, ${null}, ${null}, ${now.toISOString()}
+        )
+      `;
+    } else {
+      await billingDB.exec`
+        INSERT INTO subscriptions (
+          id, user_id, checkout_session_id, plan, status, amount, billing_interval, starts_at, ends_at, cancel_at_period_end, cancelled_at,
+          pending_plan, pending_billing_interval, pending_change_effective_at, grace_ends_at,
+          renewal_due_notified_at, grace_started_notified_at, deactivated_notified_at, created_at
+        ) VALUES (
+          ${subscriptionId}, ${session.user_id}, ${session.id}, ${session.host_plan}, ${"active"}, ${session.amount}, ${session.billing_interval},
+          ${now.toISOString()}, ${endsAt.toISOString()}, ${false}, ${null}, ${null}, ${null}, ${null}, ${null}, ${null}, ${null}, ${null}, ${now.toISOString()}
+        )
+      `;
+    }
   }
 
   await identityDB.exec`
@@ -1023,17 +1032,10 @@ async function activateManagedHostingFromPaymentIntent(intent: PaymentIntentRow,
 }
 
 async function markCheckoutPaid(session: CheckoutSessionRow, providerPaymentId?: string | null, tx?: BillingTx) {
-  const db = tx ?? billingDB;
   const now = new Date().toISOString();
-
-  await db.exec`
-    UPDATE billing_checkout_sessions
-    SET status = ${"paid"},
-        provider_payment_id = ${providerPaymentId ?? null},
-        paid_at = ${now},
-        updated_at = ${now}
-    WHERE id = ${session.id}
-  `;
+  const sql = "UPDATE billing_checkout_sessions SET status = 'paid', provider_payment_id = $1, paid_at = $2, updated_at = $2 WHERE id = $3";
+  if (tx) await tx.rawExec(sql, providerPaymentId ?? null, now, session.id);
+  else await billingDB.rawExec(sql, providerPaymentId ?? null, now, session.id);
 }
 
 async function fulfilSuccessfulCheckout(session: CheckoutSessionRow, providerPaymentId?: string | null, tx?: BillingTx) {
@@ -1084,15 +1086,10 @@ async function markCheckoutStatus(session: CheckoutSessionRow, status: "failed" 
     return;
   }
 
-  const db = tx ?? billingDB;
   const now = new Date().toISOString();
-  await db.exec`
-    UPDATE billing_checkout_sessions
-    SET status = ${status},
-        updated_at = ${now}
-    WHERE id = ${session.id}
-      AND status = ${"pending"}
-  `;
+  const sql = "UPDATE billing_checkout_sessions SET status = $1, updated_at = $2 WHERE id = $3 AND status = 'pending'";
+  if (tx) await tx.rawExec(sql, status, now, session.id);
+  else await billingDB.rawExec(sql, status, now, session.id);
 
   try {
     await notifyCheckoutStatusChanged({
@@ -1108,17 +1105,10 @@ async function markCheckoutStatus(session: CheckoutSessionRow, status: "failed" 
 }
 
 async function markPaymentIntentPaid(intent: PaymentIntentRow, providerPaymentId?: string | null, tx?: BillingTx) {
-  const db = tx ?? billingDB;
   const now = new Date().toISOString();
-
-  await db.exec`
-    UPDATE billing_payment_intents
-    SET status = ${"paid"},
-        provider_payment_id = ${providerPaymentId ?? null},
-        paid_at = ${now},
-        updated_at = ${now}
-    WHERE id = ${intent.id}
-  `;
+  const sql = "UPDATE billing_payment_intents SET status = 'paid', provider_payment_id = $1, paid_at = $2, updated_at = $2 WHERE id = $3";
+  if (tx) await tx.rawExec(sql, providerPaymentId ?? null, now, intent.id);
+  else await billingDB.rawExec(sql, providerPaymentId ?? null, now, intent.id);
 }
 
 async function markPaymentIntentStatus(intent: PaymentIntentRow, status: "failed" | "cancelled", tx?: BillingTx) {
@@ -1126,15 +1116,10 @@ async function markPaymentIntentStatus(intent: PaymentIntentRow, status: "failed
     return;
   }
 
-  const db = tx ?? billingDB;
   const now = new Date().toISOString();
-  await db.exec`
-    UPDATE billing_payment_intents
-    SET status = ${status},
-        updated_at = ${now}
-    WHERE id = ${intent.id}
-      AND status = ${"pending"}
-  `;
+  const sql = "UPDATE billing_payment_intents SET status = $1, updated_at = $2 WHERE id = $3 AND status = 'pending'";
+  if (tx) await tx.rawExec(sql, status, now, intent.id);
+  else await billingDB.rawExec(sql, status, now, intent.id);
 
   try {
     await notifyCheckoutStatusChanged({
@@ -1268,21 +1253,13 @@ async function findCheckoutForWebhook(event: YocoWebhookEvent) {
 }
 
 async function getCheckoutSessionById(checkoutId: string, tx?: BillingTx) {
-  const db = tx ?? billingDB;
-  return db.queryRow<CheckoutSessionRow>`
-    SELECT *
-    FROM billing_checkout_sessions
-    WHERE id = ${checkoutId}
-  `;
+  if (tx) return tx.queryRow<CheckoutSessionRow>`SELECT * FROM billing_checkout_sessions WHERE id = ${checkoutId}`;
+  return billingDB.queryRow<CheckoutSessionRow>`SELECT * FROM billing_checkout_sessions WHERE id = ${checkoutId}`;
 }
 
 async function getPaymentIntentById(paymentId: string, tx?: BillingTx) {
-  const db = tx ?? billingDB;
-  return db.queryRow<PaymentIntentRow>`
-    SELECT *
-    FROM billing_payment_intents
-    WHERE id = ${paymentId}
-  `;
+  if (tx) return tx.queryRow<PaymentIntentRow>`SELECT * FROM billing_payment_intents WHERE id = ${paymentId}`;
+  return billingDB.queryRow<PaymentIntentRow>`SELECT * FROM billing_payment_intents WHERE id = ${paymentId}`;
 }
 
 async function findPaymentIntentForWebhook(event: YocoWebhookEvent) {
@@ -1733,24 +1710,25 @@ async function reconcilePendingPaymentIntentsFromProvider(limit = 50) {
 }
 
 async function findSuccessfulWebhookForPaymentIntent(intent: PaymentIntentRow, tx?: BillingTx): Promise<YocoWebhookEvent | null> {
-  const db = tx ?? billingDB;
-  const matchingEvents = await db.queryAll<StoredWebhookEventRow>`
+  const sql = `
     SELECT event_type, payload::text AS payload_json
     FROM billing_webhook_events
-    WHERE provider = ${"yoco"}
+    WHERE provider = 'yoco'
       AND (
-        payload #>> '{payload,metadata,paymentIntentId}' = ${intent.id}
-        OR (${intent.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,metadata,checkoutId}' = ${intent.provider_checkout_id ?? null})
-        OR (${intent.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkoutId}' = ${intent.provider_checkout_id ?? null})
-        OR (${intent.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkout_id}' = ${intent.provider_checkout_id ?? null})
-        OR (${intent.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkout,id}' = ${intent.provider_checkout_id ?? null})
-        OR (${intent.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkout,checkoutId}' = ${intent.provider_checkout_id ?? null})
-        OR (${intent.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkout,checkout_id}' = ${intent.provider_checkout_id ?? null})
-        OR (${intent.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,id}' = ${intent.provider_checkout_id ?? null})
+        payload #>> '{payload,metadata,paymentIntentId}' = $1
+        OR ($2::text IS NOT NULL AND payload #>> '{payload,metadata,checkoutId}' = $2)
+        OR ($2::text IS NOT NULL AND payload #>> '{payload,checkoutId}' = $2)
+        OR ($2::text IS NOT NULL AND payload #>> '{payload,checkout_id}' = $2)
+        OR ($2::text IS NOT NULL AND payload #>> '{payload,checkout,id}' = $2)
+        OR ($2::text IS NOT NULL AND payload #>> '{payload,checkout,checkoutId}' = $2)
+        OR ($2::text IS NOT NULL AND payload #>> '{payload,checkout,checkout_id}' = $2)
+        OR ($2::text IS NOT NULL AND payload #>> '{payload,id}' = $2)
       )
     ORDER BY received_at DESC
-    LIMIT 20
-  `;
+    LIMIT 20`;
+  const matchingEvents = tx
+    ? await tx.rawQueryAll<StoredWebhookEventRow>(sql, intent.id, intent.provider_checkout_id ?? null)
+    : await billingDB.rawQueryAll<StoredWebhookEventRow>(sql, intent.id, intent.provider_checkout_id ?? null);
 
   for (const row of matchingEvents) {
     const payload = JSON.parse(row.payload_json) as YocoWebhookEvent;
@@ -1764,24 +1742,25 @@ async function findSuccessfulWebhookForPaymentIntent(intent: PaymentIntentRow, t
 }
 
 async function findSuccessfulWebhookForCheckout(session: CheckoutSessionRow, tx?: BillingTx): Promise<YocoWebhookEvent | null> {
-  const db = tx ?? billingDB;
-  const matchingEvents = await db.queryAll<StoredWebhookEventRow>`
+  const sql = `
     SELECT event_type, payload::text AS payload_json
     FROM billing_webhook_events
-    WHERE provider = ${"yoco"}
+    WHERE provider = 'yoco'
       AND (
-        payload #>> '{payload,metadata,checkoutId}' = ${session.id}
-        OR (${session.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,metadata,checkoutId}' = ${session.provider_checkout_id ?? null})
-        OR (${session.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkoutId}' = ${session.provider_checkout_id ?? null})
-        OR (${session.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkout_id}' = ${session.provider_checkout_id ?? null})
-        OR (${session.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkout,id}' = ${session.provider_checkout_id ?? null})
-        OR (${session.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkout,checkoutId}' = ${session.provider_checkout_id ?? null})
-        OR (${session.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,checkout,checkout_id}' = ${session.provider_checkout_id ?? null})
-        OR (${session.provider_checkout_id ?? null} IS NOT NULL AND payload #>> '{payload,id}' = ${session.provider_checkout_id ?? null})
+        payload #>> '{payload,metadata,checkoutId}' = $1
+        OR ($2::text IS NOT NULL AND payload #>> '{payload,metadata,checkoutId}' = $2)
+        OR ($2::text IS NOT NULL AND payload #>> '{payload,checkoutId}' = $2)
+        OR ($2::text IS NOT NULL AND payload #>> '{payload,checkout_id}' = $2)
+        OR ($2::text IS NOT NULL AND payload #>> '{payload,checkout,id}' = $2)
+        OR ($2::text IS NOT NULL AND payload #>> '{payload,checkout,checkoutId}' = $2)
+        OR ($2::text IS NOT NULL AND payload #>> '{payload,checkout,checkout_id}' = $2)
+        OR ($2::text IS NOT NULL AND payload #>> '{payload,id}' = $2)
       )
     ORDER BY received_at DESC
-    LIMIT 20
-  `;
+    LIMIT 20`;
+  const matchingEvents = tx
+    ? await tx.rawQueryAll<StoredWebhookEventRow>(sql, session.id, session.provider_checkout_id ?? null)
+    : await billingDB.rawQueryAll<StoredWebhookEventRow>(sql, session.id, session.provider_checkout_id ?? null);
 
   for (const row of matchingEvents) {
     const payload = JSON.parse(row.payload_json) as YocoWebhookEvent;
