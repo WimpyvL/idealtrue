@@ -101,7 +101,7 @@ describe('dashboard mobile shells', () => {
     const user = userEvent.setup();
 
     render(
-      <MemoryRouter initialEntries={['/host/social?tool=ideas']}>
+      <MemoryRouter initialEntries={['/host/social?tool=drafts']}>
         <Routes>
           <Route path="/host" element={<HostLayout />}>
             <Route path="social" element={<div>Host content</div>} />
@@ -110,7 +110,7 @@ describe('dashboard mobile shells', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('New Post Ideas')).toBeInTheDocument();
+    expect(screen.getByText('Drafts')).toBeInTheDocument();
 
     await user.click(screen.getByLabelText('Open dashboard navigation'));
 

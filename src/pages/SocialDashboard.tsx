@@ -1,6 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CalendarDays, CheckCircle2, ChevronDown, Copy, Download, ImageIcon, LayoutTemplate, Loader2, Send, Sparkles, WalletCards } from 'lucide-react';
+import {
+  CalendarDays,
+  CheckCircle2,
+  ChevronDown,
+  Copy,
+  Download,
+  ImageIcon,
+  Loader2,
+  Megaphone,
+  PencilLine,
+  Send,
+  Sparkles,
+  WalletCards,
+} from 'lucide-react';
 import Markdown from 'react-markdown';
 import { toast } from 'sonner';
 import { Card } from '../components/ui/card';
@@ -21,98 +34,39 @@ import {
   updateContentDraft,
 } from '../lib/billing-client';
 import { generateListingSocialCreative, type GeneratedSocialCreative } from '../lib/ai-client';
-import { getPlatformLabel, getSocialTemplate, SOCIAL_PLATFORMS, SOCIAL_TEMPLATES, type SocialPlatform, type SocialTemplateId, type SocialTone } from '../lib/social-content';
+import {
+  getPlatformLabel,
+  getSocialTemplate,
+  SOCIAL_PLATFORMS,
+  SOCIAL_TEMPLATES,
+  type SocialPlatform,
+  type SocialTemplateId,
+  type SocialTone,
+} from '../lib/social-content';
 
+// Author: Klaasvaakie ( |╲ )
 const CREDIT_PACKS = [10, 25, 50];
 
-type ContentToolId = 'ideas' | 'templates' | 'media' | 'calendar';
-type IdeaModeId = 'brand_new' | 'content_pillars' | 'start_with_image' | 'custom_idea';
-type GeneratorModeId = 'trending_topics' | 'evergreen_ideas' | 'viral_hooks' | 'surprise_me';
+type MarketingView = 'create' | 'drafts' | 'calendar';
+type MarketingGoal = 'bookings' | 'offer' | 'showcase' | 'quiet_period';
 
-const IDEA_MODES: Array<{
-  id: IdeaModeId;
-  title: string;
+const MARKETING_VIEWS: Array<{ id: MarketingView; label: string; description: string }> = [
+  { id: 'create', label: 'Create Post', description: 'Build a publish-ready post' },
+  { id: 'drafts', label: 'Drafts', description: 'Review and refine content' },
+  { id: 'calendar', label: 'Calendar', description: 'Track distribution' },
+];
+
+const MARKETING_GOALS: Array<{
+  id: MarketingGoal;
+  label: string;
   description: string;
   templateId: SocialTemplateId;
   tone: SocialTone;
 }> = [
-  {
-    id: 'brand_new',
-    title: 'Brand new ideas',
-    description: 'Generate fresh post angles from your listing and market positioning.',
-    templateId: 'featured_stay',
-    tone: 'professional',
-  },
-  {
-    id: 'content_pillars',
-    title: 'Your content pillars',
-    description: 'Use repeatable stay themes like family, weekend, luxury, and value.',
-    templateId: 'stay_carousel',
-    tone: 'friendly',
-  },
-  {
-    id: 'start_with_image',
-    title: 'Start with an image',
-    description: 'Build the idea around the selected listing photo and visual pack.',
-    templateId: 'story_pack',
-    tone: 'luxurious',
-  },
-  {
-    id: 'custom_idea',
-    title: 'Custom idea',
-    description: 'Guide the engine with your own hook, campaign, or offer angle.',
-    templateId: 'weekend_escape',
-    tone: 'adventurous',
-  },
-];
-
-const GENERATOR_MODES: Array<{
-  id: GeneratorModeId;
-  kicker: string;
-  title: string;
-  description: string;
-  templateId: SocialTemplateId;
-  tone: SocialTone;
-}> = [
-  {
-    id: 'trending_topics',
-    kicker: 'Trending ideas',
-    title: 'Trending topics for your stay',
-    description: 'Timely angles built for attention and current travel demand.',
-    templateId: 'special_offer',
-    tone: 'urgent',
-  },
-  {
-    id: 'evergreen_ideas',
-    kicker: 'Evergreen ideas',
-    title: 'Reliable posts that never go stale',
-    description: 'Classic hooks for amenities, location, comfort, and guest fit.',
-    templateId: 'featured_stay',
-    tone: 'professional',
-  },
-  {
-    id: 'viral_hooks',
-    kicker: 'Viral hooks',
-    title: 'Click-start intros and scroll-stoppers',
-    description: 'Short, punchy openers for reels, stories, and carousel covers.',
-    templateId: 'story_pack',
-    tone: 'adventurous',
-  },
-  {
-    id: 'surprise_me',
-    kicker: 'Surprise me',
-    title: 'Unexpected angles from listing facts',
-    description: 'Fresh topic combinations when you do not want to overthink it.',
-    templateId: 'lifestyle_escape',
-    tone: 'friendly',
-  },
-];
-
-const CONTENT_TOOLS: Array<{ id: ContentToolId; label: string }> = [
-  { id: 'ideas', label: 'New Post Ideas' },
-  { id: 'templates', label: 'Quick Templates' },
-  { id: 'media', label: 'Media Collections' },
-  { id: 'calendar', label: 'Content Calendar' },
+  { id: 'bookings', label: 'Get more bookings', description: 'Lead with the stay, its strongest features and a clear booking action.', templateId: 'featured_stay', tone: 'professional' },
+  { id: 'offer', label: 'Promote an offer', description: 'Put a discount, last-minute opening or limited deal at the centre.', templateId: 'special_offer', tone: 'urgent' },
+  { id: 'showcase', label: 'Showcase the stay', description: 'Sell the atmosphere with an image-led, experience-first story.', templateId: 'lifestyle_escape', tone: 'luxurious' },
+  { id: 'quiet_period', label: 'Fill a quiet period', description: 'Create a timely short-break hook for open dates.', templateId: 'weekend_escape', tone: 'adventurous' },
 ];
 
 function downloadDataUrl(filename: string, dataUrl: string) {
@@ -139,20 +93,24 @@ function getDraftStatusLabel(draft: ContentDraft) {
   return 'Draft';
 }
 
+function resolveView(value: string | null): MarketingView {
+  if (value === 'drafts' || value === 'calendar') return value;
+  return 'create';
+}
+
 export default function SocialDashboard({ listings }: { listings: Listing[] }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { profile } = useAuth();
   const listingIdFromUrl = searchParams.get('listingId');
 
+  const [selectedGoalId, setSelectedGoalId] = useState<MarketingGoal>('bookings');
   const [selectedTemplateId, setSelectedTemplateId] = useState<SocialTemplateId>('featured_stay');
   const [platform, setPlatform] = useState<SocialPlatform>('instagram');
   const [tone, setTone] = useState<SocialTone>('professional');
   const [includePrice, setIncludePrice] = useState(true);
   const [includeSpecialOffer, setIncludeSpecialOffer] = useState(false);
   const [customHeadline, setCustomHeadline] = useState('');
-  const [selectedIdeaMode, setSelectedIdeaMode] = useState<IdeaModeId>('brand_new');
-  const [selectedGeneratorMode, setSelectedGeneratorMode] = useState<GeneratorModeId>('evergreen_ideas');
   const [creativeSourceUrl, setCreativeSourceUrl] = useState<string | null>(null);
   const [generatedCreative, setGeneratedCreative] = useState<GeneratedSocialCreative | null>(null);
   const [drafts, setDrafts] = useState<ContentDraft[]>([]);
@@ -166,31 +124,26 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
   const [copiedDraft, setCopiedDraft] = useState(false);
   const [copiedCaption, setCopiedCaption] = useState(false);
 
-  const activeTool = useMemo(() => {
-    const tool = searchParams.get('tool') as ContentToolId | null;
-    return tool && CONTENT_TOOLS.some((item) => item.id === tool) ? tool : 'ideas';
-  }, [searchParams]);
+  const activeView = resolveView(searchParams.get('tool'));
   const selectedListing = useMemo(() => {
-    if (listings.length === 0) {
-      return null;
-    }
-
-    if (listingIdFromUrl) {
-      return listings.find((listing) => listing.id === listingIdFromUrl) ?? listings[0];
-    }
-
+    if (listings.length === 0) return null;
+    if (listingIdFromUrl) return listings.find((listing) => listing.id === listingIdFromUrl) ?? listings[0];
     return listings[0];
   }, [listingIdFromUrl, listings]);
   const selectedTemplate = useMemo(() => getSocialTemplate(selectedTemplateId), [selectedTemplateId]);
   const selectedDraft = useMemo(() => drafts.find((draft) => draft.id === selectedDraftId) ?? null, [drafts, selectedDraftId]);
-  const selectedIdea = useMemo(() => IDEA_MODES.find((item) => item.id === selectedIdeaMode) ?? IDEA_MODES[0], [selectedIdeaMode]);
-  const selectedGenerator = useMemo(() => GENERATOR_MODES.find((item) => item.id === selectedGeneratorMode) ?? GENERATOR_MODES[0], [selectedGeneratorMode]);
   const canScheduleDraft = Boolean(entitlements?.canSchedule && scheduleAt && !Number.isNaN(new Date(scheduleAt).getTime()));
+  const scheduledDrafts = useMemo(
+    () => drafts.filter((draft) => draft.status !== 'draft').sort((a, b) => {
+      const left = getDraftLifecycleDate(a) ?? a.updatedAt;
+      const right = getDraftLifecycleDate(b) ?? b.updatedAt;
+      return new Date(left).getTime() - new Date(right).getTime();
+    }),
+    [drafts],
+  );
 
   useEffect(() => {
-    if (!selectedTemplate.supportedPlatforms.includes(platform)) {
-      setPlatform(selectedTemplate.supportedPlatforms[0]);
-    }
+    if (!selectedTemplate.supportedPlatforms.includes(platform)) setPlatform(selectedTemplate.supportedPlatforms[0]);
     if (!selectedTemplate.supportsSpecialOffer) setIncludeSpecialOffer(false);
     if (!selectedTemplate.supportsHeadlineOverride) setCustomHeadline('');
   }, [platform, selectedTemplate]);
@@ -218,12 +171,10 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
       if (cancelled) return;
       setEntitlements(nextEntitlements);
       setDrafts(nextDrafts);
-      setSelectedDraftId((currentDraftId) => currentDraftId ?? nextDrafts[0]?.id ?? null);
+      setSelectedDraftId((current) => current ?? nextDrafts[0]?.id ?? null);
     }
     void loadWorkspace().catch((error) => console.error('Failed to load content workspace', error));
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [profile]);
 
   useEffect(() => {
@@ -231,53 +182,31 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
     const checkoutId = searchParams.get('checkout_id');
     const paymentId = searchParams.get('payment_id');
     if (!profile || !billingStatus || (!paymentId && !checkoutId)) return;
-
-    // (|/) Klaasvaakie - standard payments return payment_id; checkout_id is kept for older return URLs.
     const statusRequest = paymentId ? getBillingPaymentStatus(paymentId, billingStatus) : getCheckoutStatus(checkoutId!);
-
-    void statusRequest
-      .then(async (result) => {
-        const paymentKind = 'purpose' in result ? result.purpose : result.checkoutType;
-        if (paymentKind !== 'content_credits') return;
-        if (result.status === 'paid') {
-          setEntitlements(await getContentEntitlements());
-          toast.success('Credit top-up confirmed. Your content wallet has been updated.');
-        }
-      })
-      .catch((error) => console.error('Failed to resolve content checkout', error));
+    void statusRequest.then(async (result) => {
+      const paymentKind = 'purpose' in result ? result.purpose : result.checkoutType;
+      if (paymentKind === 'content_credits' && result.status === 'paid') {
+        setEntitlements(await getContentEntitlements());
+        toast.success('Credit top-up confirmed. Your content wallet has been updated.');
+      }
+    }).catch((error) => console.error('Failed to resolve content checkout', error));
   }, [profile, searchParams]);
 
   const contentEnabled = entitlements?.contentStudioEnabled ?? false;
 
-  function patchStudioSearchParams(mutator: (next: URLSearchParams) => void) {
+  function setActiveView(view: MarketingView) {
     const next = new URLSearchParams(searchParams);
-    mutator(next);
+    if (view === 'create') next.delete('tool');
+    else next.set('tool', view);
     setSearchParams(next, { replace: true });
   }
 
-  function applyIdeaMode(modeId: IdeaModeId) {
-    const mode = IDEA_MODES.find((item) => item.id === modeId) ?? IDEA_MODES[0];
-    setSelectedIdeaMode(mode.id);
-    setSelectedTemplateId(mode.templateId);
-    setTone(mode.tone);
-  }
-
-  function applyGeneratorMode(modeId: GeneratorModeId) {
-    const mode = GENERATOR_MODES.find((item) => item.id === modeId) ?? GENERATOR_MODES[0];
-    setSelectedGeneratorMode(mode.id);
-    setSelectedTemplateId(mode.templateId);
-    setTone(mode.tone);
-  }
-
-  function applyTemplate(templateId: SocialTemplateId) {
-    const template = getSocialTemplate(templateId);
-    setSelectedTemplateId(template.id);
-    if (!template.supportedPlatforms.includes(platform)) {
-      setPlatform(template.supportedPlatforms[0]);
-    }
-    if (!template.supportsSpecialOffer) {
-      setIncludeSpecialOffer(false);
-    }
+  function applyGoal(goalId: MarketingGoal) {
+    const goal = MARKETING_GOALS.find((item) => item.id === goalId) ?? MARKETING_GOALS[0];
+    setSelectedGoalId(goal.id);
+    setSelectedTemplateId(goal.templateId);
+    setTone(goal.tone);
+    setIncludeSpecialOffer(goal.id === 'offer');
   }
 
   async function handleTopUpCredits(credits: number) {
@@ -309,21 +238,15 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
           customHeadline,
         }),
       ]);
-
       if (draftResult.status === 'fulfilled') {
         setDrafts((current) => [draftResult.value.draft, ...current]);
         setEntitlements(draftResult.value.entitlements);
         setSelectedDraftId(draftResult.value.draft.id);
       }
-      if (creativeResult.status === 'fulfilled') {
-        setGeneratedCreative(creativeResult.value);
-      }
+      if (creativeResult.status === 'fulfilled') setGeneratedCreative(creativeResult.value);
       if (draftResult.status === 'rejected') throw draftResult.reason;
-      if (creativeResult.status === 'rejected') {
-        toast.error(creativeResult.reason instanceof Error ? creativeResult.reason.message : 'Visual pack generation failed.');
-      } else {
-        toast.success('Template post set generated.');
-      }
+      if (creativeResult.status === 'rejected') toast.error(creativeResult.reason instanceof Error ? creativeResult.reason.message : 'Visual pack generation failed.');
+      else toast.success('Post set generated and saved to drafts.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to generate post set.');
     } finally {
@@ -342,8 +265,7 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
         scheduledFor: status === 'scheduled' ? new Date(scheduleAt).toISOString() : null,
       });
       setDrafts((current) => current.map((draft) => draft.id === updatedDraft.id ? updatedDraft : draft));
-      setSelectedDraftId(updatedDraft.id);
-      toast.success(status === 'scheduled' ? 'Draft scheduled.' : status === 'published' ? 'Draft marked as published.' : 'Draft saved.');
+      toast.success(status === 'scheduled' ? 'Distribution reminder scheduled.' : status === 'published' ? 'Manual publication recorded.' : 'Draft saved.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not update the draft.');
     } finally {
@@ -355,385 +277,139 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
     if (!editorContent) return;
     await navigator.clipboard.writeText(editorContent);
     setCopiedDraft(true);
-    setTimeout(() => setCopiedDraft(false), 2000);
+    window.setTimeout(() => setCopiedDraft(false), 2000);
   }
 
   async function copyCaption() {
     if (!generatedCreative?.caption) return;
     await navigator.clipboard.writeText(generatedCreative.caption);
     setCopiedCaption(true);
-    setTimeout(() => setCopiedCaption(false), 2000);
+    window.setTimeout(() => setCopiedCaption(false), 2000);
   }
 
-  if (!profile || profile.role !== 'host') {
-    return <div className="text-on-surface-variant">This workspace is only available for hosts.</div>;
-  }
+  if (!profile || profile.role !== 'host') return <div className="text-on-surface-variant">This workspace is only available for hosts.</div>;
 
   return (
-    <div className="min-w-0 space-y-6 overflow-hidden">
-      <div className="min-w-0 space-y-6">
-          <header className="flex min-w-0 flex-col gap-4 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-xs font-bold uppercase text-primary">Content Studio</p>
-                <Popover>
-                  <PopoverTrigger className="inline-flex h-8 items-center rounded-full border border-outline-variant bg-surface px-3 text-xs font-semibold transition-colors hover:bg-surface-container-low">
-                    Studio Tools <ChevronDown className="ml-1 h-3.5 w-3.5" />
-                  </PopoverTrigger>
-                  <PopoverContent align="start" className="w-80 p-3">
-                    <Button className="h-10 w-full justify-center rounded-lg font-semibold" onClick={handleGeneratePostSet} disabled={!selectedListing || !creativeSourceUrl || isGenerating || !contentEnabled}>
-                      {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                      Create Post
-                    </Button>
-
-                    <div className="space-y-1">
-                      <p className="px-2 text-xs font-bold uppercase text-on-surface-variant">Tools</p>
-                      {CONTENT_TOOLS.map((item) => (
-                        <button
-                          key={item.label}
-                          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium ${activeTool === item.id ? 'bg-primary/10 text-primary' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`}
-                          onClick={() => patchStudioSearchParams((next) => {
-                            next.set('tool', item.id);
-                          })}
-                          type="button"
-                        >
-                          <span>{item.label}</span>
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="rounded-lg border border-outline-variant bg-surface-container-low p-3">
-                      <div className="flex items-center gap-2">
-                        <WalletCards className="h-4 w-4 text-primary" />
-                        <p className="text-xs font-bold uppercase text-on-surface-variant">Wallet</p>
-                      </div>
-                      <p className="mt-2 text-2xl font-bold">{entitlements?.creditBalance ?? '...'}</p>
-                      <p className="text-xs text-on-surface-variant">Credits available</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {CREDIT_PACKS.map((credits) => (
-                          <button
-                            key={credits}
-                            className="rounded-md border border-outline-variant bg-surface-container-lowest px-2 py-1 text-xs font-semibold hover:border-primary hover:text-primary"
-                            aria-label={`Buy ${credits} content tokens`}
-                            disabled={purchasingCredits !== null}
-                            onClick={() => void handleTopUpCredits(credits)}
-                            type="button"
-                          >
-                            {purchasingCredits === credits ? '...' : `+${credits}`}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <h1 className="mt-1 break-words text-2xl font-bold tracking-tight sm:text-3xl">Get inspired for {selectedListing?.title ?? 'your next stay'}</h1>
-              <p className="mt-1 text-sm text-on-surface-variant">Choose the channel, idea source, and output type. The engine builds the draft and visual pack.</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-lg bg-primary/10 px-3 py-2 text-sm font-semibold text-primary">
-                {entitlements?.remainingIncludedDrafts ?? '...'} included left
-              </span>
-              <Button variant="outline" onClick={() => navigate('/pricing?audience=host')}>Manage Plan</Button>
-            </div>
-          </header>
-
-          <div className="flex min-w-0 max-w-full gap-3 overflow-x-auto pb-1">
-            {SOCIAL_PLATFORMS.map((item) => {
-              const isSupported = selectedTemplate.supportedPlatforms.includes(item.id);
-              return (
-                <button
-                  key={item.id}
-                  disabled={!isSupported}
-                  onClick={() => setPlatform(item.id)}
-                  className={`flex min-w-fit items-center gap-2 rounded-full border bg-surface-container-lowest px-4 py-3 text-sm font-semibold shadow-sm transition ${platform === item.id ? 'border-primary text-primary ring-2 ring-primary/15' : 'border-outline-variant text-on-surface'} ${isSupported ? 'hover:border-primary' : 'cursor-not-allowed opacity-40'}`}
-                  type="button"
-                >
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-container-low text-xs font-bold">{item.label.slice(0, 2)}</span>
-                  {item.label}
-                </button>
-              );
-            })}
+    <div className="min-w-0 space-y-6 pb-10">
+      <header className="overflow-hidden rounded-3xl border border-outline-variant bg-surface-container-lowest shadow-[0_16px_40px_rgba(18,28,42,0.06)]">
+        <div className="flex flex-col gap-5 p-5 sm:p-7 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Marketing workspace</p>
+            <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Turn your stay into a post worth sharing.</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-on-surface-variant">Choose the result you want. Ideal Stay handles the content format, tone and visual structure.</p>
           </div>
-
-          <Card className="min-w-0 overflow-hidden rounded-xl border-outline-variant bg-surface-container-lowest p-0">
-            <div className="border-b border-outline-variant px-6 py-5">
-              <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="min-w-0">
-                  <h2 className="text-xl font-bold">AI Content Generator</h2>
-                  <p className="mt-1 text-sm text-on-surface-variant">Pick a property, then choose how the engine should brainstorm.</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <span className="rounded-lg bg-surface-container-low px-3 py-2 text-sm font-semibold capitalize">{entitlements?.plan ?? '...'}</span>
-                  <span className="rounded-lg bg-surface-container-low px-3 py-2 text-sm font-semibold">{entitlements?.usedDraftsThisMonth ?? '...'} used this month</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid min-w-0 gap-0 lg:grid-cols-[0.92fr_1.08fr]">
-              <section className="min-w-0 border-b border-outline-variant p-6 lg:border-b-0 lg:border-r">
-                <div className="mb-4 flex items-center gap-2">
-                  <LayoutTemplate className="h-5 w-5 text-primary" />
-                  <div>
-                    <h3 className="font-bold">
-                      {activeTool === 'templates' ? 'Quick Templates' : activeTool === 'media' ? 'Media Collections' : activeTool === 'calendar' ? 'Content Calendar' : 'Start with a sniff of an idea'}
-                    </h3>
-                    <p className="text-sm text-on-surface-variant">
-                      {activeTool === 'templates'
-                        ? 'Pick a reusable format and keep the generator aligned to the channel.'
-                        : activeTool === 'media'
-                          ? 'Choose the listing image that should anchor the visual pack.'
-                          : activeTool === 'calendar'
-                            ? 'Review scheduled and published drafts before you ship more noise.'
-                            : selectedIdea.description}
-                    </p>
-                  </div>
-                </div>
-
-                {activeTool === 'ideas' ? (
-                  <div className="space-y-3">
-                    {IDEA_MODES.map((mode) => (
-                      <button
-                        key={mode.id}
-                        onClick={() => applyIdeaMode(mode.id)}
-                        className={`flex w-full gap-3 rounded-lg border p-4 text-left transition ${selectedIdeaMode === mode.id ? 'border-primary bg-primary/5 ring-2 ring-primary/10' : 'border-outline-variant hover:border-primary/60'}`}
-                        type="button"
-                      >
-                        <span className={`mt-1 h-3 w-3 rounded-full border ${selectedIdeaMode === mode.id ? 'border-primary bg-primary' : 'border-outline-variant'}`} />
-                        <span>
-                          <span className="block font-semibold">{mode.title}: {selectedListing?.type ?? 'Holiday Rental Property'}</span>
-                          <span className="mt-1 block text-sm text-on-surface-variant">{mode.description}</span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-
-                {activeTool === 'templates' ? (
-                  <div className="grid gap-3">
-                    {SOCIAL_TEMPLATES.map((template) => (
-                      <button
-                        key={template.id}
-                        onClick={() => applyTemplate(template.id)}
-                        className={`rounded-lg border p-4 text-left transition ${selectedTemplateId === template.id ? 'border-primary bg-primary/5 ring-2 ring-primary/10' : 'border-outline-variant hover:border-primary/60'}`}
-                        type="button"
-                        aria-label={`Use ${template.name}`}
-                      >
-                        <span className="flex items-center justify-between gap-3">
-                          <span className="font-semibold">{template.name}</span>
-                          <span className="rounded-full bg-surface-container-low px-2 py-1 text-[10px] font-bold uppercase text-on-surface-variant">{template.category}</span>
-                        </span>
-                        <span className="mt-1 block text-sm text-on-surface-variant">{template.shortDescription}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-
-                {activeTool === 'media' ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    {(selectedListing?.images ?? []).map((imageUrl, index) => (
-                      <button
-                        key={imageUrl}
-                        onClick={() => { setCreativeSourceUrl(imageUrl); setGeneratedCreative(null); }}
-                        className={`overflow-hidden rounded-lg border text-left ${creativeSourceUrl === imageUrl ? 'border-primary ring-2 ring-primary/20' : 'border-outline-variant'}`}
-                        type="button"
-                        aria-label={`Select listing image ${index + 1}`}
-                      >
-                        <img src={imageUrl} alt="" className="aspect-square w-full object-cover" referrerPolicy="no-referrer" />
-                        <span className="flex items-center gap-2 px-3 py-2 text-xs font-semibold">
-                          <ImageIcon className="h-3.5 w-3.5" /> Image {index + 1}
-                        </span>
-                      </button>
-                    ))}
-                    {!selectedListing?.images?.length ? (
-                      <div className="col-span-2 rounded-lg border border-dashed border-outline-variant p-6 text-center text-sm text-on-surface-variant">
-                        Add listing photos before generating a visual pack.
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {activeTool === 'calendar' ? (
-                  <div className="space-y-3">
-                    {drafts.filter((draft) => draft.status !== 'draft').map((draft) => (
-                      <button
-                        key={draft.id}
-                        onClick={() => setSelectedDraftId(draft.id)}
-                        className={`w-full rounded-lg border p-4 text-left transition ${selectedDraftId === draft.id ? 'border-primary bg-primary/5' : 'border-outline-variant hover:border-primary/60'}`}
-                        type="button"
-                        aria-label={`Open ${getDraftStatusLabel(draft).toLowerCase()} draft for ${draft.listingTitle}`}
-                      >
-                        <span className="flex items-center justify-between gap-3">
-                          <span className="font-semibold">{draft.listingTitle}</span>
-                          <span className="text-xs uppercase tracking-[0.18em] text-on-surface-variant">{getDraftStatusLabel(draft)}</span>
-                        </span>
-                        <span className="mt-1 block text-sm text-on-surface-variant">
-                          {formatDraftLifecycleDate(draft)}
-                        </span>
-                      </button>
-                    ))}
-                    {drafts.every((draft) => draft.status === 'draft') ? (
-                      <div className="rounded-lg border border-dashed border-outline-variant p-6 text-center text-sm text-on-surface-variant">
-                        No scheduled or published content yet.
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                <div className="mt-5 space-y-3">
-                  <select
-                    className="h-11 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 text-sm font-medium"
-                    value={selectedListing?.id ?? ''}
-                    onChange={(event) => patchStudioSearchParams((next) => {
-                      next.set('listingId', event.target.value);
-                    })}
-                  >
-                    {listings.map((listing) => (
-                      <option key={listing.id} value={listing.id}>{listing.title}</option>
-                    ))}
-                  </select>
-
-                  <Input
-                    value={customHeadline}
-                    onChange={(event) => setCustomHeadline(event.target.value)}
-                    placeholder={selectedTemplate.supportsHeadlineOverride ? 'Optional campaign hook or headline' : 'This output type uses a system headline'}
-                    disabled={!selectedTemplate.supportsHeadlineOverride}
-                  />
-                </div>
-              </section>
-
-              <section className="min-w-0 p-6">
-                <div className="mb-4 flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-primary" />
-                  <div>
-                    <h3 className="font-bold">Choose what to generate</h3>
-                    <p className="text-sm text-on-surface-variant">{selectedGenerator.description}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {GENERATOR_MODES.map((mode) => (
-                    <button
-                      key={mode.id}
-                      onClick={() => applyGeneratorMode(mode.id)}
-                      className={`grid w-full grid-cols-[auto_1fr] gap-4 rounded-lg border p-4 text-left transition ${selectedGeneratorMode === mode.id ? 'border-primary bg-primary/5 ring-2 ring-primary/10' : 'border-outline-variant hover:border-primary/60'}`}
-                      type="button"
-                    >
-                      <span className={`mt-1 h-3 w-3 rounded-full border ${selectedGeneratorMode === mode.id ? 'border-primary bg-primary' : 'border-outline-variant'}`} />
-                      <span>
-                        <span className="block text-xs font-bold uppercase text-primary">{mode.kicker}</span>
-                        <span className="mt-1 block font-semibold">{mode.title}</span>
-                        <span className="mt-1 block text-sm text-on-surface-variant">{mode.description}</span>
-                      </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <Popover>
+              <PopoverTrigger className="inline-flex h-10 items-center rounded-full border border-outline-variant bg-surface px-4 text-sm font-semibold hover:bg-surface-container-low">
+                <WalletCards className="mr-2 h-4 w-4 text-primary" />
+                {entitlements?.remainingIncludedDrafts ?? '...'} included left
+                <ChevronDown className="ml-2 h-4 w-4" />
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">Content wallet</p>
+                <p className="mt-2 text-3xl font-bold">{entitlements?.creditBalance ?? '...'}</p>
+                <p className="text-xs text-on-surface-variant">Purchased credits available</p>
+                <div className="mt-4 flex gap-2">
+                  {CREDIT_PACKS.map((credits) => (
+                    <button key={credits} type="button" aria-label={`Buy ${credits} content tokens`} disabled={purchasingCredits !== null} onClick={() => void handleTopUpCredits(credits)} className="rounded-lg border border-outline-variant px-3 py-2 text-xs font-semibold hover:border-primary hover:text-primary">
+                      {purchasingCredits === credits ? '...' : `+${credits}`}
                     </button>
                   ))}
                 </div>
-
-                <div className="mt-5 grid gap-3 md:grid-cols-2">
-                  <label className="flex items-center justify-between gap-4 rounded-lg border border-outline-variant p-4">
-                    <span className="font-medium">Include price</span>
-                    <input type="checkbox" checked={includePrice} onChange={(event) => setIncludePrice(event.target.checked)} className="h-5 w-5 accent-primary" />
-                  </label>
-                  <label className={`flex items-center justify-between gap-4 rounded-lg border border-outline-variant p-4 ${selectedTemplate.supportsSpecialOffer ? '' : 'opacity-50'}`}>
-                    <span className="font-medium">Include special offer</span>
-                    <input type="checkbox" checked={includeSpecialOffer} onChange={(event) => setIncludeSpecialOffer(event.target.checked)} disabled={!selectedTemplate.supportsSpecialOffer} className="h-5 w-5 accent-primary" />
-                  </label>
-                </div>
-
-                {selectedListing?.images?.length ? (
-                  <div className="mt-5 grid grid-cols-4 gap-3">
-                    {selectedListing.images.slice(0, 4).map((imageUrl) => (
-                      <button key={imageUrl} onClick={() => { setCreativeSourceUrl(imageUrl); setGeneratedCreative(null); }} className={`overflow-hidden rounded-lg border ${creativeSourceUrl === imageUrl ? 'border-primary ring-2 ring-primary/20' : 'border-outline-variant'}`} type="button">
-                        <img src={imageUrl} alt="" className="aspect-square w-full object-cover" referrerPolicy="no-referrer" />
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-
-                <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm text-on-surface-variant">Selected: {selectedTemplate.name} · {tone} · {getPlatformLabel(platform)}</p>
-                  <Button className="h-12 rounded-lg px-6 font-bold" aria-label="Generate Post Set" disabled={!selectedListing || !creativeSourceUrl || isGenerating || !contentEnabled} onClick={handleGeneratePostSet}>
-                    {isGenerating ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" />Building...</> : <><Sparkles className="mr-2 h-5 w-5" />Generate Post Set · 1 Credit</>}
-                  </Button>
-                </div>
-              </section>
-            </div>
-          </Card>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card className="p-6 space-y-5">
-          <div className="flex items-center justify-between gap-4">
-            <div><h2 className="text-2xl font-bold">Visual pack</h2><p className="text-sm text-on-surface-variant">{generatedCreative?.templateName ?? selectedTemplate.name}</p></div>
-            {generatedCreative?.assets?.length ? <Button variant="outline" onClick={() => generatedCreative.assets.forEach((asset) => downloadDataUrl(asset.fileName, asset.dataUrl))}><Download className="mr-2 h-4 w-4" />Download all</Button> : null}
+              </PopoverContent>
+            </Popover>
+            <Button variant="outline" className="rounded-full" onClick={() => navigate('/pricing?audience=host')}>Manage Plan</Button>
           </div>
-          {generatedCreative ? (
-            <>
-              <div className="rounded-2xl border border-outline-variant bg-surface-container-lowest p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div><p className="text-xs uppercase tracking-[0.18em] text-on-surface-variant">{generatedCreative.templateName}</p><h3 className="text-2xl font-bold">{generatedCreative.headline}</h3></div>
-                  <button onClick={copyCaption} className="flex items-center gap-2 rounded-lg border border-outline-variant px-3 py-2 text-sm">{copiedCaption ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}{copiedCaption ? 'Copied!' : 'Copy caption'}</button>
-                </div>
-                <p className="mt-3 text-sm text-on-surface-variant">{generatedCreative.caption}</p>
-                <p className="mt-2 text-xs text-on-surface-variant">Booking link: {generatedCreative.bookingUrl}</p>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {generatedCreative.assets.map((asset) => (
-                  <div key={asset.id} className="space-y-2">
-                    <div className="overflow-hidden rounded-3xl border border-outline-variant bg-surface-container-lowest"><img src={asset.dataUrl} alt={asset.label} className="w-full object-cover" /></div>
-                    <div className="flex items-center justify-between gap-3">
-                      <div><p className="font-semibold">{asset.label}</p><p className="text-xs text-on-surface-variant">{asset.width} × {asset.height}</p></div>
-                      <Button variant="outline" size="sm" onClick={() => downloadDataUrl(asset.fileName, asset.dataUrl)}><Download className="mr-2 h-4 w-4" />Download</Button>
-                    </div>
-                  </div>
+        </div>
+
+        <nav className="grid border-t border-outline-variant sm:grid-cols-3" aria-label="Marketing workspace sections">
+          {MARKETING_VIEWS.map((view) => {
+            const active = activeView === view.id;
+            return (
+              <button key={view.id} type="button" onClick={() => setActiveView(view.id)} className={`flex items-center gap-3 border-b border-outline-variant px-5 py-4 text-left transition sm:border-b-0 sm:border-r sm:last:border-r-0 ${active ? 'bg-primary/10 text-on-surface' : 'text-on-surface-variant hover:bg-surface-container-low'}`}>
+                {view.id === 'create' ? <Sparkles className="h-5 w-5 text-primary" /> : view.id === 'drafts' ? <PencilLine className="h-5 w-5 text-primary" /> : <CalendarDays className="h-5 w-5 text-primary" />}
+                <span><span className="block font-bold">{view.label}</span><span className="block text-xs font-normal">{view.description}</span></span>
+              </button>
+            );
+          })}
+        </nav>
+      </header>
+
+      {activeView === 'create' ? (
+        <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
+          <Card className="space-y-7 rounded-3xl p-5 sm:p-7">
+            <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Create post</p><h2 className="mt-2 text-2xl font-bold">Three choices. Then generate.</h2></div>
+
+            <section className="space-y-3">
+              <div className="flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-inverse-surface text-sm font-bold text-white">1</span><div><h3 className="font-bold">Choose the property</h3><p className="text-sm text-on-surface-variant">The listing supplies the facts, images and booking link.</p></div></div>
+              <select value={selectedListing?.id ?? ''} onChange={(event) => { const next = new URLSearchParams(searchParams); next.set('listingId', event.target.value); setSearchParams(next, { replace: true }); }} className="h-12 w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-4 font-semibold focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20">
+                {listings.map((listing) => <option key={listing.id} value={listing.id}>{listing.title}</option>)}
+              </select>
+            </section>
+
+            <section className="space-y-3">
+              <div className="flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-inverse-surface text-sm font-bold text-white">2</span><div><h3 className="font-bold">What should this post achieve?</h3><p className="text-sm text-on-surface-variant">We choose the right format and tone from your goal.</p></div></div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {MARKETING_GOALS.map((goal) => (
+                  <button key={goal.id} type="button" onClick={() => applyGoal(goal.id)} aria-pressed={selectedGoalId === goal.id} className={`rounded-2xl border p-4 text-left transition ${selectedGoalId === goal.id ? 'border-primary bg-primary/5 shadow-[0_8px_24px_rgba(8,168,200,0.12)]' : 'border-outline-variant hover:border-primary/60'}`}>
+                    <span className="font-bold">{goal.label}</span><span className="mt-1 block text-sm leading-5 text-on-surface-variant">{goal.description}</span>
+                  </button>
                 ))}
               </div>
-            </>
-          ) : <div className="rounded-2xl border border-dashed border-outline-variant p-10 text-center text-on-surface-variant">Generate a post set to preview the overlay pack here.</div>}
-        </Card>
+            </section>
 
-        <Card className="p-6 space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <div><h2 className="text-2xl font-bold">Draft editor</h2><p className="text-sm text-on-surface-variant">Edit the generated copy and publish when ready.</p></div>
-            <button onClick={copyDraft} disabled={!selectedDraft} className="flex items-center gap-2 rounded-lg border border-outline-variant px-3 py-2 text-sm">{copiedDraft ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}{copiedDraft ? 'Copied!' : 'Copy draft'}</button>
-          </div>
-
-          <div className="space-y-3 max-h-[240px] overflow-y-auto pr-2">
-            {drafts.map((draft) => (
-              <button
-                key={draft.id}
-                onClick={() => setSelectedDraftId(draft.id)}
-                className={`w-full rounded-2xl border p-4 text-left ${selectedDraftId === draft.id ? 'border-primary bg-primary/5' : 'border-outline-variant'}`}
-                aria-label={`Edit ${getDraftStatusLabel(draft).toLowerCase()} draft for ${draft.listingTitle}`}
-                type="button"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div><p className="font-semibold">{draft.listingTitle}</p><p className="text-xs text-on-surface-variant">{draft.templateName} • {getPlatformLabel(draft.platform)} • {draft.tone}</p></div>
-                  <span className="text-xs uppercase tracking-[0.18em] text-on-surface-variant">{getDraftStatusLabel(draft)}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          {!selectedDraft ? <div className="rounded-2xl border border-dashed border-outline-variant p-8 text-center text-on-surface-variant">Pick a draft to edit it.</div> : (
-            <>
-              <textarea className="min-h-[240px] w-full rounded-2xl border border-outline-variant bg-surface-container-lowest p-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary" value={editorContent} onChange={(event) => setEditorContent(event.target.value)} />
-              <div className="grid gap-4 md:grid-cols-[1fr_auto_auto]">
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-semibold"><CalendarDays className="h-4 w-4" />Schedule distribution</label>
-                  <Input type="datetime-local" value={scheduleAt} onChange={(event) => setScheduleAt(event.target.value)} disabled={!entitlements?.canSchedule} />
-                </div>
-                <Button variant="outline" disabled={isSavingDraft} onClick={() => handleSaveDraft('draft')}>{isSavingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Draft'}</Button>
-                <div className="flex gap-3">
-                  <Button variant="outline" disabled={!canScheduleDraft || isSavingDraft} onClick={() => handleSaveDraft('scheduled')}><Send className="mr-2 h-4 w-4" />Schedule</Button>
-                  <Button disabled={isSavingDraft} onClick={() => handleSaveDraft('published')}>Publish Logged</Button>
-                </div>
+            <section className="space-y-3">
+              <div className="flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-inverse-surface text-sm font-bold text-white">3</span><div><h3 className="font-bold">Where will you share it?</h3><p className="text-sm text-on-surface-variant">Only compatible channels are available for the selected format.</p></div></div>
+              <div className="flex flex-wrap gap-2">
+                {SOCIAL_PLATFORMS.map((item) => {
+                  const supported = selectedTemplate.supportedPlatforms.includes(item.id);
+                  return <button key={item.id} type="button" disabled={!supported} onClick={() => setPlatform(item.id)} aria-pressed={platform === item.id} title={supported ? undefined : `Not available for ${selectedTemplate.name}`} className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${platform === item.id ? 'border-primary bg-primary text-white' : supported ? 'border-outline-variant hover:border-primary' : 'cursor-not-allowed border-transparent bg-surface-container-high text-on-surface-variant/55'}`}>{item.label}</button>;
+                })}
               </div>
-              <div className="rounded-2xl border border-outline-variant bg-surface-container-lowest p-4"><Markdown>{editorContent}</Markdown></div>
-            </>
-          )}
-        </Card>
-      </div>
+            </section>
+
+            <details className="rounded-2xl border border-outline-variant bg-surface-container-low p-4">
+              <summary className="cursor-pointer font-bold">Fine-tune the post <span className="ml-2 text-sm font-normal text-on-surface-variant">Optional</span></summary>
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <label className="space-y-2 text-sm font-semibold">Template<select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value as SocialTemplateId)} className="h-11 w-full rounded-xl border border-outline-variant bg-white px-3 font-normal">{SOCIAL_TEMPLATES.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
+                <label className="space-y-2 text-sm font-semibold">Tone<select value={tone} onChange={(event) => setTone(event.target.value as SocialTone)} className="h-11 w-full rounded-xl border border-outline-variant bg-white px-3 font-normal"><option value="professional">Professional</option><option value="friendly">Friendly</option><option value="adventurous">Adventurous</option><option value="luxurious">Luxurious</option><option value="urgent">Urgent</option></select></label>
+                <label className="space-y-2 text-sm font-semibold sm:col-span-2">Campaign hook<Input value={customHeadline} onChange={(event) => setCustomHeadline(event.target.value)} disabled={!selectedTemplate.supportsHeadlineOverride} placeholder={selectedTemplate.supportsHeadlineOverride ? 'Optional headline or campaign hook' : 'This format creates its own headline'} /></label>
+                <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={includePrice} onChange={(event) => setIncludePrice(event.target.checked)} className="h-4 w-4 accent-primary" />Include price</label>
+                <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={includeSpecialOffer} disabled={!selectedTemplate.supportsSpecialOffer} onChange={(event) => setIncludeSpecialOffer(event.target.checked)} className="h-4 w-4 accent-primary" />Include special offer</label>
+              </div>
+            </details>
+
+            <Button size="lg" className="h-14 w-full rounded-2xl text-base font-bold" onClick={handleGeneratePostSet} disabled={!selectedListing || !creativeSourceUrl || isGenerating || !contentEnabled}>
+              {isGenerating ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Sparkles className="mr-2 h-5 w-5" />}
+              Generate post set · 1 credit
+            </Button>
+          </Card>
+
+          <div className="space-y-6">
+            <Card className="overflow-hidden rounded-3xl p-0">
+              <div className="border-b border-outline-variant p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Creative source</p><h2 className="mt-1 text-xl font-bold">{selectedListing?.title ?? 'Choose a property'}</h2></div>
+              {creativeSourceUrl ? <img src={creativeSourceUrl} alt={`Selected creative for ${selectedListing?.title ?? 'listing'}`} className="aspect-[4/3] w-full object-cover" /> : <div className="flex aspect-[4/3] items-center justify-center bg-surface-container-low text-on-surface-variant"><ImageIcon className="mr-2 h-5 w-5" />No listing image</div>}
+              {selectedListing?.images?.length ? <div className="flex gap-2 overflow-x-auto p-4">{selectedListing.images.map((image, index) => <button key={image} type="button" aria-label={`Select listing image ${index + 1}`} onClick={() => setCreativeSourceUrl(image)} className={`shrink-0 overflow-hidden rounded-xl border-2 ${creativeSourceUrl === image ? 'border-primary' : 'border-transparent'}`}><img src={image} alt="" className="h-16 w-20 object-cover" /></button>)}</div> : null}
+            </Card>
+
+            <Card className="rounded-3xl p-5">
+              <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Generated post</p><h2 className="mt-1 text-xl font-bold">Preview</h2></div>{generatedCreative ? <button type="button" onClick={copyCaption} className="rounded-full border border-outline-variant px-3 py-2 text-sm font-semibold">{copiedCaption ? 'Copied' : 'Copy caption'}</button> : null}</div>
+              {generatedCreative ? <div className="mt-4 space-y-4"><p className="text-sm leading-6 text-on-surface-variant">{generatedCreative.caption}</p><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">{generatedCreative.assets.map((asset) => <div key={asset.id} className="overflow-hidden rounded-2xl border border-outline-variant"><img src={asset.dataUrl} alt={asset.label} className="w-full object-cover" /><button type="button" onClick={() => downloadDataUrl(asset.fileName, asset.dataUrl)} className="flex w-full items-center justify-center gap-2 p-3 text-sm font-semibold hover:bg-surface-container-low"><Download className="h-4 w-4" />Download {asset.label}</button></div>)}</div></div> : <div className="mt-4 rounded-2xl border border-dashed border-outline-variant p-8 text-center text-sm text-on-surface-variant"><Megaphone className="mx-auto mb-3 h-8 w-8 text-primary" />Your caption and visual pack will appear here.</div>}
+            </Card>
+          </div>
+        </div>
+      ) : null}
+
+      {activeView === 'drafts' ? (
+        <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+          <Card className="rounded-3xl p-4"><div className="p-2"><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Draft library</p><h2 className="mt-1 text-2xl font-bold">Ready for review</h2></div><div className="mt-3 max-h-[680px] space-y-2 overflow-y-auto">{drafts.length ? drafts.map((draft) => <button key={draft.id} type="button" onClick={() => setSelectedDraftId(draft.id)} className={`w-full rounded-2xl border p-4 text-left ${selectedDraftId === draft.id ? 'border-primary bg-primary/5' : 'border-outline-variant'}`}><div className="flex items-start justify-between gap-3"><span className="font-bold">{draft.listingTitle}</span><span className="rounded-full bg-surface-container-high px-2 py-1 text-[10px] font-bold uppercase">{getDraftStatusLabel(draft)}</span></div><p className="mt-1 text-xs text-on-surface-variant">{draft.templateName} · {getPlatformLabel(draft.platform)}</p></button>) : <div className="rounded-2xl border border-dashed border-outline-variant p-6 text-center text-sm text-on-surface-variant">Create your first post to start the draft library.</div>}</div></Card>
+          <Card className="rounded-3xl p-5 sm:p-7">{selectedDraft ? <div className="space-y-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Edit draft</p><h2 className="mt-1 text-2xl font-bold">{selectedDraft.listingTitle}</h2><p className="text-sm text-on-surface-variant">{selectedDraft.templateName} · {getPlatformLabel(selectedDraft.platform)} · {selectedDraft.tone}</p></div><button type="button" onClick={copyDraft} className="flex items-center gap-2 rounded-full border border-outline-variant px-4 py-2 text-sm font-semibold">{copiedDraft ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}{copiedDraft ? 'Copied' : 'Copy draft'}</button></div><textarea aria-label="Draft content" className="min-h-[300px] w-full rounded-2xl border border-outline-variant bg-surface-container-lowest p-5 text-sm leading-6 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" value={editorContent} onChange={(event) => setEditorContent(event.target.value)} /><div className="grid gap-4 lg:grid-cols-[1fr_auto]"><label className="space-y-2 text-sm font-semibold"><span className="flex items-center gap-2"><CalendarDays className="h-4 w-4" />Distribution reminder</span><Input type="datetime-local" value={scheduleAt} onChange={(event) => setScheduleAt(event.target.value)} disabled={!entitlements?.canSchedule} /></label><div className="flex flex-wrap items-end gap-2"><Button variant="outline" disabled={isSavingDraft} onClick={() => handleSaveDraft('draft')}>Save draft</Button><Button variant="outline" disabled={!canScheduleDraft || isSavingDraft} onClick={() => handleSaveDraft('scheduled')}><Send className="mr-2 h-4 w-4" />Schedule reminder</Button><Button disabled={isSavingDraft} onClick={() => handleSaveDraft('published')}>Record as published</Button></div></div><div className="rounded-2xl border border-outline-variant bg-surface-container-low p-5"><Markdown>{editorContent}</Markdown></div></div> : <div className="flex min-h-[420px] items-center justify-center text-center text-on-surface-variant"><div><PencilLine className="mx-auto mb-3 h-9 w-9 text-primary" /><p className="font-semibold">Choose a draft to review it.</p></div></div>}</Card>
+        </div>
+      ) : null}
+
+      {activeView === 'calendar' ? (
+        <Card className="rounded-3xl p-5 sm:p-7"><div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Distribution calendar</p><h2 className="mt-1 text-3xl font-bold">Know what goes out next.</h2><p className="mt-1 text-sm text-on-surface-variant">These are reminders and manual publication records—not direct social publishing.</p></div><Button className="rounded-full" onClick={() => setActiveView('create')}><Sparkles className="mr-2 h-4 w-4" />Create post</Button></div><div className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{scheduledDrafts.length ? scheduledDrafts.map((draft) => <article key={draft.id} className="rounded-2xl border border-outline-variant bg-surface-container-lowest p-5"><div className="flex items-start justify-between gap-3"><CalendarDays className="h-5 w-5 text-primary" /><span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${draft.status === 'published' ? 'bg-green-100 text-green-800' : 'bg-primary/10 text-primary'}`}>{getDraftStatusLabel(draft)}</span></div><h3 className="mt-5 font-bold">{draft.listingTitle}</h3><p className="mt-1 text-sm text-on-surface-variant">{getPlatformLabel(draft.platform)} · {draft.templateName}</p><p className="mt-4 text-sm font-semibold">{formatDraftLifecycleDate(draft)}</p><button type="button" onClick={() => { setSelectedDraftId(draft.id); setActiveView('drafts'); }} className="mt-4 text-sm font-bold text-primary hover:underline">Open draft</button></article>) : <div className="col-span-full rounded-2xl border border-dashed border-outline-variant p-12 text-center"><CalendarDays className="mx-auto mb-3 h-10 w-10 text-primary" /><h3 className="font-bold">No distribution activity yet</h3><p className="mt-1 text-sm text-on-surface-variant">Schedule a reminder from a draft when the post is ready.</p></div>}</div></Card>
+      ) : null}
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import { encoreRequest } from './encore-client';
 
+// ( |╲ ) Author: Klaasvaakie
+
 export interface KycSubmission {
   id: string;
   userId: string;
@@ -119,6 +121,7 @@ async function serializeKycBlob(
   return {
     filename: `${safeFilename}.jpg`,
     contentType: 'image/jpeg',
+    image: compressed,
     dataBase64: await blobToBase64(compressed),
   };
 }
@@ -139,6 +142,36 @@ export async function serializeKycDataUrl(filename: string, dataUrl: string) {
     maxHeight: 1200,
     maxBytes: 220 * 1024,
   });
+}
+
+export async function uploadKycAsset(params: { filename: string; contentType: string; image: Blob }) {
+  const upload = await encoreRequest<{ objectKey: string; uploadUrl: string }>(
+    '/ops/kyc/upload-url',
+    {
+      method: 'POST',
+      body: JSON.stringify({ filename: params.filename, contentType: params.contentType }),
+    },
+    { auth: true },
+  );
+
+  let response: Response;
+  try {
+    response = await fetch(upload.uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': params.contentType },
+      body: params.image,
+    });
+  } catch (error) {
+    throw new Error(
+      `The secure KYC image upload could not reach object storage. Check the storage CORS policy and try again. ${error instanceof Error ? error.message : ''}`.trim(),
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(`The secure KYC image upload failed with status ${response.status}.`);
+  }
+
+  return upload.objectKey;
 }
 
 export async function submitKyc(params: {

@@ -14,12 +14,10 @@ import {
   Plus,
   ChevronDown,
   ChevronRight,
-  Share2,
+  Megaphone,
   Sparkles,
   CalendarDays,
   UserCircle2,
-  LayoutTemplate,
-  Images,
   MessageSquareText,
   CreditCard,
   BadgeCheck,
@@ -37,7 +35,7 @@ export default function HostLayout() {
   const location = useLocation();
   const { logout, profile, user, refreshProfile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [openGroups, setOpenGroups] = useState<string[]>(['Hospitality Management', 'Social Media', 'Referral System']);
+  const [openGroups, setOpenGroups] = useState<string[]>(['Hospitality Management', 'Marketing', 'Referral System']);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const billingReturn = useMemo(() => parseBillingReturnParams(searchParams), [searchParams]);
   const subscriptionsModalOpen = searchParams.get('modal') === 'subscriptions';
@@ -114,14 +112,12 @@ export default function HostLayout() {
       ]
     },
     {
-      title: 'Social Media',
-      icon: Share2,
+      title: 'Marketing',
+      icon: Megaphone,
       items: [
-        { name: 'Content Studio', path: '/host/social', icon: Sparkles },
-        { name: 'New Post Ideas', path: '/host/social?tool=ideas', icon: Sparkles },
-        { name: 'Quick Templates', path: '/host/social?tool=templates', icon: LayoutTemplate },
-        { name: 'Media Collections', path: '/host/social?tool=media', icon: Images },
-        { name: 'Content Calendar', path: '/host/social?tool=calendar', icon: CalendarDays },
+        { name: 'Create Post', path: '/host/social', icon: Sparkles },
+        { name: 'Drafts', path: '/host/social?tool=drafts', icon: MessageSquareText },
+        { name: 'Calendar', path: '/host/social?tool=calendar', icon: CalendarDays },
       ]
     },
     {

@@ -200,13 +200,14 @@ describe('SocialDashboard', () => {
       customHeadline: '',
     });
 
+    await user.click(screen.getByRole('button', { name: /drafts/i }));
     const editor = await screen.findByDisplayValue(generatedDraft.content);
     await user.clear(editor);
     await user.type(editor, 'Edited scheduled caption for the weekend.');
 
     const scheduleInput = container.querySelector('input[type="datetime-local"]') as HTMLInputElement;
     await user.type(scheduleInput, '2026-05-01T09:30');
-    await user.click(screen.getByRole('button', { name: /schedule/i }));
+    await user.click(screen.getByRole('button', { name: /schedule reminder/i }));
 
     await waitFor(() => expect(updateContentDraftMock).toHaveBeenCalledWith({
       draftId: generatedDraft.id,
@@ -216,8 +217,7 @@ describe('SocialDashboard', () => {
     }));
   }, 10000);
 
-  it('keeps the content tools and wallet inside the studio tools dropdown', async () => {
-    const user = userEvent.setup();
+  it('presents the simplified create, drafts, and calendar workspace', async () => {
     render(
       <MemoryRouter>
         <SocialDashboard listings={[listing]} />
@@ -225,19 +225,14 @@ describe('SocialDashboard', () => {
     );
 
     await waitFor(() => expect(getContentEntitlementsMock).toHaveBeenCalled());
-
-    await user.click(screen.getByRole('button', { name: /studio tools/i }));
 
     expect(screen.getByRole('button', { name: /create post/i })).toBeInTheDocument();
-    expect(screen.getByText('New Post Ideas')).toBeInTheDocument();
-    expect(screen.getByText('Quick Templates')).toBeInTheDocument();
-    expect(screen.getByText('Media Collections')).toBeInTheDocument();
-    expect(screen.getByText('Content Calendar')).toBeInTheDocument();
-    expect(screen.getByText('Wallet')).toBeInTheDocument();
-    expect(screen.getByText('Credits available')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /drafts/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /calendar/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /three choices/i })).toBeInTheDocument();
   });
 
-  it('opens quick templates as a real template picker instead of a soon-only item', async () => {
+  it('maps a marketing goal to the right template and tone', async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter>
@@ -247,18 +242,19 @@ describe('SocialDashboard', () => {
 
     await waitFor(() => expect(getContentEntitlementsMock).toHaveBeenCalled());
 
-    await user.click(screen.getByRole('button', { name: /studio tools/i }));
-    await user.click(await screen.findByRole('button', { name: /quick templates/i }));
+    await user.click(screen.getByRole('button', { name: /promote an offer/i }));
+    await user.click(screen.getByRole('button', { name: /generate post set/i }));
 
-    expect(screen.getByRole('heading', { name: /quick templates/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /use special offer/i })).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /use special offer/i }));
-
-    expect(screen.getByText(/selected: special offer/i)).toBeInTheDocument();
+    await waitFor(() => expect(generateContentDraftMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: listing.id }),
+      'instagram',
+      'urgent',
+      'special_offer',
+      expect.objectContaining({ includeSpecialOffer: true }),
+    ));
   });
 
-  it('opens media collections and lets the host choose the creative source image', async () => {
+  it('lets the host choose the creative source image directly', async () => {
     const user = userEvent.setup();
     const listingWithImages = {
       ...listing,
@@ -273,8 +269,6 @@ describe('SocialDashboard', () => {
 
     await waitFor(() => expect(getContentEntitlementsMock).toHaveBeenCalled());
 
-    await user.click(screen.getByRole('button', { name: /studio tools/i }));
-    await user.click(screen.getByRole('button', { name: /media collections/i }));
     await user.click(screen.getByRole('button', { name: /select listing image 2/i }));
     await user.click(screen.getByRole('button', { name: /generate post set/i }));
 
@@ -307,7 +301,7 @@ describe('SocialDashboard', () => {
 
     await waitFor(() => expect(getContentEntitlementsMock).toHaveBeenCalled());
 
-    await user.click(screen.getByRole('button', { name: /studio tools/i }));
+    await user.click(screen.getByRole('button', { name: /included left/i }));
     await user.click(screen.getByRole('button', { name: /buy 10 content tokens/i }));
 
     await waitFor(() => expect(startBillingPaymentMock).toHaveBeenCalledWith({ purpose: 'content_credits', credits: 10 }));

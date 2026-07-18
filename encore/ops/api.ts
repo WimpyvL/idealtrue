@@ -320,6 +320,18 @@ function sanitizeKycFilename(filename: string) {
   return normalized.slice(0, 120) || "kyc-upload.bin";
 }
 
+async function assertKycUploadBelongsToUser(userId: string, objectKey: string) {
+  if (!objectKey.startsWith(`${userId}/`)) {
+    throw APIError.permissionDenied("KYC upload does not belong to this account.");
+  }
+
+  try {
+    await kycDocumentsBucket.attrs(objectKey);
+  } catch {
+    throw APIError.failedPrecondition("KYC image upload is missing or incomplete. Upload the image again.");
+  }
+}
+
 function decodeBase64Payload(dataBase64: string) {
   const normalized = dataBase64.trim().replace(/^data:[^;]+;base64,/, "");
   let buffer: Buffer;
@@ -479,6 +491,15 @@ export const submitKyc = api<{
       selfieImageKey = `${auth.userID}/${Date.now()}-${sanitizeKycFilename(params.selfieImageFilename)}`;
       await kycDocumentsBucket.upload(selfieImageKey, selfieImageData, { contentType: params.selfieImageContentType });
     }
+
+    if (!idImageKey || !selfieImageKey) {
+      throw APIError.invalidArgument("Both KYC images are required.");
+    }
+
+    await Promise.all([
+      assertKycUploadBelongsToUser(auth.userID, idImageKey),
+      assertKycUploadBelongsToUser(auth.userID, selfieImageKey),
+    ]);
 
     const existing = await opsDB.queryRow<KycSubmissionRow>`
       SELECT * FROM kyc_submissions WHERE user_id = ${auth.userID}

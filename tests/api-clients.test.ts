@@ -1,4 +1,5 @@
 // ( |╲ ) Author: Klaasvaakie
+// ( |╲ ) Author: Klaasvaakie
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -13,7 +14,7 @@ import { uploadListingMedia } from '../src/lib/media-client.ts';
 import { deleteAdminUser, getAdminPlatformSettings, listAdminHostBillingAccounts, listAdminNotifications, setAdminHostGreylist, setAdminUserAccountStatus } from '../src/lib/admin-client.ts';
 import { getMyHostBillingAccount, redeemHostVoucher } from '../src/lib/billing-client.ts';
 import { dismissNotification } from '../src/lib/notification-client.ts';
-import { reviewKycSubmission } from '../src/lib/ops-client.ts';
+import { reviewKycSubmission, uploadKycAsset } from '../src/lib/ops-client.ts';
 import { confirmPayment, deleteListing, getListing, mapReferralStatus, saveListing, submitPaymentProof, updateBookingStatus } from '../src/lib/platform-client.ts';
 import { getMyHostQuickReplies, saveMyHostQuickReplies } from '../src/lib/messaging-client.ts';
 
@@ -639,6 +640,38 @@ test('uploadListingMedia surfaces bucket CORS failures clearly for direct browse
       }),
     /CORS policy/i,
   );
+});
+
+test('uploadKycAsset sends image bytes to the private bucket through a signed upload URL', async () => {
+  installFetch((url, init) => {
+    if (url.endsWith('/ops/kyc/upload-url')) {
+      return createJsonResponse({
+        objectKey: 'host-1/identity.jpg',
+        uploadUrl: 'https://storage.example.com/host-1/identity.jpg?signature=abc',
+      });
+    }
+
+    if (url.startsWith('https://storage.example.com/')) {
+      return new Response(null, { status: 200 });
+    }
+
+    throw new Error(`Unexpected URL: ${url} ${init?.method || 'GET'}`);
+  });
+
+  const image = new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'image/jpeg' });
+  const objectKey = await uploadKycAsset({ filename: 'identity.jpg', contentType: 'image/jpeg', image });
+
+  assert.equal(objectKey, 'host-1/identity.jpg');
+  assert.equal(fetchCalls[0]?.url, `${DEFAULT_ENCORE_API_URL}/ops/kyc/upload-url`);
+  assert.equal(fetchCalls[0]?.init?.method, 'POST');
+  assert.deepEqual(JSON.parse(String(fetchCalls[0]?.init?.body)), {
+    filename: 'identity.jpg',
+    contentType: 'image/jpeg',
+  });
+  assert.equal(fetchCalls[1]?.url, 'https://storage.example.com/host-1/identity.jpg?signature=abc');
+  assert.equal(fetchCalls[1]?.init?.method, 'PUT');
+  assert.equal(getHeaders(fetchCalls[1]?.init).get('Content-Type'), 'image/jpeg');
+  assert.equal(fetchCalls[1]?.init?.body, image);
 });
 
 test('referral mapping preserves rejected rewards instead of corrupting them to pending', () => {

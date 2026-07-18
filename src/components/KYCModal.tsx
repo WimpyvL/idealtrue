@@ -1,3 +1,4 @@
+// ( |╲ ) Author: Klaasvaakie
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Loader2, ShieldCheck, Camera, IdCard, CheckCircle2, AlertCircle, Clock, X, RefreshCw } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
-import { serializeKycAsset, serializeKycDataUrl, submitKyc } from '@/lib/ops-client';
+import { serializeKycAsset, serializeKycDataUrl, submitKyc, uploadKycAsset } from '@/lib/ops-client';
 import { useEffectiveKycStatus } from '@/hooks/use-effective-kyc-status';
 
 interface KYCModalProps {
@@ -190,16 +191,16 @@ export default function KYCModal({ isOpen, onClose }: KYCModalProps) {
         serializeKycAsset(idFile),
         serializeKycDataUrl(`selfie-${Date.now()}.jpg`, formData.selfieImage),
       ]);
+      const [idImageKey, selfieImageKey] = await Promise.all([
+        uploadKycAsset(idImageAsset),
+        uploadKycAsset(selfieImageAsset),
+      ]);
 
       await submitKyc({
         idType: formData.idType,
         idNumber: formData.idNumber,
-        idImageFilename: idImageAsset.filename,
-        idImageContentType: idImageAsset.contentType,
-        idImageDataBase64: idImageAsset.dataBase64,
-        selfieImageFilename: selfieImageAsset.filename,
-        selfieImageContentType: selfieImageAsset.contentType,
-        selfieImageDataBase64: selfieImageAsset.dataBase64,
+        idImageKey,
+        selfieImageKey,
       });
       setShowSubmissionForm(false);
       await refreshKycStatus();

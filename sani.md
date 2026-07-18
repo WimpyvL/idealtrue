@@ -651,3 +651,28 @@ pm run lint failed on src/components/HostListingAccessGate.tsx because Button ty
 - Placed the accepted live Content Studio screenshot, three evidence-backed friction findings, and the simplified Create Post / Drafts / Calendar structure inside one named section.
 - Rendered and visually inspected the final section; the screenshot, headings, findings, and workflow cards are present without visible clipping or overlap.
 - Author: Klaasvaakie. Signature: ( |╲ )
+
+## 2026-07-18 - Social marketing workspace redesign
+
+- Replaced the overloaded Content Studio flow with a Marketing workspace organized around Create Post, Drafts, and Calendar.
+- Reduced post creation to three primary decisions: property, marketing goal, and channel; template, tone, headline, price, and offer settings remain available under optional fine-tuning.
+- Preserved real content-credit purchase, draft generation, image-pack generation, editing, reminder scheduling, and manual publication tracking contracts.
+- Renamed and reduced the host sidebar Social Media group to the clearer three-item Marketing group.
+- Updated focused UI and mobile-shell contracts; typecheck, lint, focused UI tests, and production build passed.
+- Browser-verified desktop and 390 × 844 mobile layouts, goal-driven channel changes, Drafts navigation, real listing imagery, and a clean console.
+- Completed screenshot-backed design QA against the Figma direction with `final result: passed`.
+- Author: Klaasvaakie. Signature: ( |╲ )
+
+## 2026-07-18 - Social redesign final verification
+
+- Final workspace diff check passed and the live browser preview was reset to its normal viewport and retained as the deliverable tab.
+- The complete verification command reached the existing contract suite, where four unrelated billing and availability source-pattern assertions failed; the redesigned social workspace's focused tests, lint, typecheck, build, and browser checks remain green.
+
+## 2026-07-18 - Signup email and KYC upload investigation
+
+- Traced signup confirmation delivery through the identity token and Resend transport path; the source path is present, but delivery requires `RESEND_API_KEY`, `AUTH_EMAIL_FROM`, and `IDEAL_STAY_APP_URL` in the active Encore environment.
+- Encore cloud secret inspection was blocked on this machine by Windows Application Control, so email delivery was not falsely claimed as repaired.
+- Replaced KYC's combined base64 JSON submission with direct signed uploads to the private KYC bucket, followed by a metadata-only submission.
+- Added backend ownership and object-existence validation before accepting KYC image keys, plus focused regression coverage.
+- Author: Klaasvaakie. Signature: ( |╲ )
+- Author: Klaasvaakie. Signature: ( |╲ )
