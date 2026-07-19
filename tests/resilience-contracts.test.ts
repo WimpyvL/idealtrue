@@ -25,8 +25,10 @@ test("availability migration normalizes conflicting rows before enforcing constr
   );
 
   assert.match(migration, /CREATE EXTENSION IF NOT EXISTS btree_gist/);
-  assert.match(migration, /UPDATE listing_availability_blocks/);
-  assert.match(migration, /DELETE FROM listing_availability_blocks/);
+  assert.match(migration, /DELETE FROM listing_availability_blocks\s+WHERE starts_on >= ends_on/);
+  assert.match(migration, /overlapping_rows AS/);
+  assert.doesNotMatch(migration, /\boverlaps\s+AS\s*\(/i);
+  assert.match(migration, /DELETE FROM listing_availability_blocks target\s+USING overlapping_rows/);
   assert.match(migration, /ADD CONSTRAINT listing_availability_blocks_no_overlap/);
   assert.match(migration, /ADD CONSTRAINT listing_availability_blocks_valid_range/);
 });
