@@ -15,6 +15,7 @@ Ideal Stay is an Encore-first accommodation marketplace and host operations plat
 - Auth session: HttpOnly cookie, restored through `identity.getSession`.
 - Payments: server-owned Yoco Checkout-backed payment intents through `POST /billing/payments`.
 - Architecture and release path: `docs/architecture-release-map.md`.
+- Active fragile-zone register: `docs/release-risk-register.md`.
 
 Do not rebuild old Firebase/template assumptions. The durable architecture is the Encore backend.
 
@@ -49,7 +50,7 @@ Playwright tests mock `/api/encore/**`. They prove browser workflow behavior and
 
 ## Current Coverage Map
 
-Use this as a navigation index, not as a substitute for reading the matrix:
+Use this as a navigation index, not as a substitute for reading the matrix or the risk register:
 
 - Auth: `tests/e2e/auth-account.spec.ts`, `tests/ui/auth-context.test.tsx`, `tests/session-cookie.test.ts`, `tests/signup-flow.test.ts`.
 - Booking/enquiries/payment proof: `tests/e2e/booking-payment-review.spec.ts`, `tests/booking-workflow.test.ts`, `tests/inquiry-state.test.ts`, `tests/ui/host-enquiries.test.tsx`.
@@ -64,10 +65,11 @@ Use this as a navigation index, not as a substitute for reading the matrix:
 
 1. Update `tests/fixtures/workflows.ts` when the workflow state model changes.
 2. Update `docs/workflow-validation-matrix.md` in the same change.
-3. Add the smallest useful test first.
-4. Put provider-specific tests in focused contract files instead of kitchen-sink client tests.
-5. Keep Playwright route mocks deterministic and based on canonical fixture shapes.
-6. Run the focused tests first, then the relevant baseline gate.
+3. Check `docs/release-risk-register.md` when the change touches a known fragile zone.
+4. Add the smallest useful test first.
+5. Put provider-specific tests in focused contract files instead of kitchen-sink client tests.
+6. Keep Playwright route mocks deterministic and based on canonical fixture shapes.
+7. Run the focused tests first, then the relevant baseline gate.
 
 If a workflow row says a test exists, `tests/workflow-coverage.test.ts` should be able to find that file. If a route or endpoint is removed, delete it from the matrix in the same commit.
 
@@ -77,6 +79,7 @@ Fast focused checks:
 
 ```bash
 npx tsx --test tests/workflow-coverage.test.ts
+npx tsx --test tests/release-risk-register.test.ts
 npx tsx --test tests/payment-yoco-contracts.test.ts
 npx playwright test tests/e2e/host-billing.spec.ts
 npm run lint
@@ -101,9 +104,9 @@ npm run smoke:live
 
 ## Current Gaps
 
-The platform is not at “every possible thing that can happen is tested.” That is a slogan, not an engineering state. The actionable bar is: every workflow has a happy path, a key rejection path, permission rules, async side effects, notification side effects, and external boundaries documented and covered at the right layer.
+The platform is not at "every possible thing that can happen is tested." That is a slogan, not an engineering state. The actionable bar is: every workflow has a happy path, a key rejection path, permission rules, async side effects, notification side effects, and external boundaries documented and covered at the right layer.
 
-Known next coverage areas remain in `docs/workflow-validation-matrix.md` under `Required next coverage`. Highest leverage gaps:
+Known next coverage areas remain in `docs/workflow-validation-matrix.md` under `Required next coverage`, and release-sensitive fragile zones remain in `docs/release-risk-register.md`. Highest leverage gaps:
 
 - backend auth token expiry/reuse tests
 - backend booking and dispute permission/state-transition tests
