@@ -18,7 +18,7 @@ BEGIN
       ) AS rn
     FROM listing_availability_blocks
   ),
-  overlaps AS (
+  overlapping_rows AS (
     SELECT a.id
     FROM ordered_rows a
     JOIN ordered_rows b
@@ -28,8 +28,8 @@ BEGIN
       AND b.starts_on < a.ends_on
   )
   DELETE FROM listing_availability_blocks target
-  USING overlaps
-  WHERE target.id = overlaps.id;
+  USING overlapping_rows
+  WHERE target.id = overlapping_rows.id;
 END $$;
 
 ALTER TABLE listing_availability_blocks
