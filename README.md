@@ -18,7 +18,7 @@ Access to this repository does not transfer ownership, grant an implied license,
 
 Third-party dependencies remain governed by their own licenses. Those dependency licenses do not grant any rights to the Ideal Stay application code, brand, product logic, or proprietary materials.
 
-See [`LICENSE`](/C:/Git%20Repos/IdealTrue/LICENSE) for the binding repository license notice.
+See [`LICENSE`](LICENSE) for the binding repository license notice.
 
 ## Product Scope
 
@@ -44,7 +44,7 @@ The project is Encore-first. Firebase template leftovers are not the architectur
 
 ### Backend
 
-- Encore TypeScript app in [`encore`](/C:/Git%20Repos/IdealTrue/encore)
+- Encore TypeScript app in [`encore`](encore)
 - services: `identity`, `catalog`, `booking`, `billing`, `messaging`, `referrals`, `reviews`, `ops`, and `analytics`
 - provisioned SQL databases
 - buckets for listing media, chat attachments, KYC documents, and moderation evidence
@@ -192,10 +192,12 @@ If `staging smoke` fails within seconds, read the `Validate staging smoke enviro
 
 ## Workflow Documentation
 
-- [`docs/booking-and-enquiry-workflow.md`](/C:/Git%20Repos/IdealTrue/docs/booking-and-enquiry-workflow.md)
-- [`docs/workflow-validation-matrix.md`](/C:/Git%20Repos/IdealTrue/docs/workflow-validation-matrix.md)
-- [`docs/developer-handoff.md`](/C:/Git%20Repos/IdealTrue/docs/developer-handoff.md)
-- [`docs/encore-deployment.md`](/C:/Git%20Repos/IdealTrue/docs/encore-deployment.md)
+- [`docs/architecture-release-map.md`](docs/architecture-release-map.md)
+- [`docs/release-risk-register.md`](docs/release-risk-register.md)
+- [`docs/booking-and-enquiry-workflow.md`](docs/booking-and-enquiry-workflow.md)
+- [`docs/workflow-validation-matrix.md`](docs/workflow-validation-matrix.md)
+- [`docs/developer-handoff.md`](docs/developer-handoff.md)
+- [`docs/encore-deployment.md`](docs/encore-deployment.md)
 
 ## Current Engineering Priorities
 
