@@ -31,6 +31,12 @@ This map shows how a browser action moves through the frontend, Vercel/local pro
 | Notifications | app navigation and dashboards | `src/context/NotificationContext.tsx`, `src/lib/notification-client.ts` | `encore/ops/notifications.ts` and service callers | Ops DB notification records and domain-event producers. |
 | Reviews and referrals | `/guest`, `/referral`, `/host/referrals`, `/admin` | `src/lib/platform-client.ts`, `src/lib/admin-client.ts` | `encore/reviews/api.ts`, `encore/referrals/api.ts` | Reviews DB, referrals DB, moderation and payout state. |
 
+## Risk Register
+
+The release risk register lives in [`docs/release-risk-register.md`](docs/release-risk-register.md). It is the source of truth for current fragile zones: dense backend service files, environment drift, mocked e2e limits, manual frontend API clients, workflow coverage gaps, social publishing wording, dispute depth, historical notes, and portable documentation links.
+
+Treat the register as a release checklist. If a change touches a registered risk, the PR must either reduce that risk with code/tests or state why the risk remains and which follow-up owns it.
+
 ## Contract Change Checklist
 
 Use this checklist when changing any API request/response shape, workflow state, enum, or database-backed record.
@@ -41,6 +47,7 @@ Use this checklist when changing any API request/response shape, workflow state,
 4. Update route/page/UI tests when visible behavior changes.
 5. Update `tests/fixtures/workflows.ts` and `docs/workflow-validation-matrix.md` when workflow ownership, states, entry points, or required coverage changes.
 6. Keep old endpoint names out of docs and diagrams when replacing backend routes.
+7. Check `docs/release-risk-register.md` and update it when the change reduces, introduces, or reclassifies a fragile zone.
 
 ## Proxy And Session Invariants
 
@@ -59,7 +66,7 @@ Run the narrowest useful check first while developing, then climb this ladder be
 
 | Stage | Command or gate | What it proves |
 | --- | --- | --- |
-| Focused unit/contract | `npx tsx --test tests/<file>.test.ts` | The touched business rule, client mapping, proxy utility, provider contract, or workflow fixture behaves as expected. |
+| Focused unit/contract | `npx tsx --test tests/<file>.test.ts` | The touched business rule, client mapping, proxy utility, provider contract, workflow fixture, or risk-register guard behaves as expected. |
 | Frontend/backend static gate | `npm run lint` and `cd encore && npx tsc --noEmit` | TypeScript and ESLint agree across frontend, server helpers, and Encore. |
 | Full local test gate | `npm run test` | Node contract tests and Vitest UI tests pass. Live smoke is skipped unless explicitly enabled. |
 | Browser workflow gate | `npm run test:e2e` | Mocked Playwright journeys still match frontend workflow contracts. This does not prove live Encore health. |
