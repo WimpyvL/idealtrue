@@ -49,7 +49,52 @@ interface SaveHostQuickRepliesParams {
   houseRules?: string | null;
 }
 
-function mapMessage(row: MessageRow): MessageRecord {
+interface RequestAttachmentUploadParams {
+  bookingId: string;
+  filename: string;
+  contentType?: string | null;
+  fileSize?: number | null;
+}
+
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const ALLOWED_ATTACHMENT_CONTENT_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "text/plain",
+]);
+
+function isHttpUrl(value: string) {
+  return /^https?:\/\//i.test(value);
+}
+
+function sanitizeAttachmentFilename(filename: string) {
+  const normalized = filename.trim().replace(/[^a-zA-Z0-9._-]/g, "_");
+  return normalized.slice(0, 120) || "chat-attachment.bin";
+}
+
+async function resolveAttachmentUrl(attachmentRef: string | null) {
+  if (!attachmentRef) {
+    return null;
+  }
+  if (isHttpUrl(attachmentRef)) {
+    return attachmentRef;
+  }
+
+  const signed = await chatAttachmentBucket.signedDownloadUrl(attachmentRef, { ttl: 900 });
+  return signed.url;
+}
+
+async function mapMessageForRead(row: MessageRow): Promise<MessageRecord> {
+  let attachmentUrl: string | null = null;
+
+  try {
+    attachmentUrl = await resolveAttachmentUrl(row.attachment_url);
+  } catch {
+    attachmentUrl = null;
+  }
+
   return {
     id: row.id,
     bookingId: row.booking_id,
@@ -58,7 +103,7 @@ function mapMessage(row: MessageRow): MessageRecord {
     text: row.text,
     isSystem: row.is_system,
     suggestionType: row.suggestion_type,
-    attachmentUrl: row.attachment_url,
+    attachmentUrl,
     createdAt: row.created_at,
   };
 }
@@ -105,6 +150,22 @@ async function requireBookingParticipant(bookingId: string, userId: string) {
   return booking;
 }
 
+async function assertAttachmentBelongsToSender(bookingId: string, userId: string, attachmentRef: string | null | undefined) {
+  if (!attachmentRef || isHttpUrl(attachmentRef)) {
+    return;
+  }
+
+  if (!attachmentRef.startsWith(`${bookingId}/${userId}/`)) {
+    throw APIError.permissionDenied("Attachment does not belong to this booking conversation.");
+  }
+
+  try {
+    await chatAttachmentBucket.attrs(attachmentRef);
+  } catch {
+    throw APIError.failedPrecondition("Attachment upload is missing or incomplete. Upload the file again.");
+  }
+}
+
 export const listMessages = api<{ bookingId: string }, { messages: MessageRecord[] }>(
   { expose: true, method: "GET", path: "/messages/:bookingId", auth: true },
   async ({ bookingId }) => {
@@ -115,7 +176,7 @@ export const listMessages = api<{ bookingId: string }, { messages: MessageRecord
       WHERE booking_id = ${bookingId}
       ORDER BY created_at ASC
     `;
-    return { messages: rows.map(mapMessage) };
+    return { messages: await Promise.all(rows.map(mapMessageForRead)) };
   },
 );
 
@@ -128,12 +189,21 @@ export const sendMessage = api<SendMessageParams, { message: MessageRecord }>(
     if (params.receiverId !== expectedReceiverId) {
       throw APIError.failedPrecondition("Messages can only be sent to the other booking participant.");
     }
+
+    const text = params.text.trim();
+    const attachmentRef = params.attachmentUrl?.trim() || null;
+    if (!text && !attachmentRef && !params.isSystem) {
+      throw APIError.invalidArgument("Message text or attachment is required.");
+    }
+
+    await assertAttachmentBelongsToSender(params.bookingId, auth.userID, attachmentRef);
+
     const id = randomUUID();
     const now = new Date().toISOString();
 
     await messagingDB.exec`
       INSERT INTO messages (id, booking_id, sender_id, receiver_id, text, is_system, suggestion_type, attachment_url, created_at)
-      VALUES (${id}, ${params.bookingId}, ${auth.userID}, ${params.receiverId}, ${params.text}, ${params.isSystem ?? false}, ${params.suggestionType ?? null}, ${params.attachmentUrl ?? null}, ${now})
+      VALUES (${id}, ${params.bookingId}, ${auth.userID}, ${params.receiverId}, ${text}, ${params.isSystem ?? false}, ${params.suggestionType ?? null}, ${attachmentRef}, ${now})
     `;
 
     if (!params.isSystem && auth.userID === booking.hostId) {
@@ -168,10 +238,10 @@ export const sendMessage = api<SendMessageParams, { message: MessageRecord }>(
         bookingId: params.bookingId,
         senderId: auth.userID,
         receiverId: params.receiverId,
-        text: params.text,
+        text,
         isSystem: params.isSystem ?? false,
         suggestionType: params.suggestionType ?? null,
-        attachmentUrl: params.attachmentUrl ?? null,
+        attachmentUrl: await resolveAttachmentUrl(attachmentRef),
         createdAt: now,
       },
     };
@@ -223,12 +293,20 @@ export const saveMyHostQuickReplies = api<SaveHostQuickRepliesParams, { quickRep
   },
 );
 
-export const requestAttachmentUpload = api<{ bookingId: string; filename: string }, { objectKey: string; uploadUrl: string }>(
+export const requestAttachmentUpload = api<RequestAttachmentUploadParams, { objectKey: string; uploadUrl: string }>(
   { expose: true, method: "POST", path: "/messages/attachments/upload-url", auth: true },
-  async ({ bookingId, filename }) => {
+  async ({ bookingId, filename, contentType, fileSize }) => {
     const auth = requireAuth();
     await requireBookingParticipant(bookingId, auth.userID);
-    const objectKey = `${bookingId}/${auth.userID}/${Date.now()}-${filename}`;
+
+    if (contentType && !ALLOWED_ATTACHMENT_CONTENT_TYPES.has(contentType)) {
+      throw APIError.invalidArgument("Unsupported attachment content type.");
+    }
+    if (typeof fileSize === "number" && (!Number.isFinite(fileSize) || fileSize <= 0 || fileSize > MAX_ATTACHMENT_BYTES)) {
+      throw APIError.invalidArgument("Attachment must be between 1 byte and 10MB.");
+    }
+
+    const objectKey = `${bookingId}/${auth.userID}/${Date.now()}-${sanitizeAttachmentFilename(filename)}`;
     const signed = await chatAttachmentBucket.signedUploadUrl(objectKey, { ttl: 900 });
     return { objectKey, uploadUrl: signed.url };
   },
