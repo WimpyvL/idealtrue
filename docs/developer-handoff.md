@@ -14,6 +14,7 @@ Ideal Stay is an Encore-first accommodation marketplace and host operations plat
 - API access from the browser: same-origin proxy through `/api/encore/**`.
 - Auth session: HttpOnly cookie, restored through `identity.getSession`.
 - Payments: server-owned Yoco Checkout-backed payment intents through `POST /billing/payments`.
+- Architecture and release path: `docs/architecture-release-map.md`.
 
 Do not rebuild old Firebase/template assumptions. The durable architecture is the Encore backend.
 
