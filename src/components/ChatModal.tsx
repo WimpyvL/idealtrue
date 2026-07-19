@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Booking, HostQuickReplySettings, Listing, Message } from '@/types';
-import { X, Send, Info, Home, MapPin, CreditCard, CheckCircle2, Loader2, HelpCircle, Clock3 } from 'lucide-react';
+import { X, Send, Info, Home, MapPin, CreditCard, CheckCircle2, Loader2, HelpCircle, Clock3, Paperclip } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { getMyHostQuickReplies, listMessages, sendMessage as sendPlatformMessage } from '@/lib/messaging-client';
+import { getMyHostQuickReplies, listMessages, sendMessage as sendPlatformMessage, uploadMessageAttachment } from '@/lib/messaging-client';
 import {
   canGuestPay,
   getGuestInquiryDeadlineText,
@@ -33,10 +33,12 @@ export default function ChatModal({
 }: ChatModalProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [loadedHostQuickReplies, setLoadedHostQuickReplies] = useState<HostQuickReplySettings | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isHost = currentUserId === booking.hostId;
   const otherPartyId = isHost ? booking.guestId : booking.hostId;
@@ -97,26 +99,55 @@ export default function ChatModal({
     }
   }, [messages]);
 
-  const sendMessage = async (text: string, isSystem = false, suggestionType?: Message['suggestionType']) => {
-    if (!text.trim() && !isSystem) return;
-    
+  const sendMessage = async (
+    text: string,
+    isSystem = false,
+    suggestionType?: Message['suggestionType'],
+    attachmentUrl?: string | null,
+  ) => {
+    if (!text.trim() && !attachmentUrl && !isSystem) return;
+
     setIsSending(true);
     try {
-        const savedMessage = await sendPlatformMessage({
-          bookingId: booking.id,
-          receiverId: otherPartyId,
-          text,
+      const savedMessage = await sendPlatformMessage({
+        bookingId: booking.id,
+        receiverId: otherPartyId,
+        text,
         isSystem,
         suggestionType,
+        attachmentUrl,
       });
       setMessages((current) => [...current, savedMessage]);
 
       setNewMessage('');
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } catch (error) {
       console.error('Failed to send message:', error);
     } finally {
       setIsSending(false);
     }
+  };
+
+  const handleSubmitMessage = async () => {
+    if (!newMessage.trim() && !selectedFile) return;
+
+    let attachmentKey: string | null = null;
+    setIsSending(true);
+    try {
+      if (selectedFile) {
+        attachmentKey = await uploadMessageAttachment({ bookingId: booking.id, file: selectedFile });
+      }
+    } catch (error) {
+      console.error('Failed to upload message attachment:', error);
+      setIsSending(false);
+      return;
+    }
+    setIsSending(false);
+
+    await sendMessage(newMessage, false, undefined, attachmentKey);
   };
 
   const getSuggestionIcon = (suggestionType: Message['suggestionType']) => {
@@ -236,13 +267,27 @@ export default function ChatModal({
               >
                 <div 
                   className={cn(
-                    "p-3 rounded-2xl text-sm shadow-sm",
+                    "space-y-2 p-3 rounded-2xl text-sm shadow-sm",
                     isMine 
                       ? "bg-primary text-white rounded-tr-none" 
                       : "bg-surface-container-high text-on-surface rounded-tl-none"
                   )}
                 >
-                  {msg.text}
+                  {msg.text ? <p>{msg.text}</p> : null}
+                  {msg.attachmentUrl ? (
+                    <a
+                      href={msg.attachmentUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={cn(
+                        'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-bold underline-offset-2 hover:underline',
+                        isMine ? 'border-white/40 text-white' : 'border-outline-variant text-primary',
+                      )}
+                    >
+                      <Paperclip className="h-3 w-3" />
+                      Attachment
+                    </a>
+                  ) : null}
                 </div>
                 <span className="text-[10px] text-outline-variant mt-1 px-1">
                   {format(new Date(msg.createdAt), 'HH:mm')}
@@ -281,24 +326,62 @@ export default function ChatModal({
         <form 
           onSubmit={(e) => {
             e.preventDefault();
-            sendMessage(newMessage);
+            void handleSubmitMessage();
           }}
-          className="flex gap-2"
+          className="space-y-2"
         >
-          <Input 
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Type a message..."
-            className="rounded-2xl bg-surface-container-lowest border-outline-variant focus-visible:ring-primary"
-          />
-          <Button 
-            type="submit" 
-            size="icon" 
-            className="rounded-full shrink-0"
-            disabled={!newMessage.trim() || isSending}
-          >
-            {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          </Button>
+          {selectedFile ? (
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-outline-variant bg-surface-container-lowest px-3 py-2 text-xs text-on-surface-variant">
+              <span className="min-w-0 truncate font-medium">{selectedFile.name}</span>
+              <button
+                type="button"
+                className="shrink-0 rounded-full p-1 hover:bg-surface-container-high"
+                onClick={() => {
+                  setSelectedFile(null);
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                  }
+                }}
+                aria-label="Remove attachment"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : null}
+          <div className="flex gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept="image/jpeg,image/png,image/webp,application/pdf,text/plain"
+              onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+            />
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="rounded-full shrink-0"
+              disabled={isSending}
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Attach file"
+            >
+              <Paperclip className="w-4 h-4" />
+            </Button>
+            <Input 
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder="Type a message..."
+              className="rounded-2xl bg-surface-container-lowest border-outline-variant focus-visible:ring-primary"
+            />
+            <Button 
+              type="submit" 
+              size="icon" 
+              className="rounded-full shrink-0"
+              disabled={(!newMessage.trim() && !selectedFile) || isSending}
+            >
+              {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </Button>
+          </div>
         </form>
       </div>
     </div>
