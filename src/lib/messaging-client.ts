@@ -1,4 +1,5 @@
 import { encoreRequest } from './encore-client';
+import { uploadToSignedUrl } from './media-client';
 import type { HostQuickReplySettings, Message } from '@/types';
 
 interface EncoreMessage {
@@ -50,6 +51,25 @@ export async function sendMessage(params: {
   );
 
   return mapMessage(response.message);
+}
+
+export async function uploadMessageAttachment(params: { bookingId: string; file: File }) {
+  const signed = await encoreRequest<{ objectKey: string; uploadUrl: string }>(
+    '/messages/attachments/upload-url',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        bookingId: params.bookingId,
+        filename: params.file.name,
+        contentType: params.file.type || 'application/octet-stream',
+        fileSize: params.file.size,
+      }),
+    },
+    { auth: true },
+  );
+
+  await uploadToSignedUrl(signed.uploadUrl, params.file);
+  return signed.objectKey;
 }
 
 function normalizeQuickReply(value: string | null | undefined) {
