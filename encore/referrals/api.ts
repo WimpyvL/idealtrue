@@ -16,6 +16,8 @@ interface RewardReferralParams {
   note?: string | null;
 }
 
+type RewardStatus = "pending" | "earned" | "paid" | "rejected";
+
 type RewardRow = {
   id: string;
   referrer_id: string;
@@ -23,7 +25,7 @@ type RewardRow = {
   trigger: "signup" | "booking" | "subscription";
   program: ReferralProgram;
   amount: number;
-  status: "pending" | "earned" | "paid" | "rejected";
+  status: RewardStatus;
   source_subscription_id: string | null;
   note: string | null;
   created_at: string;
@@ -53,6 +55,10 @@ const GUEST_SUBSCRIPTION_REWARD: Record<ReferralTier, number> = {
   gold: 3,
 };
 
+const REFERRAL_TRIGGERS = new Set<RewardRow["trigger"]>(["signup", "booking", "subscription"]);
+const REFERRAL_PROGRAMS = new Set<ReferralProgram>(["guest", "host"]);
+const REFERRAL_STATUSES = new Set<RewardStatus>(["pending", "earned", "paid", "rejected"]);
+
 function mapReward(row: RewardRow): ReferralRewardRecord {
   return {
     id: row.id,
@@ -80,6 +86,11 @@ function getSubscriptionRewardAmount(role: UserRole, tier: ReferralTier) {
   return role === "host" ? HOST_SUBSCRIPTION_REWARD[tier] : GUEST_SUBSCRIPTION_REWARD[tier];
 }
 
+function normalizeRewardNote(note: string | null | undefined) {
+  const trimmed = note?.trim();
+  return trimmed ? trimmed.slice(0, 500) : null;
+}
+
 async function getUserByReferralCode(referralCode: string) {
   return identityDB.queryRow<IdentityUserRow>`
     SELECT id, role, balance, referral_count, tier, referral_code, referred_by_code
@@ -94,6 +105,57 @@ async function getUserById(userId: string) {
     FROM users
     WHERE id = ${userId}
   `;
+}
+
+async function assertManualRewardAllowed(params: {
+  referrerId: string;
+  referredUserId: string;
+  trigger: RewardRow["trigger"];
+  program: ReferralProgram;
+  amount: number;
+  status: RewardStatus;
+  sourceSubscriptionId?: string | null;
+}) {
+  if (!REFERRAL_TRIGGERS.has(params.trigger)) {
+    throw APIError.invalidArgument("Invalid referral reward trigger.");
+  }
+  if (!REFERRAL_PROGRAMS.has(params.program)) {
+    throw APIError.invalidArgument("Invalid referral reward program.");
+  }
+  if (!REFERRAL_STATUSES.has(params.status)) {
+    throw APIError.invalidArgument("Invalid referral reward status.");
+  }
+  if (!Number.isFinite(params.amount) || params.amount <= 0) {
+    throw APIError.invalidArgument("Reward amount must be positive.");
+  }
+  if (params.referrerId === params.referredUserId) {
+    throw APIError.failedPrecondition("A user cannot refer themselves.");
+  }
+
+  const [referrer, referredUser, duplicate] = await Promise.all([
+    getUserById(params.referrerId),
+    getUserById(params.referredUserId),
+    referralsDB.queryRow<{ id: string }>`
+      SELECT id
+      FROM referral_rewards
+      WHERE referrer_id = ${params.referrerId}
+        AND referred_user_id = ${params.referredUserId}
+        AND trigger = ${params.trigger}
+        AND program = ${params.program}
+        AND COALESCE(source_subscription_id, '') = ${params.sourceSubscriptionId ?? ""}
+      LIMIT 1
+    `,
+  ]);
+
+  if (!referrer) {
+    throw APIError.notFound("Referrer not found.");
+  }
+  if (!referredUser) {
+    throw APIError.notFound("Referred user not found.");
+  }
+  if (duplicate) {
+    throw APIError.failedPrecondition("A matching referral reward already exists.");
+  }
 }
 
 async function creditReferrer(db: IdentityExecutor, referrer: IdentityUserRow) {
@@ -242,19 +304,29 @@ export const rewardReferral = api<RewardReferralParams, { rewardId: string }>(
   { expose: true, method: "POST", path: "/referrals/rewards", auth: true },
   async ({ referredUserId, trigger, amount, program, sourceSubscriptionId, note }) => {
     const auth = requireRole("admin", "support");
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw APIError.invalidArgument("Reward amount must be positive.");
-    }
+    const rewardProgram = program ?? "guest";
+    const rewardStatus: RewardStatus = "earned";
+    await assertManualRewardAllowed({
+      referrerId: auth.userID,
+      referredUserId,
+      trigger,
+      program: rewardProgram,
+      amount,
+      status: rewardStatus,
+      sourceSubscriptionId,
+    });
+
     const rewardId = randomUUID();
     const now = new Date().toISOString();
+    const rewardNote = normalizeRewardNote(note);
 
     await referralsDB.exec`
       INSERT INTO referral_rewards (
         id, referrer_id, referred_user_id, trigger, program, amount, status, source_subscription_id, note, created_at
       )
       VALUES (
-        ${rewardId}, ${auth.userID}, ${referredUserId}, ${trigger}, ${program ?? "guest"}, ${amount},
-        ${"earned"}, ${sourceSubscriptionId ?? null}, ${note ?? null}, ${now}
+        ${rewardId}, ${auth.userID}, ${referredUserId}, ${trigger}, ${rewardProgram}, ${amount},
+        ${rewardStatus}, ${sourceSubscriptionId ?? null}, ${rewardNote}, ${now}
       )
     `;
 
@@ -298,17 +370,28 @@ export const createAdminReferralReward = api<{
   trigger: "signup" | "booking" | "subscription";
   program?: ReferralProgram;
   amount: number;
-  status?: "pending" | "earned" | "paid" | "rejected";
+  status?: RewardStatus;
   sourceSubscriptionId?: string | null;
   note?: string | null;
 }, { reward: ReferralRewardRecord }>(
   { expose: true, method: "POST", path: "/admin/referrals", auth: true },
   async ({ referrerId, referredUserId, trigger, program, amount, status, sourceSubscriptionId, note }) => {
     requireRole("admin", "support");
-    const id = randomUUID();
-    const createdAt = new Date().toISOString();
     const rewardStatus = status ?? "earned";
     const rewardProgram = program ?? "guest";
+    await assertManualRewardAllowed({
+      referrerId,
+      referredUserId,
+      trigger,
+      program: rewardProgram,
+      amount,
+      status: rewardStatus,
+      sourceSubscriptionId,
+    });
+
+    const id = randomUUID();
+    const createdAt = new Date().toISOString();
+    const rewardNote = normalizeRewardNote(note);
 
     await referralsDB.exec`
       INSERT INTO referral_rewards (
@@ -316,7 +399,7 @@ export const createAdminReferralReward = api<{
       )
       VALUES (
         ${id}, ${referrerId}, ${referredUserId}, ${trigger}, ${rewardProgram}, ${amount}, ${rewardStatus},
-        ${sourceSubscriptionId ?? null}, ${note ?? null}, ${createdAt}
+        ${sourceSubscriptionId ?? null}, ${rewardNote}, ${createdAt}
       )
     `;
 
@@ -339,10 +422,14 @@ export const deleteAdminReferralReward = api<{ rewardId: string }, { deleted: tr
   { expose: true, method: "DELETE", path: "/admin/referrals/:rewardId", auth: true },
   async ({ rewardId }) => {
     requireRole("admin", "support");
-    await referralsDB.exec`
+    const deleted = await referralsDB.queryRow<{ id: string }>`
       DELETE FROM referral_rewards
       WHERE id = ${rewardId}
+      RETURNING id
     `;
+    if (!deleted) {
+      throw APIError.notFound("Referral reward not found.");
+    }
     return { deleted: true };
   },
 );
