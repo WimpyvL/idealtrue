@@ -137,7 +137,7 @@ async function prepareImageUpload(
   };
 }
 
-async function uploadToSignedUrl(uploadUrl: string, file: File) {
+export async function uploadToSignedUrl(uploadUrl: string, file: File) {
   let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -158,7 +158,7 @@ async function uploadToSignedUrl(uploadUrl: string, file: File) {
   }
   if (lastError instanceof TypeError && uploadUrl.includes('storage.googleapis.com')) {
     throw new Error(
-      'Direct storage upload failed after retries. Check the listing media bucket CORS policy and the current network connection.',
+      'Direct storage upload failed after retries. Check the storage bucket CORS policy and the current network connection.',
     );
   }
   throw lastError instanceof Error ? lastError : new Error('Upload failed before completion.');
