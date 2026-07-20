@@ -21,7 +21,7 @@ import {
   verifyEmailToken,
 } from '../src/lib/identity-client';
 import { getKycSubmissionAssets, getMyKycSubmission, listKycSubmissions, reviewKycSubmission, submitKyc } from '../src/lib/ops-client';
-import { listMessages, sendMessage } from '../src/lib/messaging-client';
+import { listMessages, sendMessage, uploadMessageAttachment } from '../src/lib/messaging-client';
 import { createListingReview, listListingReviews, listReferralRewards } from '../src/lib/platform-client';
 import {
   workflowBilling,
@@ -272,9 +272,17 @@ test('content studio clients cover entitlements, draft lifecycle, credit checkou
 });
 
 test('messaging clients use booking-scoped message endpoints and preserve attachment URLs', async () => {
+  const objectKey = `${workflowBookings.confirmed.id}/${workflowUsers.host.id}/receipt.pdf`;
+
   installFetch((url) => {
     if (url.endsWith(`/messages/${workflowBookings.confirmed.id}`)) {
       return createJsonResponse({ messages: [workflowMessages.guestMessage, workflowMessages.attachmentMessage] });
+    }
+    if (url.endsWith('/messages/attachments/upload-url')) {
+      return createJsonResponse({ objectKey, uploadUrl: 'https://storage.example/chat-upload' });
+    }
+    if (url === 'https://storage.example/chat-upload') {
+      return new Response(null, { status: 200 });
     }
     if (url.endsWith('/messages')) {
       return createJsonResponse({ message: workflowMessages.attachmentMessage });
@@ -283,23 +291,38 @@ test('messaging clients use booking-scoped message endpoints and preserve attach
   });
 
   const messages = await listMessages(workflowBookings.confirmed.id);
+  const uploadedObjectKey = await uploadMessageAttachment({
+    bookingId: workflowBookings.confirmed.id,
+    file: new File(['receipt'], 'receipt.pdf', { type: 'application/pdf' }),
+  });
   const sent = await sendMessage({
     bookingId: workflowBookings.confirmed.id,
     receiverId: workflowUsers.guest.id,
     text: workflowMessages.attachmentMessage.text,
-    attachmentUrl: workflowMessages.attachmentMessage.attachmentUrl,
+    attachmentUrl: uploadedObjectKey,
   });
 
   assert.equal(messages.length, 2);
   assert.equal(messages[1]?.attachmentUrl, workflowMessages.attachmentMessage.attachmentUrl);
+  assert.equal(uploadedObjectKey, objectKey);
   assert.equal(sent.attachmentUrl, workflowMessages.attachmentMessage.attachmentUrl);
   assert.equal(fetchCalls[0]?.url, `${DEFAULT_ENCORE_API_URL}/messages/${workflowBookings.confirmed.id}`);
-  assert.equal(fetchCalls[1]?.url, `${DEFAULT_ENCORE_API_URL}/messages`);
+  assert.equal(fetchCalls[1]?.url, `${DEFAULT_ENCORE_API_URL}/messages/attachments/upload-url`);
+  assert.equal(fetchCalls[2]?.url, 'https://storage.example/chat-upload');
+  assert.equal(fetchCalls[2]?.init?.method, 'PUT');
+  assert.equal(new Headers(fetchCalls[2]?.init?.headers).get('Content-Type'), 'application/pdf');
+  assert.equal(fetchCalls[3]?.url, `${DEFAULT_ENCORE_API_URL}/messages`);
   assert.deepEqual(requestBody(1), {
+    bookingId: workflowBookings.confirmed.id,
+    filename: 'receipt.pdf',
+    contentType: 'application/pdf',
+    fileSize: 7,
+  });
+  assert.deepEqual(requestBody(3), {
     bookingId: workflowBookings.confirmed.id,
     receiverId: workflowUsers.guest.id,
     text: workflowMessages.attachmentMessage.text,
-    attachmentUrl: workflowMessages.attachmentMessage.attachmentUrl,
+    attachmentUrl: objectKey,
   });
 });
 
