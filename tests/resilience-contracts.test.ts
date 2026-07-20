@@ -32,3 +32,24 @@ test("availability migration normalizes conflicting rows before enforcing constr
   assert.match(migration, /ADD CONSTRAINT listing_availability_blocks_no_overlap/);
   assert.match(migration, /ADD CONSTRAINT listing_availability_blocks_valid_range/);
 });
+
+test("referral rewards normalize duplicates before enforcing integrity guards", () => {
+  const source = readFileSync(new URL("../encore/referrals/api.ts", import.meta.url), "utf8");
+  const migration = readFileSync(
+    new URL("../encore/referrals/migrations/3_reward_integrity.up.sql", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(migration, /DELETE FROM referral_rewards\s+WHERE referrer_id = referred_user_id/);
+  assert.match(migration, /DELETE FROM referral_rewards victim\s+USING referral_rewards keeper/);
+  assert.match(migration, /referral_rewards_no_self_referral/);
+  assert.match(migration, /referral_rewards_positive_amount/);
+  assert.match(migration, /referral_rewards_valid_trigger/);
+  assert.match(migration, /referral_rewards_valid_program/);
+  assert.match(migration, /referral_rewards_valid_status/);
+  assert.match(migration, /CREATE UNIQUE INDEX referral_rewards_unique_workflow_idx/);
+  assert.match(source, /assertManualRewardAllowed/);
+  assert.match(source, /A user cannot refer themselves/);
+  assert.match(source, /A matching referral reward already exists/);
+  assert.match(source, /Referral reward not found/);
+});
