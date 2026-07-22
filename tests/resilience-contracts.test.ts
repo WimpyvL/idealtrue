@@ -92,3 +92,14 @@ test("payment dispute resolution migration keeps booking state aligned", () => {
   assert.match(migration, /payment_state <> 'COMPLETED'/);
   assert.match(migration, /CREATE TRIGGER payment_dispute_resolution_guard/);
 });
+
+test("public messaging endpoint cannot spoof system messages", () => {
+  const source = readFileSync(new URL("../encore/messaging/api.ts", import.meta.url), "utf8");
+
+  assert.match(source, /if \(params\.isSystem\) \{/);
+  assert.match(source, /System messages cannot be sent through the public messaging endpoint/);
+  assert.match(source, /if \(!text && !attachmentRef\) \{/);
+  assert.doesNotMatch(source, /!text && !attachmentRef && !params\.isSystem/);
+  assert.match(source, /VALUES \(\$\{id\}, \$\{params\.bookingId\}, \$\{auth\.userID\}, \$\{params\.receiverId\}, \$\{text\}, \$\{false\}/);
+  assert.match(source, /isSystem: false/);
+});
