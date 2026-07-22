@@ -53,3 +53,14 @@ test("referral rewards normalize duplicates before enforcing integrity guards", 
   assert.match(source, /A matching referral reward already exists/);
   assert.match(source, /Referral reward not found/);
 });
+
+test("workflow hardening guards review deletes and planner retries", () => {
+  const reviewsSource = readFileSync(new URL("../encore/reviews/api.ts", import.meta.url), "utf8");
+  const plannerSource = readFileSync(new URL("../src/pages/HolidayPlanner.tsx", import.meta.url), "utf8");
+
+  assert.match(reviewsSource, /DELETE FROM reviews\s+WHERE id = \$\{reviewId\}\s+RETURNING id/);
+  assert.match(reviewsSource, /APIError\.notFound\("Review not found\."\)/);
+  assert.match(plannerSource, /failedPrompt/);
+  assert.match(plannerSource, /Retry last request/);
+  assert.match(plannerSource, /RefreshCw/);
+});
