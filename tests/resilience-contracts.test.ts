@@ -75,3 +75,20 @@ test("ops admin endpoints use typed API errors for missing state and deletes", (
   assert.match(source, /APIError\.failedPrecondition\("Platform settings not initialized\."\)/);
   assert.doesNotMatch(source, /throw new Error\("Platform settings not initialized\."\)/);
 });
+
+test("payment dispute resolution migration keeps booking state aligned", () => {
+  const migration = readFileSync(
+    new URL("../encore/booking/migrations/5_payment_dispute_resolution_guards.up.sql", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(migration, /CREATE OR REPLACE FUNCTION apply_payment_dispute_resolution/);
+  assert.match(migration, /NEW\.event <> 'DISPUTE_RESOLVED'/);
+  assert.match(migration, /dispute_resolution = 'PAYMENT_CONFIRMED'/);
+  assert.match(migration, /payment_state = 'COMPLETED'/);
+  assert.match(migration, /inquiry_state = 'BOOKED'/);
+  assert.match(migration, /payment_confirmed_at = COALESCE\(payment_confirmed_at, NEW\.created_at\)/);
+  assert.match(migration, /dispute_resolution = 'PAYMENT_REJECTED'/);
+  assert.match(migration, /payment_state <> 'COMPLETED'/);
+  assert.match(migration, /CREATE TRIGGER payment_dispute_resolution_guard/);
+});
