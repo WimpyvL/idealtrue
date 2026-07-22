@@ -1,8 +1,7 @@
-import { api } from "encore.dev/api";
+import { api, APIError } from "encore.dev/api";
 import { randomUUID } from "node:crypto";
 import { messagingDB } from "./db";
 import { chatAttachmentBucket } from "./storage";
-import { APIError } from "encore.dev/api";
 import { requireAuth, requireRole } from "../shared/auth";
 import { platformEvents } from "../analytics/events";
 import { getBookingById, recordHostInquiryResponseFromMessage } from "../booking/api";
@@ -185,6 +184,9 @@ export const sendMessage = api<SendMessageParams, { message: MessageRecord }>(
   async (params) => {
     const auth = requireAuth();
     const booking = await requireBookingParticipant(params.bookingId, auth.userID);
+    if (params.isSystem) {
+      throw APIError.permissionDenied("System messages cannot be sent through the public messaging endpoint.");
+    }
     const expectedReceiverId = booking.guestId === auth.userID ? booking.hostId : booking.guestId;
     if (params.receiverId !== expectedReceiverId) {
       throw APIError.failedPrecondition("Messages can only be sent to the other booking participant.");
@@ -192,7 +194,7 @@ export const sendMessage = api<SendMessageParams, { message: MessageRecord }>(
 
     const text = params.text.trim();
     const attachmentRef = params.attachmentUrl?.trim() || null;
-    if (!text && !attachmentRef && !params.isSystem) {
+    if (!text && !attachmentRef) {
       throw APIError.invalidArgument("Message text or attachment is required.");
     }
 
@@ -203,10 +205,10 @@ export const sendMessage = api<SendMessageParams, { message: MessageRecord }>(
 
     await messagingDB.exec`
       INSERT INTO messages (id, booking_id, sender_id, receiver_id, text, is_system, suggestion_type, attachment_url, created_at)
-      VALUES (${id}, ${params.bookingId}, ${auth.userID}, ${params.receiverId}, ${text}, ${params.isSystem ?? false}, ${params.suggestionType ?? null}, ${attachmentRef}, ${now})
+      VALUES (${id}, ${params.bookingId}, ${auth.userID}, ${params.receiverId}, ${text}, ${false}, ${params.suggestionType ?? null}, ${attachmentRef}, ${now})
     `;
 
-    if (!params.isSystem && auth.userID === booking.hostId) {
+    if (auth.userID === booking.hostId) {
       await recordHostInquiryResponseFromMessage(params.bookingId, auth.userID);
     }
 
@@ -239,7 +241,7 @@ export const sendMessage = api<SendMessageParams, { message: MessageRecord }>(
         senderId: auth.userID,
         receiverId: params.receiverId,
         text,
-        isSystem: params.isSystem ?? false,
+        isSystem: false,
         suggestionType: params.suggestionType ?? null,
         attachmentUrl: await resolveAttachmentUrl(attachmentRef),
         createdAt: now,
