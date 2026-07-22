@@ -642,7 +642,7 @@ export const reviewKycSubmission = api<{
       SELECT * FROM kyc_submissions WHERE user_id = ${params.userId}
     `;
     if (!existing) {
-      throw new Error("KYC submission not found.");
+      throw APIError.notFound("KYC submission not found.");
     }
     const now = new Date().toISOString();
     const rejectionReason = params.status === "rejected" ? params.rejectionReason ?? "Rejected during review." : null;
@@ -697,7 +697,7 @@ export const getKycSubmissionAssets = api<{ userId: string }, { assets: KycSubmi
       SELECT * FROM kyc_submissions WHERE user_id = ${userId}
     `;
     if (!existing) {
-      throw new Error("KYC submission not found.");
+      throw APIError.notFound("KYC submission not found.");
     }
 
     const [idImageUrl, selfieImageUrl] = await Promise.all([
@@ -927,10 +927,14 @@ export const deleteAdminNotification = api<{ notificationId: string }, { deleted
   { expose: true, method: "DELETE", path: "/ops/admin/notifications/:notificationId", auth: true },
   async ({ notificationId }) => {
     requireRole("admin", "support");
-    await opsDB.exec`
+    const deleted = await opsDB.queryRow<{ id: string }>`
       DELETE FROM notifications
       WHERE id = ${notificationId}
+      RETURNING id
     `;
+    if (!deleted) {
+      throw APIError.notFound("Notification not found.");
+    }
     return { deleted: true };
   },
 );
@@ -945,7 +949,7 @@ export const getPlatformSettings = api<void, { settings: PlatformSettingsRecord 
     `;
 
     if (!row) {
-      throw new Error("Platform settings not initialized.");
+      throw APIError.failedPrecondition("Platform settings not initialized.");
     }
 
     return { settings: mapPlatformSettings(row) };
@@ -962,7 +966,7 @@ export const updatePlatformSettings = api<UpdatePlatformSettingsParams, { settin
     `;
 
     if (!existing) {
-      throw new Error("Platform settings not initialized.");
+      throw APIError.failedPrecondition("Platform settings not initialized.");
     }
 
     const updated: PlatformSettingsRecord = {
