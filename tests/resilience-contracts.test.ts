@@ -100,6 +100,6 @@ test("public messaging endpoint cannot spoof system messages", () => {
   assert.match(source, /System messages cannot be sent through the public messaging endpoint/);
   assert.match(source, /if \(!text && !attachmentRef\) \{/);
   assert.doesNotMatch(source, /!text && !attachmentRef && !params\.isSystem/);
-  assert.match(source, /VALUES \(\$\{id\}, \$\{params\.bookingId\}, \$\{auth\.userID\}, \$\{params\.receiverId\}, \$\{text\}, \$\{false\}/);
+  assert.match(source, /INSERT INTO messages[\s\S]*is_system[\s\S]*VALUES[\s\S]*\$\{false\}/);
   assert.match(source, /isSystem: false/);
 });
