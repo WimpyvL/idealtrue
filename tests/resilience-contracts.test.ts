@@ -64,3 +64,14 @@ test("workflow hardening guards review deletes and planner retries", () => {
   assert.match(plannerSource, /Retry last request/);
   assert.match(plannerSource, /RefreshCw/);
 });
+
+test("ops admin endpoints use typed API errors for missing state and deletes", () => {
+  const source = readFileSync(new URL("../encore/ops/api.ts", import.meta.url), "utf8");
+
+  assert.match(source, /APIError\.notFound\("KYC submission not found\."\)/);
+  assert.doesNotMatch(source, /throw new Error\("KYC submission not found\."\)/);
+  assert.match(source, /DELETE FROM notifications\s+WHERE id = \$\{notificationId\}\s+RETURNING id/);
+  assert.match(source, /APIError\.notFound\("Notification not found\."\)/);
+  assert.match(source, /APIError\.failedPrecondition\("Platform settings not initialized\."\)/);
+  assert.doesNotMatch(source, /throw new Error\("Platform settings not initialized\."\)/);
+});
