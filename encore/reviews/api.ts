@@ -186,9 +186,14 @@ export const deleteReview = api<{ reviewId: string }, { deleted: true }>(
   { expose: true, method: "DELETE", path: "/admin/reviews/:reviewId", auth: true },
   async ({ reviewId }) => {
     requireRole("admin", "support");
-    await reviewsDB.exec`
-      DELETE FROM reviews WHERE id = ${reviewId}
+    const deleted = await reviewsDB.queryRow<{ id: string }>`
+      DELETE FROM reviews
+      WHERE id = ${reviewId}
+      RETURNING id
     `;
+    if (!deleted) {
+      throw APIError.notFound("Review not found.");
+    }
     return { deleted: true };
   },
 );
