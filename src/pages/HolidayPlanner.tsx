@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, ArrowLeft, Sparkles, Map, Calendar, Plane, Hotel } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, Sparkles, Map, Calendar, Plane, Hotel, RefreshCw } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import ReactMarkdown from 'react-markdown';
@@ -13,6 +13,7 @@ export default function HolidayPlanner() {
   const [messages, setMessages] = useState<{ role: 'user' | 'ai', content: string }[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [failedPrompt, setFailedPrompt] = useState<string | null>(null);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -22,6 +23,7 @@ export default function HolidayPlanner() {
     if (!text.trim() || loading) return;
 
     const userMessage = text;
+    setFailedPrompt(null);
     setInput('');
     setMessages((prev) => [...prev, { role: 'user', content: userMessage }]);
     setLoading(true);
@@ -42,6 +44,7 @@ export default function HolidayPlanner() {
         navigate(buildPlannerAuthPath(userMessage));
         return;
       }
+      setFailedPrompt(userMessage);
       setMessages((prev) => [...prev, { role: 'ai', content: "Something broke while talking to the planner. Try again with a clearer destination or trip shape." }]);
     } finally {
       setLoading(false);
@@ -133,7 +136,7 @@ export default function HolidayPlanner() {
                     : "bg-gradient-to-br from-blue-500 to-purple-600"
                 )}>
                   {m.role === 'user' ? (
-                    <div className="w-full h-full rounded-full bg-slate-300" /> // Placeholder for user avatar
+                    <div className="w-full h-full rounded-full bg-slate-300" />
                   ) : (
                     <Sparkles className="w-4 h-4 text-white" />
                   )}
@@ -171,6 +174,19 @@ export default function HolidayPlanner() {
               </div>
             </div>
           )}
+          {failedPrompt && !loading ? (
+            <div className="flex justify-center">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full gap-2"
+                onClick={() => handleSend(failedPrompt)}
+              >
+                <RefreshCw className="h-4 w-4" />
+                Retry last request
+              </Button>
+            </div>
+          ) : null}
           <div ref={chatEndRef} className="h-4" />
         </div>
       </div>
