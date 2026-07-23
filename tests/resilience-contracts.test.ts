@@ -103,3 +103,17 @@ test("public messaging endpoint cannot spoof system messages", () => {
   assert.match(source, /INSERT INTO messages[\s\S]*is_system[\s\S]*VALUES[\s\S]*\$\{false\}/);
   assert.match(source, /isSystem: false/);
 });
+
+test("kyc submissions and reviews enforce runtime state rules", () => {
+  const source = readFileSync(new URL("../encore/ops/api.ts", import.meta.url), "utf8");
+
+  assert.match(source, /const KYC_ID_TYPES = new Set\(\["id_card", "passport", "drivers_license"\]\)/);
+  assert.match(source, /const KYC_REVIEW_STATUSES = new Set\(\["verified", "rejected"\]\)/);
+  assert.match(source, /Unsupported KYC ID type/);
+  assert.match(source, /KYC ID number must be between 4 and 80 characters/);
+  assert.match(source, /KYC submission is already pending review/);
+  assert.match(source, /Unsupported KYC review status/);
+  assert.match(source, /Only pending KYC submissions can be reviewed/);
+  assert.match(source, /KYC rejection reason must stay under 500 characters/);
+  assert.match(source, /trimmedRejectionReason \|\| "Rejected during review\."/);
+});
