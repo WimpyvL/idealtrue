@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { defaultWorkflowRouteMocks } from "./e2e/fixtures/workflow-routes.ts";
+import { defaultWorkflowRouteMocks } from "./e2e/fixtures/workflow-routes";
 import {
   fixedNow,
   workflowBilling,
@@ -14,7 +14,7 @@ import {
   workflowReferrals,
   workflowReviews,
   workflowUsers,
-} from "./fixtures/workflows.ts";
+} from "./fixtures/workflows";
 
 const expectedWorkflowRows = [
   "Auth and account lifecycle",
