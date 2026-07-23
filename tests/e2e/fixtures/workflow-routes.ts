@@ -21,19 +21,19 @@ export type WorkflowRouteMock = {
 
 export const defaultWorkflowRouteMocks: WorkflowRouteMock[] = [
   {
-    url: /\/api\/encore\/identity\/(session|get-session)$/,
+    url: /\/api\/encore\/auth\/session(?:\?.*)?$/,
     method: "GET",
     json: { user: workflowUsers.guest },
   },
   {
-    url: /\/api\/encore\/catalog\/listings(?:\?.*)?$/,
+    url: /\/api\/encore\/listings(?:\?.*)?$/,
     method: "GET",
     json: { listings: [workflowListings.active, workflowListings.blocked] },
   },
   {
-    url: /\/api\/encore\/catalog\/listings\/quota$/,
+    url: /\/api\/encore\/host\/listings\/quota$/,
     method: "GET",
-    json: { quota: { plan: "professional", used: 1, limit: 10, canCreateListing: true } },
+    json: { quota: { plan: "professional", maxListings: 10, usedListings: 1, canCreate: true } },
   },
   {
     url: /\/api\/encore\/booking\/my-bookings(?:\?.*)?$/,
