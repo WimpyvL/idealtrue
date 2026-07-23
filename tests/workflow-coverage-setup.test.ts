@@ -135,22 +135,26 @@ test("workflow fixtures use stable IDs and timestamps", () => {
 });
 
 test("Playwright workflow mocks cover the open e2e gaps", () => {
-  const routePatterns = defaultWorkflowRouteMocks.map((mock) => String(mock.url));
-  const joinedPatterns = routePatterns.join("\n");
+  const expectedExampleUrls = [
+    "https://example.test/api/encore/auth/session",
+    "https://example.test/api/encore/listings?status=active",
+    "https://example.test/api/encore/host/listings/quota",
+    "https://example.test/api/encore/bookings/me",
+    "https://example.test/api/encore/messages/booking-1",
+    "https://example.test/api/encore/messages",
+    "https://example.test/api/encore/ops/kyc/submissions/me",
+    "https://example.test/api/encore/ops/my-notifications",
+    "https://example.test/api/encore/reviews/listing-1",
+    "https://example.test/api/encore/referrals/rewards",
+    "https://example.test/api/encore/billing/host/account",
+    "https://example.test/api/encore/billing/content/drafts",
+  ];
 
-  for (const expectedRouteArea of [
-    "identity",
-    "catalog",
-    "booking",
-    "messaging",
-    "kyc",
-    "notifications",
-    "reviews",
-    "referrals",
-    "billing",
-    "content-drafts",
-  ]) {
-    assert.match(joinedPatterns, new RegExp(expectedRouteArea), `${expectedRouteArea} route mock is missing`);
+  for (const url of expectedExampleUrls) {
+    const hasMock = defaultWorkflowRouteMocks.some((mock) =>
+      typeof mock.url === "string" ? url.includes(mock.url) : mock.url.test(url),
+    );
+    assert.ok(hasMock, `Route mock is missing for ${url}`);
   }
 
   assert.ok(defaultWorkflowRouteMocks.every((mock) => mock.json !== undefined));
