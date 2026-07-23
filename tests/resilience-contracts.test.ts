@@ -126,6 +126,82 @@ test("messaging backend enforces party access, receiver, and attachment guards",
   assert.match(source, /notifyMessageReceived/);
 });
 
+test("reviews backend enforces eligibility, duplicate, and moderation guards", () => {
+  const source = readFileSync(new URL("../encore/reviews/api.ts", import.meta.url), "utf8");
+
+  assert.match(source, /const booking = await getBookingById\(params\.bookingId\)/);
+  assert.match(source, /Only the guest on the booking can leave a review/);
+  assert.match(source, /Review does not match the booking/);
+  assert.match(source, /Reviews can only be submitted after the stay is confirmed and paid/);
+  assert.match(source, /Review scores must be integers between 1 and 5/);
+  assert.match(source, /Review comment cannot be empty/);
+  assert.match(source, /Review comment is too long/);
+  assert.match(source, /A review has already been submitted for this booking/);
+  assert.match(source, /ON CONFLICT \(booking_id\) DO NOTHING/);
+  assert.match(source, /type: "review\.submitted"/);
+  assert.match(source, /requireRole\("admin", "support"\)/);
+  assert.match(source, /Invalid review status/);
+  assert.match(source, /DELETE FROM reviews[\s\S]*RETURNING id/);
+});
+
+test("referrals backend enforces self-referral, duplicate, and conversion guards", () => {
+  const source = readFileSync(new URL("../encore/referrals/api.ts", import.meta.url), "utf8");
+
+  assert.match(source, /const REFERRAL_TRIGGERS = new Set/);
+  assert.match(source, /const REFERRAL_PROGRAMS = new Set/);
+  assert.match(source, /const REFERRAL_STATUSES = new Set/);
+  assert.match(source, /Reward amount must be positive/);
+  assert.match(source, /A user cannot refer themselves/);
+  assert.match(source, /A matching referral reward already exists/);
+  assert.match(source, /COALESCE\(source_subscription_id, ''\) = \$\{params\.sourceSubscriptionId \?\? ""\}/);
+  assert.match(source, /SELECT \*[\s\S]*FOR UPDATE/);
+  assert.match(source, /if \(duplicate\) \{[\s\S]*return mapReward\(duplicate\)/);
+  assert.match(source, /await creditReferrer\(identityTx, lockedReferrer\)/);
+  assert.match(source, /notifyReferralRewardEarned/);
+  assert.match(source, /DELETE FROM referral_rewards[\s\S]*RETURNING id/);
+});
+
+test("KYC assets, history, and identity status endpoints keep admin boundaries explicit", () => {
+  const opsSource = readFileSync(new URL("../encore/ops/api.ts", import.meta.url), "utf8");
+  const identitySource = readFileSync(new URL("../encore/identity/api.ts", import.meta.url), "utf8");
+
+  assert.match(opsSource, /assertKycUploadBelongsToUser/);
+  assert.match(opsSource, /KYC upload does not belong to this account/);
+  assert.match(opsSource, /KYC image upload is missing or incomplete\. Upload the image again/);
+  assert.match(opsSource, /getMyKycSubmissionHistory/);
+  assert.match(opsSource, /getKycSubmissionHistory/);
+  assert.match(opsSource, /requireRole\("admin", "support"\)/);
+  assert.match(opsSource, /getKycSubmissionAssets/);
+  assert.match(opsSource, /kycDocumentsBucket\.signedDownloadUrl\(existing\.id_image_key, \{ ttl: 900 \}\)/);
+  assert.match(opsSource, /kycDocumentsBucket\.signedDownloadUrl\(existing\.selfie_image_key, \{ ttl: 900 \}\)/);
+  assert.match(identitySource, /setUserKycStatus/);
+  assert.match(identitySource, /path: "\/admin\/users\/kyc-status"/);
+  assert.match(identitySource, /SET kyc_status = \$\{params\.kycStatus\}/);
+});
+
+test("admin destructive actions and platform settings retain validation guards", () => {
+  const identitySource = readFileSync(new URL("../encore/identity/api.ts", import.meta.url), "utf8");
+  const opsSource = readFileSync(new URL("../encore/ops/api.ts", import.meta.url), "utf8");
+
+  assert.match(identitySource, /You cannot delete your own account while you are signed in/);
+  assert.match(identitySource, /getUserDeleteDependencyCounts/);
+  assert.match(identitySource, /getUserDeleteBlockers/);
+  assert.match(identitySource, /This user cannot be permanently deleted because the account still has/);
+  assert.match(identitySource, /await pauseUserListings\(userId\)/);
+  assert.match(identitySource, /DELETE FROM auth_tokens WHERE user_id = \$\{userId\}/);
+  assert.match(identitySource, /DELETE FROM kyc_submissions WHERE user_id = \$\{userId\}/);
+  assert.match(identitySource, /await removeUserMedia\(existing, kycSubmission\)/);
+  assert.match(identitySource, /type: "user\.deleted"/);
+  assert.match(opsSource, /function validatePlatformSettings\(settings: PlatformSettingsRecord\)/);
+  assert.match(opsSource, /Referral reward amount must be zero or positive/);
+  assert.match(opsSource, /Minimum withdrawal amount must be positive/);
+  assert.match(opsSource, /Platform name cannot be empty/);
+  assert.match(opsSource, /Support email must be valid/);
+  assert.match(opsSource, /Cancellation policy days must be a whole number of zero or more/);
+  assert.match(opsSource, /Maximum guests per listing must be at least one/);
+  assert.match(opsSource, /validatePlatformSettings\(updated\)/);
+});
+
 test("kyc submissions and reviews enforce runtime state rules", () => {
   const source = readFileSync(new URL("../encore/ops/api.ts", import.meta.url), "utf8");
 
