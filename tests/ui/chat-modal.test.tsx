@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom/vitest';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ChatModal from '@/components/ChatModal';
 import type { Booking, Listing } from '@/types';
@@ -24,8 +24,10 @@ vi.mock('@/lib/messaging-client', () => ({
     receiverId: params.receiverId,
     text: params.text,
     suggestionType: params.suggestionType,
+    attachmentUrl: params.attachmentUrl,
     createdAt: '2026-05-10T08:00:00.000Z',
   })),
+  uploadMessageAttachment: vi.fn(async () => 'booking-1/guest-1/receipt.pdf'),
 }));
 
 const listing: Listing = {
@@ -90,6 +92,10 @@ const booking: Booking = {
 };
 
 describe('ChatModal', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('lets an approved guest open the proof-of-payment flow from messages', async () => {
     const onSubmitPaymentProof = vi.fn();
 
@@ -162,6 +168,41 @@ describe('ChatModal', () => {
       text: 'Use the side gate on Ocean Road.',
       isSystem: false,
       suggestionType: 'directions',
+    });
+  });
+
+  it('uploads the selected attachment before sending the chat message', async () => {
+    const { sendMessage, uploadMessageAttachment } = await import('@/lib/messaging-client');
+    const user = userEvent.setup();
+    const { container } = render(
+      <ChatModal
+        booking={booking}
+        listing={listing}
+        currentUserId="guest-1"
+        onClose={vi.fn()}
+      />,
+    );
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const submitButton = container.querySelector('button[type="submit"]') as HTMLButtonElement;
+    const attachment = new File(['receipt'], 'receipt.pdf', { type: 'application/pdf' });
+
+    await user.upload(fileInput, attachment);
+    await expect(screen.findByText('receipt.pdf')).resolves.toBeVisible();
+    await user.type(screen.getByPlaceholderText('Type a message...'), 'Please see the receipt.');
+    await user.click(submitButton);
+
+    expect(uploadMessageAttachment).toHaveBeenCalledWith({
+      bookingId: 'booking-1',
+      file: attachment,
+    });
+    expect(sendMessage).toHaveBeenCalledWith({
+      bookingId: 'booking-1',
+      receiverId: 'host-1',
+      text: 'Please see the receipt.',
+      isSystem: false,
+      suggestionType: undefined,
+      attachmentUrl: 'booking-1/guest-1/receipt.pdf',
     });
   });
 });
