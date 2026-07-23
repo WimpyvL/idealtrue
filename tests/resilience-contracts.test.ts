@@ -104,6 +104,28 @@ test("public messaging endpoint cannot spoof system messages", () => {
   assert.match(source, /isSystem: false/);
 });
 
+test("messaging backend enforces party access, receiver, and attachment guards", () => {
+  const source = readFileSync(new URL("../encore/messaging/api.ts", import.meta.url), "utf8");
+
+  assert.match(source, /async function requireBookingParticipant\(bookingId: string, userId: string\)/);
+  assert.match(source, /const booking = await getBookingById\(bookingId\)/);
+  assert.match(source, /booking\.guestId !== userId && booking\.hostId !== userId/);
+  assert.match(source, /You are not part of this booking conversation/);
+  assert.match(source, /await requireBookingParticipant\(bookingId, auth\.userID\)/);
+  assert.match(source, /await requireBookingParticipant\(params\.bookingId, auth\.userID\)/);
+  assert.match(source, /const expectedReceiverId = booking\.guestId === auth\.userID \? booking\.hostId : booking\.guestId/);
+  assert.match(source, /Messages can only be sent to the other booking participant/);
+  assert.match(source, /async function assertAttachmentBelongsToSender/);
+  assert.match(source, /attachmentRef\.startsWith\(`\$\{bookingId\}\/\$\{userId\}\/`\)/);
+  assert.match(source, /Attachment does not belong to this booking conversation/);
+  assert.match(source, /Attachment upload is missing or incomplete\. Upload the file again/);
+  assert.match(source, /ALLOWED_ATTACHMENT_CONTENT_TYPES/);
+  assert.match(source, /Unsupported attachment content type/);
+  assert.match(source, /Attachment must be between 1 byte and 10MB/);
+  assert.match(source, /recordHostInquiryResponseFromMessage\(params\.bookingId, auth\.userID\)/);
+  assert.match(source, /notifyMessageReceived/);
+});
+
 test("kyc submissions and reviews enforce runtime state rules", () => {
   const source = readFileSync(new URL("../encore/ops/api.ts", import.meta.url), "utf8");
 
