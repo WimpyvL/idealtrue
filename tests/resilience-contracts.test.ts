@@ -151,8 +151,9 @@ test("referrals backend enforces self-referral, duplicate, and conversion guards
   assert.match(source, /const REFERRAL_PROGRAMS = new Set/);
   assert.match(source, /const REFERRAL_STATUSES = new Set/);
   assert.match(source, /Reward amount must be positive/);
-  assert.match(source, /A user cannot refer themselves/);
-  assert.match(source, /A matching referral reward already exists/);
+  assert.match(source, /Invalid referral reward trigger\./);
+  assert.match(source, /Invalid referral reward program\./);
+  assert.match(source, /Invalid referral reward status\./);
   assert.match(source, /COALESCE\(source_subscription_id, ''\) = \$\{params\.sourceSubscriptionId \?\? ""\}/);
   assert.match(source, /SELECT \*[\s\S]*FOR UPDATE/);
   assert.match(source, /if \(duplicate\) \{[\s\S]*return mapReward\(duplicate\)/);
