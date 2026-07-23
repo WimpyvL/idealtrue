@@ -173,6 +173,9 @@ const ALLOWED_KYC_CONTENT_TYPES = new Set([
   "image/heic",
 ]);
 
+const KYC_ID_TYPES = new Set(["id_card", "passport", "drivers_license"]);
+const KYC_REVIEW_STATUSES = new Set(["verified", "rejected"]);
+
 const KYC_HISTORY_ACTIONS = {
   created: "kyc.submission.created",
   resubmitted: "kyc.submission.resubmitted",
@@ -458,7 +461,22 @@ export const submitKyc = api<{
   async (params) => {
     const auth = requireRole("host", "admin");
     const now = new Date().toISOString();
-    const encryptedIdNumber = encryptSensitiveString(params.idNumber.trim());
+    if (!KYC_ID_TYPES.has(params.idType)) {
+      throw APIError.invalidArgument("Unsupported KYC ID type.");
+    }
+    const idNumber = params.idNumber.trim();
+    if (idNumber.length < 4 || idNumber.length > 80) {
+      throw APIError.invalidArgument("KYC ID number must be between 4 and 80 characters.");
+    }
+
+    const existing = await opsDB.queryRow<KycSubmissionRow>`
+      SELECT * FROM kyc_submissions WHERE user_id = ${auth.userID}
+    `;
+    if (existing?.status === "pending") {
+      throw APIError.failedPrecondition("KYC submission is already pending review.");
+    }
+
+    const encryptedIdNumber = encryptSensitiveString(idNumber);
     let idImageKey = params.idImageKey;
     let selfieImageKey = params.selfieImageKey;
 
@@ -501,10 +519,6 @@ export const submitKyc = api<{
       assertKycUploadBelongsToUser(auth.userID, selfieImageKey),
     ]);
 
-    const existing = await opsDB.queryRow<KycSubmissionRow>`
-      SELECT * FROM kyc_submissions WHERE user_id = ${auth.userID}
-    `;
-
     if (existing) {
       await opsDB.exec`
         UPDATE kyc_submissions
@@ -523,8 +537,8 @@ export const submitKyc = api<{
       const submission: KycSubmission = {
         ...mapKycSubmission(existing, { includeSensitiveIdNumber: true }),
         idType: params.idType,
-        idNumber: params.idNumber,
-        idNumberMasked: maskSensitiveString(params.idNumber.trim()),
+        idNumber,
+        idNumberMasked: maskSensitiveString(idNumber),
         idImageKey,
         selfieImageKey,
         status: "pending",
@@ -564,8 +578,8 @@ export const submitKyc = api<{
       id,
       userId: auth.userID,
       idType: params.idType,
-      idNumber: params.idNumber,
-      idNumberMasked: maskSensitiveString(params.idNumber.trim()),
+      idNumber,
+      idNumberMasked: maskSensitiveString(idNumber),
       idImageKey,
       selfieImageKey,
       status: "pending",
@@ -638,14 +652,24 @@ export const reviewKycSubmission = api<{
   { expose: true, method: "POST", path: "/ops/kyc/submissions/review", auth: true },
   async (params) => {
     const auth = requireRole("admin", "support");
+    if (!KYC_REVIEW_STATUSES.has(params.status)) {
+      throw APIError.invalidArgument("Unsupported KYC review status.");
+    }
     const existing = await opsDB.queryRow<KycSubmissionRow>`
       SELECT * FROM kyc_submissions WHERE user_id = ${params.userId}
     `;
     if (!existing) {
       throw APIError.notFound("KYC submission not found.");
     }
+    if (existing.status !== "pending") {
+      throw APIError.failedPrecondition("Only pending KYC submissions can be reviewed.");
+    }
     const now = new Date().toISOString();
-    const rejectionReason = params.status === "rejected" ? params.rejectionReason ?? "Rejected during review." : null;
+    const trimmedRejectionReason = params.rejectionReason?.trim() ?? "";
+    if (trimmedRejectionReason.length > 500) {
+      throw APIError.invalidArgument("KYC rejection reason must stay under 500 characters.");
+    }
+    const rejectionReason = params.status === "rejected" ? trimmedRejectionReason || "Rejected during review." : null;
     await opsDB.exec`
       UPDATE kyc_submissions
       SET status = ${params.status},
