@@ -110,7 +110,7 @@ describe.sequential("payment trust boundary with real Encore databases", () => {
   it("also isolates provider-confirmed test payments arriving via stored webhooks", async () => {
     const id = await intent();
     const payload = JSON.stringify({ type: "payment.succeeded", payload: { id: "test-provider-id", metadata: { paymentIntentId: id, userId: id } } });
-    await billingDB.exec`INSERT INTO billing_webhook_events (id, event_type, payload) VALUES (${id}, 'payment.succeeded', ${payload}::jsonb)`;
+    await billingDB.exec`INSERT INTO billing_webhook_events (id, event_type, payload) VALUES (${id}, 'payment.succeeded', ${payload}::text::jsonb)`;
     const storedPayload = await billingDB.queryRow<{ payload_type: string; payload_json: string }>`SELECT jsonb_typeof(payload) AS payload_type, payload::text AS payload_json FROM billing_webhook_events WHERE id = ${id}`;
     expect(storedPayload?.payload_type, storedPayload?.payload_json).toBe("object");
     await processStoredYocoWebhookEvent(id);
@@ -118,6 +118,14 @@ describe.sequential("payment trust boundary with real Encore databases", () => {
     expect(await billingDB.queryRow`SELECT * FROM content_credit_wallets WHERE user_id = ${id}`).toBeNull();
   });
 
+  it("recovers unprocessed webhooks stored as JSON strings by older writes", async () => {
+    const id = await intent();
+    const payload = JSON.stringify({ type: "payment.succeeded", payload: { id: "legacy-provider-id", metadata: { paymentIntentId: id, userId: id } } });
+    await billingDB.exec`INSERT INTO billing_webhook_events (id, event_type, payload) VALUES (${id}, 'payment.succeeded', to_jsonb(${payload}::text))`;
+    await processStoredYocoWebhookEvent(id);
+    expect((await paymentState(id))?.status).toBe("paid");
+    expect(await billingDB.queryRow`SELECT * FROM content_credit_wallets WHERE user_id = ${id}`).toBeNull();
+  });
   it("requeues durable events without requiring another provider delivery", async () => {
     const id = `safety-${randomUUID()}`;
     ids.push(id);

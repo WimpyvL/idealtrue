@@ -2444,7 +2444,7 @@ export const yocoWebhook = api.raw(
 
       await billingDB.exec`
         INSERT INTO billing_webhook_events (id, provider, event_type, signature, payload)
-        VALUES (${eventId}, ${"yoco"}, ${eventType}, ${signature ?? null}, ${rawBody}::jsonb)
+        VALUES (${eventId}, ${"yoco"}, ${eventType}, ${signature ?? null}, ${rawBody}::text::jsonb)
         ON CONFLICT (id) DO NOTHING
       `;
       await billingWebhookEvents.publish({ eventId });
@@ -2472,7 +2472,9 @@ export async function processStoredYocoWebhookEvent(eventId: string) {
     return;
   }
 
-  const event = JSON.parse(stored.payload_json) as YocoWebhookEvent;
+  // Older writes bound serialized JSON directly as jsonb, storing a JSON string.
+  const decoded: unknown = JSON.parse(stored.payload_json);
+  const event = (typeof decoded === "string" ? JSON.parse(decoded) : decoded) as YocoWebhookEvent;
   const eventType = stored.event_type || parseEventType(event);
   const outcome = classifyYocoWebhookOutcome(eventType, event.payload?.status);
 
