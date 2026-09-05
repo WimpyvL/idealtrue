@@ -1590,8 +1590,8 @@ async function notifySubscriptionsDueSoon(nowIso = new Date().toISOString()) {
 async function withBillingFulfilmentLock<T>(resourceType: "payment" | "checkout", resourceId: string, work: (tx: BillingTx) => Promise<T>) {
   const tx = await billingDB.begin();
   try {
-    await tx.rawQueryRow<{ locked: null }>(
-      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0)) AS locked",
+    await tx.rawExec(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
       `yoco:${resourceType}:${resourceId}`,
     );
     const result = await work(tx);
