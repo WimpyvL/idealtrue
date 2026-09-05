@@ -186,6 +186,10 @@ export default function SocialDashboard({ listings }: { listings: Listing[] }) {
     void statusRequest.then(async (result) => {
       const paymentKind = 'purpose' in result ? result.purpose : result.checkoutType;
       if (paymentKind === 'content_credits' && result.status === 'paid') {
+        if (result.providerMode === 'test') {
+          toast.success('Test payment confirmed. No content credits were added.');
+          return;
+        }
         setEntitlements(await getContentEntitlements());
         toast.success('Credit top-up confirmed. Your content wallet has been updated.');
       }

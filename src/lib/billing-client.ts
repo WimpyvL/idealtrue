@@ -74,6 +74,7 @@ const billingPaymentStatusSchema = z.object({
 const checkoutStatusSchema = z.object({
   status: z.enum(['pending', 'paid', 'failed', 'cancelled']),
   checkoutType: z.enum(['subscription', 'content_credits', 'host_billing_setup', 'managed_hosting']),
+  providerMode: z.enum(['live', 'test']).nullable().optional(),
 });
 
 const billingReturnStatusSchema = z.enum(['success', 'cancelled', 'failed']);

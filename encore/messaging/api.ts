@@ -86,7 +86,7 @@ async function resolveAttachmentUrl(attachmentRef: string | null) {
 }
 
 async function mapMessageForRead(row: MessageRow): Promise<MessageRecord> {
-  let attachmentUrl: string | null = null;
+  let attachmentUrl: string | null;
 
   try {
     attachmentUrl = await resolveAttachmentUrl(row.attachment_url);

@@ -87,6 +87,8 @@ Do not commit Google OAuth client secret JSON files, provider secrets, API keys,
 
 Yoco payment handling is server-owned. New paid flows use the standard backend billing payment endpoint and provider status/webhook reconciliation.
 
+Set `YOCO_PAYMENT_MODE` explicitly to `live` or `test`; missing or invalid mode disables new checkout creation. Redirect query parameters never prove payment. Provider-confirmed test payments record their result but do not activate subscriptions, managed hosting, card setup, credits, or referral rewards. Legacy checkouts with an unknown provider mode require evidence-backed mode correction before fulfilment.
+
 Use test mode only when deliberately verifying checkout behavior:
 
 ```bash

@@ -1,6 +1,7 @@
 import { APIError } from "encore.dev/api";
 import { secret } from "encore.dev/config";
 import { extractPrimaryYocoSignature, verifyYocoWebhookSignatureValue } from "./yoco-signature";
+import { parsePaymentMode } from "./payment-mode";
 
 export const yocoSecretKey = secret<"YOCO_SECRET_KEY">("YOCO_SECRET_KEY");
 export const yocoTestSecretKey = secret<"YOCO_TEST_SECRET_KEY">("YOCO_TEST_SECRET_KEY");
@@ -75,16 +76,16 @@ function readOptionalSecret(resolve: () => string) {
   }
 }
 
-function getYocoProviderMode(): YocoProviderMode {
-  const configured = (readOptionalSecret(yocoPaymentMode) || process.env.YOCO_PAYMENT_MODE || "test").trim().toLowerCase();
-  if (configured === "test") {
-    return "test";
+export function getYocoProviderMode(): YocoProviderMode {
+  try {
+    return parsePaymentMode(readOptionalSecret(yocoPaymentMode) || process.env.YOCO_PAYMENT_MODE);
+  } catch {
+    throw APIError.unavailable("YOCO_PAYMENT_MODE must be explicitly set to live or test.");
   }
-  return "live";
 }
 
-function getYocoApiKey() {
-  const mode = getYocoProviderMode();
+function getYocoApiKey(requestedMode?: YocoProviderMode) {
+  const mode = requestedMode ?? getYocoProviderMode();
   const apiKey = mode === "test" ? yocoTestSecretKey() : yocoSecretKey();
   if (!apiKey) {
     throw APIError.unavailable(mode === "test" ? "YOCO_TEST_SECRET_KEY is not configured." : "YOCO_SECRET_KEY is not configured.");
@@ -123,8 +124,8 @@ export function getAppUrl() {
   return (idealStayAppUrl() || DEFAULT_APP_URL).replace(/\/+$/, "");
 }
 
-export async function createYocoCheckout(input: YocoCheckoutRequest): Promise<YocoCheckoutResponse> {
-  const { apiKey, mode } = getYocoApiKey();
+export async function createYocoCheckout(input: YocoCheckoutRequest, requestedMode?: YocoProviderMode): Promise<YocoCheckoutResponse> {
+  const { apiKey, mode } = getYocoApiKey(requestedMode);
 
   const idempotencyKey = input.idempotencyKey || input.metadata.checkoutId || input.metadata.externalId;
 
@@ -149,12 +150,15 @@ export async function createYocoCheckout(input: YocoCheckoutRequest): Promise<Yo
   if (!checkout.id || !checkout.redirectUrl) {
     throw APIError.unavailable("Yoco checkout creation returned an invalid response.");
   }
-  return { ...checkout, processingMode: checkout.processingMode ?? mode };
+  if (checkout.processingMode && checkout.processingMode !== mode) {
+    throw APIError.unavailable("Yoco checkout response did not match the requested payment mode.");
+  }
+  return { ...checkout, processingMode: mode };
 }
 
 // Author: (|╲) Klaasvaakie
-export async function fetchYocoCheckout(checkoutId: string): Promise<YocoCheckoutStatusResponse> {
-  const { apiKey } = getYocoApiKey();
+export async function fetchYocoCheckout(checkoutId: string, mode?: YocoProviderMode): Promise<YocoCheckoutStatusResponse> {
+  const { apiKey } = getYocoApiKey(mode);
 
   const response = await fetchYocoWithRetry(`${YOCO_API_BASE}/checkouts/${encodeURIComponent(checkoutId)}`, {
     headers: {
@@ -170,8 +174,8 @@ export async function fetchYocoCheckout(checkoutId: string): Promise<YocoCheckou
   return response.json() as Promise<YocoCheckoutStatusResponse>;
 }
 
-export async function fetchYocoOrder(orderId: string): Promise<YocoOrderResponse> {
-  const { apiKey } = getYocoApiKey();
+export async function fetchYocoOrder(orderId: string, mode?: YocoProviderMode): Promise<YocoOrderResponse> {
+  const { apiKey } = getYocoApiKey(mode);
 
   const response = await fetchYocoWithRetry(`${YOCO_REST_API_BASE}/orders/${encodeURIComponent(orderId)}`, {
     headers: {

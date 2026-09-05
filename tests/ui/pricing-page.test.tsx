@@ -145,4 +145,17 @@ describe('PricingPage', () => {
 
     expect(await screen.findByText(/yoco test mode is active/i)).toBeInTheDocument();
   });
+
+  it('does not claim plan activation after a verified test payment', async () => {
+    const { getBillingPaymentStatus } = await import('@/lib/billing-client');
+    const { toast } = await import('sonner');
+    authState.user = { id: 'host-1' };
+    vi.mocked(getBillingPaymentStatus).mockResolvedValue({ status: 'paid', purpose: 'subscription', providerMode: 'test' });
+    renderPricing('/pricing?billing_status=success&payment_id=test-payment');
+    await waitFor(() => expect(toast.message).toHaveBeenCalledWith(
+      'Test payment confirmed. No plan access or account benefits were activated.',
+    ));
+    expect(refreshProfileMock).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+  });
 });

@@ -446,8 +446,9 @@ test('successful checkout return keeps the subscription activation chain wired e
   assert.match(returnBlock, /await reconcilePendingPaymentIntent\(intent, safeStatus\);/);
   assert.match(returnBlock, /buildBillingSuccessReturnUrl\(getAppUrl\(\), paymentId, safeStatus, intent\.purpose\)/);
   assert.match(fulfilmentBlock, /if \(intent\.purpose === "subscription"\) \{/);
-  assert.match(fulfilmentBlock, /await activatePlanFromBillingSession\(billingSession\);/);
-  assert.match(fulfilmentBlock, /await markPaymentIntentPaid\(intent, providerPaymentId\);/);
+  assert.match(fulfilmentBlock, /await activatePlanFromBillingSession\(billingSession, tx\);/);
+  assert.match(fulfilmentBlock, /await markPaymentIntentPaid\(intent, providerPaymentId, tx\);/);
+  assert.doesNotMatch(source, /currentBillingFulfilmentTx/);
 });
 
 test('managed hosting fulfilment creates a visible premium subscription row', () => {
@@ -658,9 +659,9 @@ test('pending payment reconciliation falls back to direct checkout verification 
   );
 
   assert.match(reconciliationBlock, /if \(intent\.provider_checkout_id\) \{/);
-  assert.match(reconciliationBlock, /try \{[\s\S]*const checkout = await fetchYocoCheckout\(intent\.provider_checkout_id\);/);
+  assert.match(reconciliationBlock, /try \{[\s\S]*const checkout = await fetchYocoCheckout\(intent\.provider_checkout_id, intent\.provider_mode\);/);
   assert.match(reconciliationBlock, /const checkoutStatus = mapYocoCheckoutStatus\(checkout\.status\);/);
-  assert.match(reconciliationBlock, /await fulfilSuccessfulPaymentIntent\(intent, providerPaymentId \?\? intent\.provider_checkout_id\);/);
+  assert.match(reconciliationBlock, /await fulfilSuccessfulPaymentIntent\(intent, providerPaymentId \?\? intent\.provider_checkout_id, tx\);/);
   assert.match(reconciliationBlock, /catch \(error\) \{[\s\S]*Stored Yoco webhook lookup failed/);
   assert.match(reconciliationBlock, /catch \(error\) \{[\s\S]*Yoco checkout lookup failed/);
   assert.match(reconciliationBlock, /catch \(error\) \{[\s\S]*Yoco order lookup failed/);
@@ -693,10 +694,10 @@ test('provider order reconciliation persists and reuses provider_order_id before
     source.indexOf('function isFulfilmentSafeWebhookOutcome'),
   );
 
-  assert.match(reconciliationBlock, /await storeProviderOrderId\(intent\.id, providerOrderId\);/);
+  assert.match(reconciliationBlock, /await storeProviderOrderId\(intent\.id, providerOrderId, tx\);/);
   assert.match(reconciliationBlock, /if \(!intent\.provider_order_id\) \{/);
-  assert.match(reconciliationBlock, /const order = await fetchYocoOrder\(intent\.provider_order_id\);/);
-  assert.match(reconciliationBlock, /await fulfilSuccessfulPaymentIntent\(intent, providerPaymentId\);/);
+  assert.match(reconciliationBlock, /const order = await fetchYocoOrder\(intent\.provider_order_id, intent\.provider_mode\);/);
+  assert.match(reconciliationBlock, /await fulfilSuccessfulPaymentIntent\(intent, providerPaymentId, tx\);/);
   assert.match(webhookBlock, /WHERE provider_order_id = \$\{orderId\}/);
 });
 

@@ -36,7 +36,7 @@ test("availability migration normalizes conflicting rows before enforcing constr
 test("referral rewards normalize duplicates before enforcing integrity guards", () => {
   const source = readFileSync(new URL("../encore/referrals/api.ts", import.meta.url), "utf8");
   const migration = readFileSync(
-    new URL("../encore/referrals/migrations/3_reward_integrity.up.sql", import.meta.url),
+    new URL("../encore/referrals/migrations/4_reward_integrity.up.sql", import.meta.url),
     "utf8",
   );
 
@@ -78,7 +78,7 @@ test("ops admin endpoints use typed API errors for missing state and deletes", (
 
 test("payment dispute resolution migration keeps booking state aligned", () => {
   const migration = readFileSync(
-    new URL("../encore/booking/migrations/5_payment_dispute_resolution_guards.up.sql", import.meta.url),
+    new URL("../encore/booking/migrations/8_payment_dispute_resolution_guards.up.sql", import.meta.url),
     "utf8",
   );
 

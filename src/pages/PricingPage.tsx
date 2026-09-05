@@ -260,6 +260,11 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
           }
 
           if (result.status === "paid") {
+            if (result.providerMode === "test") {
+              toast.message("Test payment confirmed. No plan access or account benefits were activated.");
+              navigate("/pricing", { replace: true });
+              return;
+            }
             const nextProfile = await refreshProfile();
             if (cancelled) {
               return;
@@ -363,7 +368,7 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
 
             {isYocoTestMode ? (
               <div className="max-w-2xl rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                Yoco test mode is active. Use the test card in the checkout flow, then switch
+                Yoco test mode is active. Test payments do not activate account benefits. Use the test card in the checkout flow, then switch
                 <span className="mx-1 font-semibold">VITE_YOCO_PAYMENT_MODE</span> and
                 <span className="mx-1 font-semibold">YOCO_PAYMENT_MODE</span> back to live when you are done.
               </div>
