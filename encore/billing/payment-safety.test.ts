@@ -111,6 +111,8 @@ describe.sequential("payment trust boundary with real Encore databases", () => {
     const id = await intent();
     const payload = JSON.stringify({ type: "payment.succeeded", payload: { id: "test-provider-id", metadata: { paymentIntentId: id, userId: id } } });
     await billingDB.exec`INSERT INTO billing_webhook_events (id, event_type, payload) VALUES (${id}, 'payment.succeeded', ${payload}::jsonb)`;
+    const storedPayload = await billingDB.queryRow<{ payload_type: string; payload_json: string }>`SELECT jsonb_typeof(payload) AS payload_type, payload::text AS payload_json FROM billing_webhook_events WHERE id = ${id}`;
+    expect(storedPayload?.payload_type, storedPayload?.payload_json).toBe("object");
     await processStoredYocoWebhookEvent(id);
     expect((await paymentState(id))?.status).toBe("paid");
     expect(await billingDB.queryRow`SELECT * FROM content_credit_wallets WHERE user_id = ${id}`).toBeNull();
