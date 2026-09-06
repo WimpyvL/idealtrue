@@ -10,6 +10,7 @@ import {
   assertListingDateRangeAvailable,
   getListing,
   syncBookingAvailabilityWithCompatibility,
+  replaceBookingAvailabilityBlocks,
 } from "../catalog/api";
 import { catalogDB } from "../catalog/db";
 import { identityDB } from "../identity/db";
@@ -32,6 +33,9 @@ import {
   getPaymentStateTransitionError,
   shouldExpireInquiry,
 } from "./workflow";
+
+type BookingTx = Awaited<ReturnType<typeof bookingDB.begin>>;
+type DecisionEffects = Array<Parameters<typeof safePublishInquiryEvent>[0]>;
 
 type LegacyBookingStatus =
   | "pending"
@@ -450,8 +454,8 @@ async function resolveListingTitle(listingId: string) {
   }
 }
 
-async function syncListingAvailabilityForBookings(listingId: string) {
-  const rows = await bookingDB.rawQueryAll<
+async function syncListingAvailabilityForBookings(listingId: string, tx?: BookingTx) {
+  const rows = await (tx ?? bookingDB).rawQueryAll<
     Pick<BookingRow, "id" | "check_in" | "check_out" | "inquiry_state" | "payment_state">
   >(
     `
@@ -466,7 +470,7 @@ async function syncListingAvailabilityForBookings(listingId: string) {
     listingId,
   );
 
-  await syncBookingAvailabilityWithCompatibility(
+  await (tx ? replaceBookingAvailabilityBlocks : syncBookingAvailabilityWithCompatibility)(
     listingId,
     rows.map((row) => ({
       bookingId: row.id,
@@ -542,9 +546,9 @@ async function appendLedgerEvent(params: {
   actor: InquiryLedgerEventRecord["actor"];
   metadata?: Record<string, unknown>;
   timestamp: string;
-}) {
+}, tx?: BookingTx) {
   const id = randomUUID();
-  await bookingDB.exec`
+  await (tx ?? bookingDB).exec`
     INSERT INTO inquiry_ledger (id, inquiry_id, event, from_state, to_state, actor, metadata, created_at)
     VALUES (
       ${id},
@@ -553,7 +557,7 @@ async function appendLedgerEvent(params: {
       ${params.fromState ?? null},
       ${params.toState ?? null},
       ${params.actor},
-      ${JSON.stringify(params.metadata ?? {})}::jsonb,
+      ${JSON.stringify(params.metadata ?? {})}::text::jsonb,
       ${params.timestamp}
     )
   `;
@@ -603,7 +607,7 @@ async function persistInquiryStateChange(params: {
   declineReasonNote?: string | null;
   expiresAt?: string | null;
   bookedAt?: string | null;
-}) {
+}, tx?: BookingTx, effects?: DecisionEffects) {
   if (params.inquiry.inquiry_state === params.nextInquiryState) {
     return params.inquiry;
   }
@@ -624,7 +628,7 @@ async function persistInquiryStateChange(params: {
     updated_at: params.now,
   };
 
-  await bookingDB.exec`
+  const changed = await (tx ?? bookingDB).queryRow<{ id: string }>`
     UPDATE bookings
     SET inquiry_state = ${nextRow.inquiry_state},
         status = ${nextRow.status},
@@ -638,7 +642,11 @@ async function persistInquiryStateChange(params: {
         booked_at = ${nextRow.booked_at},
         updated_at = ${nextRow.updated_at}
     WHERE id = ${nextRow.id}
+      AND inquiry_state = ${params.inquiry.inquiry_state}
+      AND payment_state = ${params.inquiry.payment_state}
+    RETURNING id
   `;
+  if (!changed) throw APIError.failedPrecondition("Inquiry changed during this action. Refresh and retry.");
 
   await appendLedgerEvent({
     inquiryId: nextRow.id,
@@ -652,16 +660,18 @@ async function persistInquiryStateChange(params: {
       declineReasonNote: nextRow.decline_reason_note,
     },
     timestamp: params.now,
-  });
+  }, tx);
 
-  await safePublishInquiryEvent({
+  const effect: Parameters<typeof safePublishInquiryEvent>[0] = {
     type: "inquiry.status_changed",
     inquiry: nextRow,
     listingTitle: await resolveListingTitle(nextRow.listing_id),
     actorId: params.actorId,
     actor: params.actor === "admin" || params.actor === "support" ? "host" : params.actor,
     occurredAt: params.now,
-  });
+  };
+  if (effects) effects.push(effect);
+  else await safePublishInquiryEvent(effect);
 
   return nextRow;
 }
@@ -676,7 +686,7 @@ async function persistPaymentStateChange(params: {
   paymentProofKey?: string | null;
   paymentSubmittedAt?: string | null;
   paymentConfirmedAt?: string | null;
-}) {
+}, tx?: BookingTx, effects?: DecisionEffects) {
   if (params.inquiry.payment_state === params.nextPaymentState) {
     return params.inquiry;
   }
@@ -692,7 +702,7 @@ async function persistPaymentStateChange(params: {
     updated_at: params.now,
   };
 
-  await bookingDB.exec`
+  const changed = await (tx ?? bookingDB).queryRow<{ id: string }>`
     UPDATE bookings
     SET payment_state = ${nextRow.payment_state},
         status = ${nextRow.status},
@@ -702,7 +712,11 @@ async function persistPaymentStateChange(params: {
         payment_confirmed_at = ${nextRow.payment_confirmed_at},
         updated_at = ${nextRow.updated_at}
     WHERE id = ${nextRow.id}
+      AND inquiry_state = ${params.inquiry.inquiry_state}
+      AND payment_state = ${params.inquiry.payment_state}
+    RETURNING id
   `;
+  if (!changed) throw APIError.failedPrecondition("Inquiry changed during this action. Refresh and retry.");
 
   await appendLedgerEvent({
     inquiryId: nextRow.id,
@@ -712,16 +726,18 @@ async function persistPaymentStateChange(params: {
     actor: params.actor,
     metadata: { inquiryState: nextRow.inquiry_state },
     timestamp: params.now,
-  });
+  }, tx);
 
-  await safePublishInquiryEvent({
+  const effect: Parameters<typeof safePublishInquiryEvent>[0] = {
     type: "inquiry.payment_changed",
     inquiry: nextRow,
     listingTitle: await resolveListingTitle(nextRow.listing_id),
     actorId: params.actorId,
     actor: params.actor === "admin" || params.actor === "support" ? "host" : params.actor,
     occurredAt: params.now,
-  });
+  };
+  if (effects) effects.push(effect);
+  else await safePublishInquiryEvent(effect);
 
   return nextRow;
 }
@@ -1202,83 +1218,107 @@ export const updateBookingStatus = api<UpdateBookingStatusParams, { booking: Boo
     if (auth.role === "host") {
       await assertHostBillingOperationalAccess(auth.userID, "bookings");
     }
-    const existing = await fetchBookingRowFresh(params.id, now);
-    if (!existing) throw APIError.notFound("Inquiry not found.");
-    if (existing.host_id !== auth.userID && !["admin", "support"].includes(auth.role)) {
-      throw APIError.permissionDenied("You cannot update this inquiry.");
-    }
-
-    const nextStatus = params.status;
-    const transitionError = getInquiryStatusTransitionError(existing.inquiry_state, nextStatus, "host");
-    if (transitionError) {
-      throw APIError.failedPrecondition(transitionError);
-    }
-    const declineReason = nextStatus === "DECLINED" ? params.declineReason ?? null : null;
-    const declineReasonNote = nextStatus === "DECLINED" ? params.declineReasonNote?.trim() ?? "" : "";
-
-    if (nextStatus === "DECLINED") {
-      if (!declineReason || !INQUIRY_DECLINE_REASONS.has(declineReason)) {
-        throw APIError.invalidArgument("A valid decline reason is required when declining an inquiry.");
-      }
-      if (declineReason === "OTHER" && !declineReasonNote) {
-        throw APIError.invalidArgument("Add a short note when selecting Other as the decline reason.");
-      }
-      if (declineReasonNote.length > 280) {
-        throw APIError.invalidArgument("Decline note must stay under 280 characters.");
-      }
-    }
-
-    const hostPaymentDetails = await getHostPaymentDetails(existing.listing_id, existing.host_id);
-    const paymentReference =
-      nextStatus === "APPROVED"
-        ? existing.payment_reference ?? buildHostPaymentReference(hostPaymentDetails.payment_reference_prefix, existing.id)
-        : existing.payment_reference;
-
-    if (nextStatus === "APPROVED") {
-      await assertListingDateRangeAvailable(existing.listing_id, existing.check_in, existing.check_out, {
-        excludeSourceType: "APPROVED_HOLD",
-        excludeSourceId: existing.id,
-      });
-    }
-
-    let updated = await persistInquiryStateChange({
-      inquiry: existing,
-      nextInquiryState: nextStatus,
-      actorId: auth.userID,
-      actor: auth.role === "admin" || auth.role === "support" ? auth.role : "host",
-      now,
-      viewedAt: existing.viewed_at ?? (nextStatus === "VIEWED" || nextStatus === "RESPONDED" || nextStatus === "APPROVED" || nextStatus === "DECLINED" ? now : existing.viewed_at),
-      respondedAt: nextStatus === "RESPONDED" ? now : existing.responded_at,
-      paymentUnlockedAt: nextStatus === "APPROVED" ? now : existing.payment_unlocked_at,
-      paymentReference,
-      declineReason,
-      declineReasonNote: declineReasonNote || null,
-      expiresAt: computeInquiryExpiresAt(nextStatus, now),
-    });
-
-    if (nextStatus === "APPROVED") {
-      const paymentTransitionError = getPaymentStateTransitionError(updated.inquiry_state, updated.payment_state, "INITIATED", "host");
-      if (paymentTransitionError) {
-        throw APIError.failedPrecondition(paymentTransitionError);
+    const initial = await fetchBookingRowFresh(params.id, now);
+    if (!initial) throw APIError.notFound("Inquiry not found.");
+    const tx = await bookingDB.begin();
+    const effects: DecisionEffects = [];
+    let committed = false;
+    try {
+      // Serialize competing decisions for the same listing before reserving dates.
+      await tx.rawExec("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", `booking-decision:${initial.listing_id}`);
+      const existing = await tx.queryRow<BookingRow>`SELECT * FROM bookings WHERE id = ${params.id} FOR UPDATE`;
+      if (!existing) throw APIError.notFound("Inquiry not found.");
+      if (existing.host_id !== auth.userID && !["admin", "support"].includes(auth.role)) {
+        throw APIError.permissionDenied("You cannot update this inquiry.");
       }
 
-      updated = await persistPaymentStateChange({
-        inquiry: updated,
-        nextPaymentState: "INITIATED",
+      const nextStatus = params.status;
+      if (existing.inquiry_state === nextStatus) {
+        await tx.commit();
+        committed = true;
+        return { booking: await mapBookingAccessRecord(existing) };
+      }
+      if (shouldExpireInquiry(existing.inquiry_state, existing.expires_at, new Date().toISOString())) {
+        throw APIError.failedPrecondition("This inquiry has expired. Refresh before taking another action.");
+      }
+      const transitionError = getInquiryStatusTransitionError(existing.inquiry_state, nextStatus, "host");
+      if (transitionError) {
+        throw APIError.failedPrecondition(transitionError);
+      }
+      const declineReason = nextStatus === "DECLINED" ? params.declineReason ?? null : null;
+      const declineReasonNote = nextStatus === "DECLINED" ? params.declineReasonNote?.trim() ?? "" : "";
+
+      if (nextStatus === "DECLINED") {
+        if (!declineReason || !INQUIRY_DECLINE_REASONS.has(declineReason)) {
+          throw APIError.invalidArgument("A valid decline reason is required when declining an inquiry.");
+        }
+        if (declineReason === "OTHER" && !declineReasonNote) {
+          throw APIError.invalidArgument("Add a short note when selecting Other as the decline reason.");
+        }
+        if (declineReasonNote.length > 280) {
+          throw APIError.invalidArgument("Decline note must stay under 280 characters.");
+        }
+      }
+
+      const hostPaymentDetails = nextStatus === "APPROVED"
+        ? await getHostPaymentDetails(existing.listing_id, existing.host_id)
+        : null;
+      const paymentReference =
+        nextStatus === "APPROVED"
+          ? existing.payment_reference ?? buildHostPaymentReference(hostPaymentDetails?.payment_reference_prefix ?? null, existing.id)
+          : existing.payment_reference;
+
+      if (nextStatus === "APPROVED") {
+        await assertListingDateRangeAvailable(existing.listing_id, existing.check_in, existing.check_out, {
+          excludeSourceType: "APPROVED_HOLD",
+          excludeSourceId: existing.id,
+        });
+      }
+
+      let updated = await persistInquiryStateChange({
+        inquiry: existing,
+        nextInquiryState: nextStatus,
         actorId: auth.userID,
-        actor: auth.role === "admin" || auth.role === "support" ? auth.role : "system",
+        actor: auth.role === "admin" || auth.role === "support" ? auth.role : "host",
         now,
+        viewedAt: existing.viewed_at ?? (nextStatus === "VIEWED" || nextStatus === "RESPONDED" || nextStatus === "APPROVED" || nextStatus === "DECLINED" ? now : existing.viewed_at),
+        respondedAt: nextStatus === "RESPONDED" ? now : existing.responded_at,
+        paymentUnlockedAt: nextStatus === "APPROVED" ? now : existing.payment_unlocked_at,
         paymentReference,
-      });
-    }
+        declineReason,
+        declineReasonNote: declineReasonNote || null,
+        expiresAt: computeInquiryExpiresAt(nextStatus, now),
+      }, tx, effects);
 
-    if (existing.inquiry_state === "APPROVED" || nextStatus === "APPROVED" || nextStatus === "BOOKED") {
-      await syncListingAvailabilityOrThrowActionable(existing.listing_id);
-    }
+      if (nextStatus === "APPROVED") {
+        const paymentTransitionError = getPaymentStateTransitionError(updated.inquiry_state, updated.payment_state, "INITIATED", "host");
+        if (paymentTransitionError) {
+          throw APIError.failedPrecondition(paymentTransitionError);
+        }
 
-    return {
-      booking: await mapBookingAccessRecord(updated),
-    };
+        updated = await persistPaymentStateChange({
+          inquiry: updated,
+          nextPaymentState: "INITIATED",
+          actorId: auth.userID,
+          actor: auth.role === "admin" || auth.role === "support" ? auth.role : "system",
+          now,
+          paymentReference,
+        }, tx, effects);
+      }
+
+      if (existing.inquiry_state === "APPROVED" || nextStatus === "APPROVED" || nextStatus === "BOOKED") {
+        // Reserve the proposed state before it becomes visible to the guest.
+        await syncListingAvailabilityForBookings(existing.listing_id, tx);
+      }
+
+      await tx.commit();
+      committed = true;
+      for (const effect of effects) await safePublishInquiryEvent(effect);
+      return { booking: await mapBookingAccessRecord(updated) };
+    } catch (error) {
+      if (!committed) await tx.rollback();
+      throw error;
+    }
   },
 );
 
