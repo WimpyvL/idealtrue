@@ -455,10 +455,7 @@ async function resolveListingTitle(listingId: string) {
 }
 
 async function syncListingAvailabilityForBookings(listingId: string, tx?: BookingTx) {
-  const rows = await (tx ?? bookingDB).rawQueryAll<
-    Pick<BookingRow, "id" | "check_in" | "check_out" | "inquiry_state" | "payment_state">
-  >(
-    `
+  const sql = `
       SELECT id, check_in, check_out, inquiry_state, payment_state
       FROM bookings
       WHERE listing_id = $1
@@ -466,9 +463,10 @@ async function syncListingAvailabilityForBookings(listingId: string, tx?: Bookin
           (inquiry_state = 'BOOKED' AND payment_state = 'COMPLETED')
           OR (inquiry_state = 'APPROVED' AND payment_state = 'INITIATED')
       )
-    `,
-    listingId,
-  );
+    `;
+  const rows = tx
+    ? await tx.rawQueryAll<Pick<BookingRow, "id" | "check_in" | "check_out" | "inquiry_state" | "payment_state">>(sql, listingId)
+    : await bookingDB.rawQueryAll<Pick<BookingRow, "id" | "check_in" | "check_out" | "inquiry_state" | "payment_state">>(sql, listingId);
 
   await (tx ? replaceBookingAvailabilityBlocks : syncBookingAvailabilityWithCompatibility)(
     listingId,
@@ -548,19 +546,21 @@ async function appendLedgerEvent(params: {
   timestamp: string;
 }, tx?: BookingTx) {
   const id = randomUUID();
-  await (tx ?? bookingDB).exec`
+  const sql = `
     INSERT INTO inquiry_ledger (id, inquiry_id, event, from_state, to_state, actor, metadata, created_at)
     VALUES (
-      ${id},
-      ${params.inquiryId},
-      ${params.event},
-      ${params.fromState ?? null},
-      ${params.toState ?? null},
-      ${params.actor},
-      ${JSON.stringify(params.metadata ?? {})}::text::jsonb,
-      ${params.timestamp}
+      $1,
+      $2,
+      $3,
+      $4,
+      $5,
+      $6,
+      $7::text::jsonb,
+      $8
     )
   `;
+  const values = [id, params.inquiryId, params.event, params.fromState ?? null, params.toState ?? null, params.actor, JSON.stringify(params.metadata ?? {}), params.timestamp] as const;
+  tx ? await tx.rawExec(sql, ...values) : await bookingDB.rawExec(sql, ...values);
 
   return id;
 }
@@ -628,24 +628,26 @@ async function persistInquiryStateChange(params: {
     updated_at: params.now,
   };
 
-  const changed = await (tx ?? bookingDB).queryRow<{ id: string }>`
+  const sql = `
     UPDATE bookings
-    SET inquiry_state = ${nextRow.inquiry_state},
-        status = ${nextRow.status},
-        viewed_at = ${nextRow.viewed_at},
-        responded_at = ${nextRow.responded_at},
-        payment_unlocked_at = ${nextRow.payment_unlocked_at},
-        payment_reference = ${nextRow.payment_reference},
-        decline_reason = ${nextRow.decline_reason},
-        decline_reason_note = ${nextRow.decline_reason_note},
-        expires_at = ${nextRow.expires_at},
-        booked_at = ${nextRow.booked_at},
-        updated_at = ${nextRow.updated_at}
-    WHERE id = ${nextRow.id}
-      AND inquiry_state = ${params.inquiry.inquiry_state}
-      AND payment_state = ${params.inquiry.payment_state}
+    SET inquiry_state = $1,
+        status = $2,
+        viewed_at = $3,
+        responded_at = $4,
+        payment_unlocked_at = $5,
+        payment_reference = $6,
+        decline_reason = $7,
+        decline_reason_note = $8,
+        expires_at = $9,
+        booked_at = $10,
+        updated_at = $11
+    WHERE id = $12
+      AND inquiry_state = $13
+      AND payment_state = $14
     RETURNING id
   `;
+  const values = [nextRow.inquiry_state, nextRow.status, nextRow.viewed_at, nextRow.responded_at, nextRow.payment_unlocked_at, nextRow.payment_reference, nextRow.decline_reason, nextRow.decline_reason_note, nextRow.expires_at, nextRow.booked_at, nextRow.updated_at, nextRow.id, params.inquiry.inquiry_state, params.inquiry.payment_state] as const;
+  const changed = tx ? await tx.rawQueryRow<{ id: string }>(sql, ...values) : await bookingDB.rawQueryRow<{ id: string }>(sql, ...values);
   if (!changed) throw APIError.failedPrecondition("Inquiry changed during this action. Refresh and retry.");
 
   await appendLedgerEvent({
@@ -702,20 +704,22 @@ async function persistPaymentStateChange(params: {
     updated_at: params.now,
   };
 
-  const changed = await (tx ?? bookingDB).queryRow<{ id: string }>`
+  const sql = `
     UPDATE bookings
-    SET payment_state = ${nextRow.payment_state},
-        status = ${nextRow.status},
-        payment_reference = ${nextRow.payment_reference},
-        payment_proof_key = ${nextRow.payment_proof_key},
-        payment_submitted_at = ${nextRow.payment_submitted_at},
-        payment_confirmed_at = ${nextRow.payment_confirmed_at},
-        updated_at = ${nextRow.updated_at}
-    WHERE id = ${nextRow.id}
-      AND inquiry_state = ${params.inquiry.inquiry_state}
-      AND payment_state = ${params.inquiry.payment_state}
+    SET payment_state = $1,
+        status = $2,
+        payment_reference = $3,
+        payment_proof_key = $4,
+        payment_submitted_at = $5,
+        payment_confirmed_at = $6,
+        updated_at = $7
+    WHERE id = $8
+      AND inquiry_state = $9
+      AND payment_state = $10
     RETURNING id
   `;
+  const values = [nextRow.payment_state, nextRow.status, nextRow.payment_reference, nextRow.payment_proof_key, nextRow.payment_submitted_at, nextRow.payment_confirmed_at, nextRow.updated_at, nextRow.id, params.inquiry.inquiry_state, params.inquiry.payment_state] as const;
+  const changed = tx ? await tx.rawQueryRow<{ id: string }>(sql, ...values) : await bookingDB.rawQueryRow<{ id: string }>(sql, ...values);
   if (!changed) throw APIError.failedPrecondition("Inquiry changed during this action. Refresh and retry.");
 
   await appendLedgerEvent({
