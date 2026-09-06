@@ -632,8 +632,8 @@ async function replaceAvailabilityBlocksTransactionally(
 ) {
   const tx = await catalogDB.begin();
   try {
-    await tx.rawQueryRow<{ locked: null }>(
-      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0)) AS locked",
+    await tx.rawExec(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
       `availability:${listingId}`,
     );
     await tx.rawExec(

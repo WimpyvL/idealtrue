@@ -560,7 +560,8 @@ async function appendLedgerEvent(params: {
     )
   `;
   const values = [id, params.inquiryId, params.event, params.fromState ?? null, params.toState ?? null, params.actor, JSON.stringify(params.metadata ?? {}), params.timestamp] as const;
-  tx ? await tx.rawExec(sql, ...values) : await bookingDB.rawExec(sql, ...values);
+  if (tx) await tx.rawExec(sql, ...values);
+  else await bookingDB.rawExec(sql, ...values);
 
   return id;
 }
